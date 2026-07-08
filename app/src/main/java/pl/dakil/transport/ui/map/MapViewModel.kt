@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.StopsRepository
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.search.SearchStateHolder
@@ -22,10 +24,24 @@ data class Viewport(val south: Double, val west: Double, val north: Double, val 
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val stopsRepository: StopsRepository,
+    private val mapStyleRepository: MapStyleRepository,
     private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
 
     private val viewport = MutableStateFlow<Viewport?>(null)
+
+    /**
+     * Patched Liberty style JSON (base transit stop icons removed); null while loading,
+     * failure means the UI should fall back to the plain style URL.
+     */
+    private val _styleJson = MutableStateFlow<Result<String>?>(null)
+    val styleJson: StateFlow<Result<String>?> = _styleJson
+
+    init {
+        viewModelScope.launch {
+            _styleJson.value = mapStyleRepository.transitFreeLibertyStyle()
+        }
+    }
 
     val stops: StateFlow<List<TransitLocation>> = viewport
         .filterNotNull()

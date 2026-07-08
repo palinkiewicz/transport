@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -82,6 +83,7 @@ import org.maplibre.spatialk.geojson.Feature
 import org.maplibre.spatialk.geojson.FeatureCollection
 import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
+import pl.dakil.transport.data.repo.LIBERTY_STYLE_URL
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.DeparturesRoute
 
@@ -100,6 +102,7 @@ fun MapScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val stops by viewModel.stops.collectAsStateWithLifecycle()
+    val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -125,18 +128,9 @@ fun MapScreen(
     var selectedStop by remember { mutableStateOf<TransitLocation?>(null) }
     val sheetState = rememberModalBottomSheetState()
 
-    val stopsById = remember(stops) { stops.associateBy(::stopKey) }
-    val stopFeatures = remember(stops) {
-        FeatureCollection(
-            stops.map { stop ->
-                Feature<Point, JsonObject?>(
-                    id = JsonPrimitive(stopKey(stop)),
-                    geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
-                    properties = JsonObject(mapOf("name" to JsonPrimitive(stop.name))),
-                )
-            },
-        )
-    }
+    // The map click callback below is captured once by MaplibreMap and never refreshed, so it
+    // must read current data through a State object rather than capture the map directly.
+    val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy(::stopKey) })
 
     LaunchedEffect(cameraState) {
         snapshotFlow { cameraState.isCameraMoving }
@@ -172,7 +166,9 @@ fun MapScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
-            baseStyle = BaseStyle.Uri("https://tiles.openfreemap.org/styles/liberty"),
+            baseStyle = styleJson?.let { result ->
+                result.getOrNull()?.let { BaseStyle.Json(it) } ?: BaseStyle.Uri(LIBERTY_STYLE_URL)
+            } ?: return@Box, // patched style still loading; it arrives within moments
             cameraState = cameraState,
             styleState = styleState,
             options = MapOptions(ornamentOptions = OrnamentOptions.AllDisabled),
@@ -212,6 +208,21 @@ fun MapScreen(
                 }
             },
         ) {
+            // This content lambda is composed once by the library and never swapped for an
+            // updated instance, so values captured from the outer composition stay frozen at
+            // their first-composition state. Anything dynamic must be derived in here, from
+            // snapshot state reads (like `stops`).
+            val stopFeatures = remember(stops) {
+                FeatureCollection(
+                    stops.map { stop ->
+                        Feature<Point, JsonObject?>(
+                            id = JsonPrimitive(stopKey(stop)),
+                            geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
+                            properties = JsonObject(mapOf("name" to JsonPrimitive(stop.name))),
+                        )
+                    },
+                )
+            }
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
             Anchor.Replace("poi_transit") {
                 CircleLayer(
@@ -228,6 +239,8 @@ fun MapScreen(
                     source = stopsSource,
                     minZoom = 14f,
                     textField = format(span(feature["name"].asString())),
+                    // Library default is "Open Sans..." which OpenFreeMap's glyph server 404s on.
+                    textFont = const(listOf("Noto Sans Regular")),
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.2f.em),
                     textAnchor = const(SymbolAnchor.Top),
