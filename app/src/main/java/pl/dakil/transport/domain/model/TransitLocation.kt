@@ -6,6 +6,7 @@ data class TransitLocation(
     val lat: Double,
     val lon: Double,
     val stopId: String? = null,
+    val city: String? = null,
 ) {
     /** Value to send as `fromPlace`/`toPlace`/`stopId` query parameters. */
     val queryValue: String

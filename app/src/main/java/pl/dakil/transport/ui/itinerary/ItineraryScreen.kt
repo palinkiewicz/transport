@@ -42,7 +42,7 @@ private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItineraryScreen(journey: Journey?, onBack: () -> Unit) {
+fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -65,7 +65,12 @@ fun ItineraryScreen(journey: Journey?, onBack: () -> Unit) {
                 contentPadding = PaddingValues(16.dp),
             ) {
                 items(journey.legs.size) { index ->
-                    LegRow(leg = journey.legs[index], isLast = index == journey.legs.lastIndex)
+                    LegRow(
+                        leg = journey.legs[index],
+                        isLast = index == journey.legs.lastIndex,
+                        fromNameOverride = if (index == 0) fromName else null,
+                        toNameOverride = if (index == journey.legs.lastIndex) toName else null,
+                    )
                 }
             }
         }
@@ -73,7 +78,7 @@ fun ItineraryScreen(journey: Journey?, onBack: () -> Unit) {
 }
 
 @Composable
-private fun LegRow(leg: JourneyLeg, isLast: Boolean) {
+private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? = null, toNameOverride: String? = null) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
@@ -100,7 +105,7 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean) {
         Column(modifier = Modifier.padding(bottom = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(leg.startTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(leg.fromName, style = MaterialTheme.typography.bodyMedium)
+                Text(fromNameOverride ?: leg.fromName, style = MaterialTheme.typography.bodyMedium)
                 leg.fromTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
             }
             Spacer(Modifier.height(4.dp))
@@ -127,7 +132,7 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean) {
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(leg.endTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(leg.toName, style = MaterialTheme.typography.bodyMedium)
+                Text(toNameOverride ?: leg.toName, style = MaterialTheme.typography.bodyMedium)
                 leg.toTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
             }
         }

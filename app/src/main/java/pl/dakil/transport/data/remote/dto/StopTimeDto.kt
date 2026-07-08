@@ -17,6 +17,7 @@ data class StopTimeDto(
     val displayName: String? = null,
     val cancelled: Boolean? = null,
     val tripCancelled: Boolean? = null,
+    val directionId: String? = null,
 )
 
 @Serializable

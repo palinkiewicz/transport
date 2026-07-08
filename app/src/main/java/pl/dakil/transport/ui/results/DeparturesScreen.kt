@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.background
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.domain.model.Departure
@@ -59,15 +60,21 @@ fun DeparturesScreen(
                 if (state.departures.departures.isEmpty()) {
                     ErrorBox("No upcoming departures", Modifier.padding(innerPadding))
                 } else {
+                    val groups = state.departures.departures.groupedByPole(viewModel.clickedPoleStopId)
                     LazyColumn(
                         modifier = Modifier
                             .padding(innerPadding)
                             .fillMaxWidth(),
                         contentPadding = PaddingValues(vertical = 8.dp),
                     ) {
-                        items(state.departures.departures.size) { index ->
-                            DepartureRow(state.departures.departures[index])
-                            HorizontalDivider()
+                        groups.forEach { group ->
+                            item(key = "header-${group.poleStopId}") {
+                                DepartureGroupHeader(group.header)
+                            }
+                            items(group.departures.size, key = { "${group.poleStopId}-$it" }) { index ->
+                                DepartureRow(group.departures[index])
+                                HorizontalDivider()
+                            }
                         }
                     }
                 }
@@ -99,4 +106,17 @@ private fun DepartureRow(departure: Departure) {
             realTime = departure.realTime,
         )
     }
+}
+
+@Composable
+private fun DepartureGroupHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+    )
 }

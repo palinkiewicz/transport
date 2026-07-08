@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.navigation
 
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
@@ -31,6 +32,9 @@ fun AppNavHost() {
 
     Scaffold(
         bottomBar = { if (showBottomBar) TransportBottomBar(navController) },
+        // Each destination has its own Scaffold (and usually a TopAppBar) that already claims
+        // system bar insets; letting this outer Scaffold also claim them double-pads every screen.
+        contentWindowInsets = WindowInsets(0),
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -70,6 +74,8 @@ fun AppNavHost() {
                     val route: ItineraryRoute = entry.toRoute()
                     ItineraryScreen(
                         journey = resultsViewModel.journeyAt(route.index),
+                        fromName = resultsViewModel.fromName,
+                        toName = resultsViewModel.toName,
                         onBack = { navController.popBackStack() },
                     )
                 }

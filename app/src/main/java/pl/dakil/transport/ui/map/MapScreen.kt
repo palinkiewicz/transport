@@ -10,9 +10,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Flag
@@ -39,7 +42,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,11 +55,22 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
+import org.maplibre.compose.expressions.dsl.asString
+import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.expressions.dsl.feature
+import org.maplibre.compose.expressions.dsl.format
+import org.maplibre.compose.expressions.dsl.offset
+import org.maplibre.compose.expressions.dsl.span
+import org.maplibre.compose.expressions.value.SymbolAnchor
+import org.maplibre.compose.layers.Anchor
 import org.maplibre.compose.layers.CircleLayer
+import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.location.LocationPuck
 import org.maplibre.compose.location.rememberDefaultLocationProvider
 import org.maplibre.compose.location.rememberUserLocationState
+import org.maplibre.compose.map.MapOptions
 import org.maplibre.compose.map.MaplibreMap
+import org.maplibre.compose.map.OrnamentOptions
 import org.maplibre.compose.material3.DisappearingCompassButton
 import org.maplibre.compose.material3.ExpandingAttributionButton
 import org.maplibre.compose.sources.GeoJsonData
@@ -70,6 +86,7 @@ import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.DeparturesRoute
 
 private const val STOPS_FETCH_MIN_ZOOM = 13f
+private val STOP_TAP_TARGET_RADIUS = 24.dp
 
 private fun stopKey(location: TransitLocation): String = location.stopId ?: "${location.lat},${location.lon}"
 
@@ -115,7 +132,7 @@ fun MapScreen(
                 Feature<Point, JsonObject?>(
                     id = JsonPrimitive(stopKey(stop)),
                     geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
-                    properties = null,
+                    properties = JsonObject(mapOf("name" to JsonPrimitive(stop.name))),
                 )
             },
         )
@@ -158,22 +175,67 @@ fun MapScreen(
             baseStyle = BaseStyle.Uri("https://tiles.openfreemap.org/styles/liberty"),
             cameraState = cameraState,
             styleState = styleState,
+            options = MapOptions(ornamentOptions = OrnamentOptions.AllDisabled),
+            onMapClick = { _, clickOffset ->
+                val projection = cameraState.projection
+                val stop = if (projection != null) {
+                    val hitRect = DpRect(
+                        left = clickOffset.x - STOP_TAP_TARGET_RADIUS,
+                        top = clickOffset.y - STOP_TAP_TARGET_RADIUS,
+                        right = clickOffset.x + STOP_TAP_TARGET_RADIUS,
+                        bottom = clickOffset.y + STOP_TAP_TARGET_RADIUS,
+                    )
+                    val candidates = projection.queryRenderedFeatures(
+                        rect = hitRect,
+                        layerIds = setOf("transport-stops"),
+                    )
+                    val nearestId = candidates.minByOrNull { candidate ->
+                        val position = (candidate.geometry as? Point)?.coordinates
+                        val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
+                        if (candidateOffset != null) {
+                            val dx = (candidateOffset.x - clickOffset.x).value
+                            val dy = (candidateOffset.y - clickOffset.y).value
+                            dx * dx + dy * dy
+                        } else {
+                            Float.MAX_VALUE
+                        }
+                    }?.id?.content
+                    nearestId?.let { stopsById[it] }
+                } else {
+                    null
+                }
+                if (stop != null) {
+                    selectedStop = stop
+                    ClickResult.Consume
+                } else {
+                    ClickResult.Pass
+                }
+            },
         ) {
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
-            CircleLayer(
-                id = "transport-stops",
-                source = stopsSource,
-                onClick = { features ->
-                    val id = features.firstOrNull()?.id?.content
-                    val stop = id?.let { stopsById[it] }
-                    if (stop != null) {
-                        selectedStop = stop
-                        ClickResult.Consume
-                    } else {
-                        ClickResult.Pass
-                    }
-                },
-            )
+            Anchor.Replace("poi_transit") {
+                CircleLayer(
+                    id = "transport-stops",
+                    source = stopsSource,
+                    minZoom = STOPS_FETCH_MIN_ZOOM,
+                    radius = const(6.dp),
+                    color = const(MaterialTheme.colorScheme.primary),
+                    strokeColor = const(MaterialTheme.colorScheme.surface),
+                    strokeWidth = const(2.dp),
+                )
+                SymbolLayer(
+                    id = "transport-stop-labels",
+                    source = stopsSource,
+                    minZoom = 14f,
+                    textField = format(span(feature["name"].asString())),
+                    textSize = const(0.75f.em),
+                    textOffset = offset(0f.em, 1.2f.em),
+                    textAnchor = const(SymbolAnchor.Top),
+                    textColor = const(MaterialTheme.colorScheme.onSurface),
+                    textHaloColor = const(MaterialTheme.colorScheme.surface),
+                    textHaloWidth = const(1.5.dp),
+                )
+            }
             if (locationState != null) {
                 LocationPuck(
                     idPrefix = "user",
@@ -187,6 +249,7 @@ fun MapScreen(
             cameraState = cameraState,
             modifier = Modifier
                 .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(16.dp),
         )
 

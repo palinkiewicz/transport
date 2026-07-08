@@ -18,4 +18,14 @@ data class MatchDto(
     val score: Double? = null,
     val modes: List<String>? = null,
     val importance: Double? = null,
+    val areas: List<AreaDto>? = null,
+)
+
+@Serializable
+data class AreaDto(
+    val name: String? = null,
+    val adminLevel: Double? = null,
+    val matched: Boolean? = null,
+    val default: Boolean? = null,
+    val unique: Boolean? = null,
 )

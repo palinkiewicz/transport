@@ -3,8 +3,12 @@ package pl.dakil.transport.ui.search
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -63,7 +67,12 @@ fun SearchScreen(
     var showTimePicker by remember { mutableStateOf(false) }
     var maxTransfersExpanded by remember { mutableStateOf(false) }
 
-    Scaffold { innerPadding ->
+    Scaffold(
+        // No TopAppBar here, so this screen owns the top/horizontal system bar insets itself.
+        // Bottom is intentionally excluded: the app-level bottom navigation bar (shown for this
+        // route) already clears the navigation bar inset, so adding it again would leave a gap.
+        contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .padding(innerPadding)

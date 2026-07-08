@@ -41,5 +41,6 @@ interface MotisApi {
     suspend fun mapStops(
         @Query("min") min: String,
         @Query("max") max: String,
+        @Query("grouped") grouped: Boolean? = null,
     ): ResponseBody
 }

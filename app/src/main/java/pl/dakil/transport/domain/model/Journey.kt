@@ -1,5 +1,6 @@
 package pl.dakil.transport.domain.model
 
+import java.time.Duration
 import java.time.OffsetDateTime
 
 data class Journey(
@@ -10,8 +11,31 @@ data class Journey(
     val transfers: Int,
     val legs: List<JourneyLeg>,
 ) {
-    val fromName: String get() = legs.first().fromName
-    val toName: String get() = legs.last().toName
+    private val transitLegs: List<JourneyLeg> get() = legs.filter { it.isTransit }
+
+    /** Name of the first transit stop boarded, i.e. skipping any initial walk leg. */
+    val firstStopName: String get() = transitLegs.firstOrNull()?.fromName ?: legs.first().fromName
+
+    /** Name of the last transit stop alighted at, i.e. skipping any final walk leg. */
+    val lastStopName: String get() = transitLegs.lastOrNull()?.toName ?: legs.last().toName
+
+    /** Walking distance from the search origin to [firstStopName], if the journey starts with a walk. */
+    val walkToFirstStopMeters: Double? get() = legs.first().takeIf { !it.isTransit }?.distanceMeters
+
+    /** Walking distance from [lastStopName] to the search destination, if the journey ends with a walk. */
+    val walkFromLastStopMeters: Double? get() = legs.last().takeIf { !it.isTransit }?.distanceMeters
+
+    val departureTime: OffsetDateTime get() = transitLegs.firstOrNull()?.startTime ?: legs.first().startTime
+    val departureScheduledTime: OffsetDateTime
+        get() = transitLegs.firstOrNull()?.scheduledStartTime ?: legs.first().scheduledStartTime
+
+    val arrivalTime: OffsetDateTime get() = transitLegs.lastOrNull()?.endTime ?: legs.last().endTime
+    val arrivalScheduledTime: OffsetDateTime
+        get() = transitLegs.lastOrNull()?.scheduledEndTime ?: legs.last().scheduledEndTime
+
+    /** Elapsed time between boarding the first vehicle and alighting the last one. */
+    val transitDurationSeconds: Long
+        get() = Duration.between(departureTime, arrivalTime).seconds.coerceAtLeast(0)
 }
 
 data class JourneyLeg(
@@ -26,6 +50,7 @@ data class JourneyLeg(
     val scheduledEndTime: OffsetDateTime,
     val realTime: Boolean,
     val duration: Int,
+    val distanceMeters: Double? = null,
     val headsign: String? = null,
     val routeShortName: String? = null,
     val routeLongName: String? = null,

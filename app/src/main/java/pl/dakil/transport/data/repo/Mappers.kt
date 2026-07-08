@@ -18,6 +18,7 @@ fun MatchDto.toTransitLocation(): TransitLocation =
         lat = lat,
         lon = lon,
         stopId = if (type == "STOP") id else null,
+        city = areas?.firstOrNull { it.default == true }?.name,
     )
 
 fun PlaceDto.toTransitLocation(): TransitLocation =
@@ -38,6 +39,7 @@ fun LegDto.toDomain(): JourneyLeg =
         scheduledEndTime = scheduledEndTime.toOffsetDateTime(),
         realTime = realTime,
         duration = duration,
+        distanceMeters = distance,
         headsign = headsign,
         routeShortName = routeShortName,
         routeLongName = routeLongName,
@@ -73,5 +75,8 @@ fun StopTimeDto.toDomain(): Departure {
         realTime = realTime,
         cancelled = cancelled ?: false,
         tripCancelled = tripCancelled ?: false,
+        poleStopId = place.stopId,
+        directionId = directionId,
+        track = place.track ?: place.scheduledTrack,
     )
 }

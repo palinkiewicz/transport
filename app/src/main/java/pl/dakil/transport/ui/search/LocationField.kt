@@ -1,9 +1,11 @@
 package pl.dakil.transport.ui.search
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,7 +49,18 @@ fun LocationField(
         ) {
             suggestions.forEach { location ->
                 DropdownMenuItem(
-                    text = { Text(location.name) },
+                    text = {
+                        Column {
+                            Text(location.name)
+                            if (location.city != null) {
+                                Text(
+                                    text = location.city,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                    },
                     onClick = {
                         onSelect(location)
                         expanded = false
