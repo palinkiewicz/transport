@@ -2,6 +2,8 @@ package pl.dakil.transport.ui.results
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -86,6 +88,7 @@ fun ResultsScreen(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
     Card(
@@ -96,9 +99,10 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 journey.walkToFirstStopMeters?.let { WalkDistance(it) }
-                Row(
+                FlowRow(
                     modifier = Modifier.weight(1f),
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     journey.legs.filter { it.isTransit }.forEach { leg ->
                         ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)

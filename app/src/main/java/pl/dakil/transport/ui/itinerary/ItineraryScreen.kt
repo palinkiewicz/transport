@@ -103,12 +103,14 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? =
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.padding(bottom = 20.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(leg.startTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(fromNameOverride ?: leg.fromName, style = MaterialTheme.typography.bodyMedium)
-                leg.fromTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
+            if (leg.isTransit || fromNameOverride != null) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(leg.startTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(fromNameOverride ?: leg.fromName, style = MaterialTheme.typography.bodyMedium)
+                    leg.fromTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
+                }
+                Spacer(Modifier.height(4.dp))
             }
-            Spacer(Modifier.height(4.dp))
             if (leg.isTransit) {
                 ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                 leg.headsign?.let {
@@ -129,11 +131,13 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? =
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(leg.endTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(toNameOverride ?: leg.toName, style = MaterialTheme.typography.bodyMedium)
-                leg.toTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
+            if (leg.isTransit || toNameOverride != null) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(leg.endTime.format(timeFormatter), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text(toNameOverride ?: leg.toName, style = MaterialTheme.typography.bodyMedium)
+                    leg.toTrack?.let { Text("Platform $it", style = MaterialTheme.typography.labelSmall) }
+                }
             }
         }
     }
