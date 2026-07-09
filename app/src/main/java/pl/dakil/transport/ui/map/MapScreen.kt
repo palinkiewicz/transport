@@ -311,8 +311,8 @@ fun MapScreen(
                         16 to const(12.dp),
                     ),
                     color = feature["color"].convertToColor(),
-                    strokeColor = const(MaterialTheme.colorScheme.surface),
-                    strokeWidth = const(1.5.dp),
+                    strokeColor = const(Color(0xFF9E9E9E)),
+                    strokeWidth = const(1.dp),
                 )
                 SymbolLayer(
                     id = "transport-stop-icons",
@@ -338,9 +338,9 @@ fun MapScreen(
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),
-                    textColor = const(MaterialTheme.colorScheme.onSurface),
-                    textHaloColor = const(MaterialTheme.colorScheme.surface),
-                    textHaloWidth = const(1.5.dp),
+                    // Fixed dark gray: the base map is light regardless of app theme, and
+                    // theme-derived grays wash out against it in dark mode.
+                    textColor = const(Color(0xFF424242)),
                 )
             }
             if (locationState != null) {
