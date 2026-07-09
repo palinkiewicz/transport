@@ -14,6 +14,7 @@ data class StopTimeDto(
     val routeShortName: String? = null,
     val routeLongName: String? = null,
     val tripShortName: String? = null,
+    val tripId: String? = null,
     val displayName: String? = null,
     val cancelled: Boolean? = null,
     val tripCancelled: Boolean? = null,

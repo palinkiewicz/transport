@@ -6,7 +6,9 @@ import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 import pl.dakil.transport.data.remote.MotisApi
 import pl.dakil.transport.data.remote.decode
+import pl.dakil.transport.data.remote.dto.ItineraryDto
 import pl.dakil.transport.data.remote.dto.StopTimesResponseDto
+import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.StopDepartures
 import pl.dakil.transport.domain.model.TransitLocation
 
@@ -46,5 +48,11 @@ class TimetableRepository @Inject constructor(
             nextPageCursor = response.nextPageCursor,
             previousPageCursor = response.previousPageCursor,
         )
+    }
+
+    /** Fetches a single trip's full run (all stops, with real-time data) as a [Journey]. */
+    suspend fun trip(tripId: String): Result<Journey> = runCatching {
+        val body = api.trip(tripId = tripId, detailedLegs = false)
+        json.decode<ItineraryDto>(body).toDomain()
     }
 }

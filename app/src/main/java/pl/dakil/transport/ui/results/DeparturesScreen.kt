@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.results
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -45,6 +46,8 @@ import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.timeDeviationColor
+import pl.dakil.transport.ui.navigation.TripRoute
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
@@ -52,9 +55,11 @@ private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 @Composable
 fun DeparturesScreen(
     onBack: () -> Unit,
+    onDepartureSelected: (TripRoute) -> Unit,
     viewModel: DeparturesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     var selectedLines by rememberSaveable(
         stateSaver = listSaver(save = { it.toList() }, restore = { it.toSet() }),
@@ -65,7 +70,7 @@ fun DeparturesScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(viewModel.stopName) },
-                subtitle = { Text("Live departures · refreshes every 30 s") },
+                subtitle = { Text("Live departures · refreshes in $secondsUntilRefresh sec") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -112,7 +117,23 @@ fun DeparturesScreen(
                                     DepartureGroupHeader(group.header)
                                 }
                                 items(group.departures.size, key = { "${group.poleStopId}-$it" }) { index ->
-                                    DepartureRow(group.departures[index])
+                                    val departure = group.departures[index]
+                                    DepartureRow(
+                                        departure = departure,
+                                        onClick = departure.tripId?.let { tripId ->
+                                            {
+                                                onDepartureSelected(
+                                                    TripRoute(
+                                                        tripId = tripId,
+                                                        lineLabel = departure.lineLabel,
+                                                        headsign = departure.headsign,
+                                                        modeName = departure.mode.name,
+                                                        routeColor = departure.routeColor,
+                                                    ),
+                                                )
+                                            }
+                                        },
+                                    )
                                     HorizontalDivider()
                                 }
                             }
@@ -151,10 +172,11 @@ private fun LineFilterRow(
 }
 
 @Composable
-private fun DepartureRow(departure: Departure) {
+private fun DepartureRow(departure: Departure, onClick: (() -> Unit)?) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -175,15 +197,17 @@ private fun DepartureRow(departure: Departure) {
 @Composable
 private fun DepartureCountdown(departure: Departure) {
     val cancelled = departure.cancelled || departure.tripCancelled
+    val minutesUntil = Duration.between(OffsetDateTime.now(), departure.time).toMinutes()
     val delayed = departure.time != departure.scheduledTime
     Column(horizontalAlignment = Alignment.End) {
         Text(
-            text = if (cancelled) "Cancelled" else countdownLabel(departure.time),
+            text = if (cancelled) "Cancelled" else countdownLabel(minutesUntil, departure.time),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = when {
-                cancelled -> MaterialTheme.colorScheme.error
-                delayed && departure.realTime -> MaterialTheme.colorScheme.error
+                cancelled || minutesUntil < 0 -> MaterialTheme.colorScheme.error
+                delayed && departure.realTime ->
+                    timeDeviationColor(departure.time, departure.scheduledTime) ?: MaterialTheme.colorScheme.primary
                 else -> MaterialTheme.colorScheme.primary
             },
         )
@@ -205,13 +229,11 @@ private fun DepartureCountdown(departure: Departure) {
     }
 }
 
-private fun countdownLabel(time: OffsetDateTime): String {
-    val minutes = Duration.between(OffsetDateTime.now(), time).toMinutes()
-    return when {
-        minutes <= 0 -> "now"
-        minutes < 60 -> "$minutes min"
-        else -> time.format(timeFormatter)
-    }
+private fun countdownLabel(minutesUntil: Long, time: OffsetDateTime): String = when {
+    minutesUntil < 0 -> "${-minutesUntil} min ago"
+    minutesUntil == 0L -> "now"
+    minutesUntil < 60 -> "$minutesUntil min"
+    else -> time.format(timeFormatter)
 }
 
 @Composable

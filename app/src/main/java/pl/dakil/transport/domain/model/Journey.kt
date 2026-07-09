@@ -42,6 +42,7 @@ data class Journey(
 data class IntermediateStop(
     val name: String,
     val arrivalTime: OffsetDateTime? = null,
+    val scheduledArrivalTime: OffsetDateTime? = null,
     val track: String? = null,
 )
 

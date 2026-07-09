@@ -29,6 +29,16 @@ data class ResultsRoute(
 @Serializable
 data class ItineraryRoute(val index: Int)
 
+/** Full run of a single vehicle trip — all stops with times. */
+@Serializable
+data class TripRoute(
+    val tripId: String,
+    val lineLabel: String,
+    val headsign: String?,
+    val modeName: String,
+    val routeColor: String?,
+)
+
 @Serializable
 data class DeparturesRoute(
     val stopName: String,

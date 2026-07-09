@@ -15,9 +15,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -28,6 +33,7 @@ import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -56,6 +62,7 @@ fun ResultsScreen(
     onJourneySelected: (Int) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -63,7 +70,7 @@ fun ResultsScreen(
         topBar = {
             MediumFlexibleTopAppBar(
                 title = { Text("${viewModel.fromName} → ${viewModel.toName}") },
-                subtitle = { Text("Connections · live, refreshes every 30 s") },
+                subtitle = { Text("Connections · refreshes in $secondsUntilRefresh sec") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -87,10 +94,26 @@ fun ResultsScreen(
                         contentPadding = PaddingValues(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
+                        item(key = "show-previous") {
+                            PageButton(
+                                label = "Show previous",
+                                icon = Icons.Default.KeyboardArrowUp,
+                                enabled = state.result.previousPageCursor != null,
+                                onClick = viewModel::showPrevious,
+                            )
+                        }
                         items(state.result.journeys.size) { index ->
                             JourneyCard(
                                 journey = state.result.journeys[index],
                                 onClick = { onJourneySelected(index) },
+                            )
+                        }
+                        item(key = "show-next") {
+                            PageButton(
+                                label = "Show next",
+                                icon = Icons.Default.KeyboardArrowDown,
+                                enabled = state.result.nextPageCursor != null,
+                                onClick = viewModel::showNext,
                             )
                         }
                     }
@@ -113,16 +136,17 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
+            val minutesUntilDeparture = Duration.between(OffsetDateTime.now(), journey.departureTime).toMinutes()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = departingInLabel(journey.departureTime),
+                    text = departingLabel(minutesUntilDeparture),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary,
+                    color = if (minutesUntilDeparture < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = "${formatDuration(journey.transitDurationSeconds)} · ${transfersLabel(journey.transfers)}",
@@ -133,19 +157,18 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
 
             LegTimelineBar(journey)
 
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
                 journey.walkToFirstStopMeters?.let { WalkDistance(it) }
-                FlowRow(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    journey.legs.filter { it.isTransit }.forEach { leg ->
-                        ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
-                    }
-                    if (journey.legs.none { it.isTransit }) {
-                        ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.label)
-                    }
+                journey.legs.filter { it.isTransit }.forEach { leg ->
+                    ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
+                }
+                if (journey.legs.none { it.isTransit }) {
+                    ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.label)
                 }
                 journey.walkFromLastStopMeters?.let { WalkDistance(it) }
             }
@@ -245,12 +268,32 @@ private fun formatDuration(seconds: Long): String {
     return if (hours > 0) "$hours h $minutes min" else "$minutes min"
 }
 
-@Composable
-private fun departingInLabel(departureTime: OffsetDateTime): String {
-    val minutes = Duration.between(OffsetDateTime.now(), departureTime).toMinutes()
+private fun departingLabel(minutesUntil: Long): String {
+    val minutes = if (minutesUntil < 0) -minutesUntil else minutesUntil
+    val relative = if (minutes < 60) "$minutes min" else "${minutes / 60} h ${minutes % 60} min"
     return when {
-        minutes <= 0 -> "Departing now"
-        minutes < 60 -> "Departing in $minutes min"
-        else -> "Departing in ${minutes / 60} h ${minutes % 60} min"
+        minutesUntil < 0 -> "Departed $relative ago"
+        minutesUntil == 0L -> "Departing now"
+        else -> "Departing in $relative"
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun PageButton(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    TextButton(
+        onClick = onClick,
+        enabled = enabled,
+        shapes = ButtonDefaults.shapes(),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(icon, contentDescription = null)
+        Spacer(Modifier.width(8.dp))
+        Text(label)
     }
 }

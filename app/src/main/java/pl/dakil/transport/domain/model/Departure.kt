@@ -17,6 +17,7 @@ data class Departure(
     val poleStopId: String? = null,
     val directionId: String? = null,
     val track: String? = null,
+    val tripId: String? = null,
 ) {
     val lineLabel: String get() = routeShortName ?: displayName ?: mode.name
     val hasDelay: Boolean get() = time != scheduledTime

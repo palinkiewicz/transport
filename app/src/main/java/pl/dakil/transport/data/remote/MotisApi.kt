@@ -37,6 +37,12 @@ interface MotisApi {
         @Query("pageCursor") pageCursor: String? = null,
     ): ResponseBody
 
+    @GET("v6/trip")
+    suspend fun trip(
+        @Query("tripId") tripId: String,
+        @Query("detailedLegs") detailedLegs: Boolean? = null,
+    ): ResponseBody
+
     @GET("v6/map/stops")
     suspend fun mapStops(
         @Query("min") min: String,

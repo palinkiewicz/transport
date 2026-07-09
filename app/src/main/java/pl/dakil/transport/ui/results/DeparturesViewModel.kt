@@ -48,8 +48,6 @@ fun List<Departure>.groupedByPole(clickedPoleStopId: String?): List<DepartureGro
         }
 }
 
-private const val REFRESH_INTERVAL_MS = 30_000L
-
 @HiltViewModel
 class DeparturesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
@@ -72,11 +70,17 @@ class DeparturesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
     val uiState: StateFlow<DeparturesUiState> = _uiState
 
+    private val _secondsUntilRefresh = MutableStateFlow(REFRESH_INTERVAL_SECONDS)
+    val secondsUntilRefresh: StateFlow<Int> = _secondsUntilRefresh
+
     init {
         viewModelScope.launch {
             while (true) {
                 refresh()
-                delay(REFRESH_INTERVAL_MS)
+                for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
+                    _secondsUntilRefresh.value = seconds
+                    delay(1_000)
+                }
             }
         }
     }

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +23,7 @@ sealed interface ResultsUiState {
     data class Error(val message: String) : ResultsUiState
 }
 
-private const val REFRESH_INTERVAL_MS = 30_000L
+const val REFRESH_INTERVAL_SECONDS = 30
 
 @HiltViewModel
 class ResultsViewModel @Inject constructor(
@@ -53,17 +54,47 @@ class ResultsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<ResultsUiState>(ResultsUiState.Loading)
     val uiState: StateFlow<ResultsUiState> = _uiState
 
+    private val _secondsUntilRefresh = MutableStateFlow(REFRESH_INTERVAL_SECONDS)
+    val secondsUntilRefresh: StateFlow<Int> = _secondsUntilRefresh
+
+    /** Current page of results; null is the initial page for the requested time. */
+    private var pageCursor: String? = null
+    private var refreshJob: Job? = null
+
     init {
-        viewModelScope.launch {
+        startRefreshLoop(showLoading = false)
+    }
+
+    private fun startRefreshLoop(showLoading: Boolean) {
+        refreshJob?.cancel()
+        if (showLoading) _uiState.value = ResultsUiState.Loading
+        refreshJob = viewModelScope.launch {
             while (true) {
                 refresh()
-                delay(REFRESH_INTERVAL_MS)
+                for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
+                    _secondsUntilRefresh.value = seconds
+                    delay(1_000)
+                }
             }
         }
     }
 
+    /** Loads the previous (earlier connections) page, if the API offered one. */
+    fun showPrevious() {
+        val cursor = (_uiState.value as? ResultsUiState.Content)?.result?.previousPageCursor ?: return
+        pageCursor = cursor
+        startRefreshLoop(showLoading = true)
+    }
+
+    /** Loads the next (later connections) page, if the API offered one. */
+    fun showNext() {
+        val cursor = (_uiState.value as? ResultsUiState.Content)?.result?.nextPageCursor ?: return
+        pageCursor = cursor
+        startRefreshLoop(showLoading = true)
+    }
+
     private suspend fun refresh() {
-        planRepository.plan(from, to, time, route.maxTransfers).fold(
+        planRepository.plan(from, to, time, route.maxTransfers, pageCursor).fold(
             onSuccess = { result -> _uiState.value = ResultsUiState.Content(result) },
             onFailure = { error ->
                 if (_uiState.value !is ResultsUiState.Content) {

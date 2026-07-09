@@ -21,6 +21,7 @@ import pl.dakil.transport.ui.results.DeparturesScreen
 import pl.dakil.transport.ui.results.ResultsScreen
 import pl.dakil.transport.ui.results.ResultsViewModel
 import pl.dakil.transport.ui.search.SearchScreen
+import pl.dakil.transport.ui.trip.TripScreen
 
 @Composable
 fun AppNavHost() {
@@ -81,7 +82,13 @@ fun AppNavHost() {
                 }
             }
             composable<DeparturesRoute> {
-                DeparturesScreen(onBack = { navController.popBackStack() })
+                DeparturesScreen(
+                    onBack = { navController.popBackStack() },
+                    onDepartureSelected = { route -> navController.navigate(route) },
+                )
+            }
+            composable<TripRoute> {
+                TripScreen(onBack = { navController.popBackStack() })
             }
         }
     }

@@ -47,10 +47,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.ErrorBox
+import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.parseRouteColor
 
@@ -91,7 +93,6 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
                 items(journey.legs.size) { index ->
                     LegRow(
                         leg = journey.legs[index],
-                        isLast = index == journey.legs.lastIndex,
                         fromNameOverride = if (index == 0) fromName else null,
                         toNameOverride = if (index == journey.legs.lastIndex) toName else null,
                     )
@@ -140,7 +141,7 @@ private fun SummaryStat(label: String, value: String) {
 }
 
 @Composable
-private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? = null, toNameOverride: String? = null) {
+private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOverride: String? = null) {
     val legColor = if (leg.isTransit) parseRouteColor(leg.routeColor, leg.mode.color) else MaterialTheme.colorScheme.outline
 
     Row(
@@ -161,33 +162,32 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? =
                     .clip(CircleShape)
                     .background(legColor),
             )
-            if (!isLast) {
-                Box(
-                    modifier = Modifier
-                        .width(3.dp)
-                        .weight(1f)
-                        .drawBehind {
-                            drawLine(
-                                color = legColor,
-                                start = Offset(size.width / 2, 0f),
-                                end = Offset(size.width / 2, size.height),
-                                strokeWidth = size.width,
-                                cap = StrokeCap.Round,
-                                pathEffect = if (leg.isTransit) {
-                                    null
-                                } else {
-                                    PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 6.dp.toPx()))
-                                },
-                            )
-                        },
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .weight(1f)
+                    .drawBehind {
+                        drawLine(
+                            color = legColor,
+                            start = Offset(size.width / 2, 0f),
+                            end = Offset(size.width / 2, size.height),
+                            strokeWidth = size.width,
+                            cap = StrokeCap.Round,
+                            pathEffect = if (leg.isTransit) {
+                                null
+                            } else {
+                                PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 6.dp.toPx()))
+                            },
+                        )
+                    },
+            )
         }
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.padding(bottom = 20.dp)) {
             if (leg.isTransit || fromNameOverride != null) {
                 StopRow(
-                    time = leg.startTime.format(timeFormatter),
+                    time = leg.startTime,
+                    scheduledTime = leg.scheduledStartTime,
                     name = fromNameOverride ?: leg.fromName,
                     track = leg.fromTrack,
                 )
@@ -212,7 +212,8 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? =
             if (leg.isTransit || toNameOverride != null) {
                 Spacer(Modifier.height(8.dp))
                 StopRow(
-                    time = leg.endTime.format(timeFormatter),
+                    time = leg.endTime,
+                    scheduledTime = leg.scheduledEndTime,
                     name = toNameOverride ?: leg.toName,
                     track = leg.toTrack,
                 )
@@ -222,9 +223,9 @@ private fun LegRow(leg: JourneyLeg, isLast: Boolean, fromNameOverride: String? =
 }
 
 @Composable
-private fun StopRow(time: String, name: String, track: String?) {
+private fun StopRow(time: OffsetDateTime, scheduledTime: OffsetDateTime, name: String, track: String?) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(time, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        InlineRealTimeText(time = time, scheduledTime = scheduledTime)
         Text(name, style = MaterialTheme.typography.bodyMedium)
         track?.let { TrackPill(it) }
     }
@@ -290,12 +291,21 @@ private fun IntermediateStopsSection(leg: JourneyLeg, legColor: androidx.compose
                             .clip(CircleShape)
                             .background(legColor),
                     )
-                    stop.arrivalTime?.let {
-                        Text(
-                            text = it.format(timeFormatter),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    stop.arrivalTime?.let { arrival ->
+                        val scheduled = stop.scheduledArrivalTime
+                        if (scheduled != null) {
+                            InlineRealTimeText(
+                                time = arrival,
+                                scheduledTime = scheduled,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                        } else {
+                            Text(
+                                text = arrival.format(timeFormatter),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                     Text(stop.name, style = MaterialTheme.typography.bodySmall)
                     stop.track?.let { TrackPill(it) }

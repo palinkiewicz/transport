@@ -76,6 +76,7 @@ fun LegDto.toDomain(): JourneyLeg =
             IntermediateStop(
                 name = stop.name,
                 arrivalTime = (stop.arrival ?: stop.departure)?.toOffsetDateTime(),
+                scheduledArrivalTime = (stop.scheduledArrival ?: stop.scheduledDeparture)?.toOffsetDateTime(),
                 track = stop.track ?: stop.scheduledTrack,
             )
         } ?: emptyList(),
@@ -109,5 +110,6 @@ fun StopTimeDto.toDomain(): Departure {
         poleStopId = place.stopId,
         directionId = directionId,
         track = place.track ?: place.scheduledTrack,
+        tripId = tripId,
     )
 }
