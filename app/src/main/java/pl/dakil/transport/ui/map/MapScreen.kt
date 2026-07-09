@@ -18,10 +18,16 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DirectionsBoat
+import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Subway
+import androidx.compose.material.icons.filled.Train
+import androidx.compose.material.icons.filled.Tram
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -42,8 +48,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.DpRect
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
@@ -52,17 +62,25 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.asString
+import org.maplibre.compose.expressions.dsl.case
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.convertToColor
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
+import org.maplibre.compose.expressions.dsl.image
+import org.maplibre.compose.expressions.dsl.interpolate
+import org.maplibre.compose.expressions.dsl.linear
 import org.maplibre.compose.expressions.dsl.offset
 import org.maplibre.compose.expressions.dsl.span
+import org.maplibre.compose.expressions.dsl.switch
+import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.SymbolAnchor
 import org.maplibre.compose.layers.Anchor
 import org.maplibre.compose.layers.CircleLayer
@@ -98,7 +116,23 @@ private fun TransitLocation.markerColorHex(): String {
     return "#%02X%02X%02X".format(r, g, b)
 }
 
+/**
+ * Key of the marker glyph shown inside the stop circle; matched against [stopIconImage] cases.
+ * Several modes share one glyph (e.g. all rail variants), so this is coarser than [TransportMode].
+ */
+private fun TransitLocation.markerIconKey(): String = when (primaryMode ?: TransportMode.OTHER) {
+    TransportMode.TRAM, TransportMode.FUNICULAR, TransportMode.AERIAL_LIFT -> "tram"
+    TransportMode.SUBWAY -> "subway"
+    TransportMode.FERRY -> "ferry"
+    TransportMode.AIRPLANE -> "airplane"
+    TransportMode.RAIL, TransportMode.HIGHSPEED_RAIL, TransportMode.LONG_DISTANCE,
+    TransportMode.NIGHT_RAIL, TransportMode.REGIONAL_RAIL, TransportMode.SUBURBAN,
+    -> "rail"
+    else -> "bus"
+}
+
 private const val STOPS_FETCH_MIN_ZOOM = 13f
+private const val STOP_ICONS_MIN_ZOOM = 15f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
 
 private fun stopKey(location: TransitLocation): String = location.stopId ?: "${location.lat},${location.lon}"
@@ -123,12 +157,21 @@ fun MapScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    var pendingLocateMe by remember { mutableStateOf(false) }
+    // Starts true so the map centers on the user as soon as a fix is available after app entry.
+    var pendingLocateMe by remember { mutableStateOf(true) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { grants ->
         hasLocationPermission = grants.values.any { it }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION),
+            )
+        }
     }
 
     val cameraState = rememberCameraState(
@@ -166,11 +209,12 @@ fun MapScreen(
 
     LaunchedEffect(pendingLocateMe, hasLocationPermission, locationState) {
         if (pendingLocateMe && hasLocationPermission && locationState != null) {
-            val position = locationState.location?.position?.value
-            if (position != null) {
-                cameraState.animateTo(CameraPosition(target = position, zoom = 15.0))
-                pendingLocateMe = false
-            }
+            // Wait for the first fix; on app entry the provider usually has none yet.
+            val position = snapshotFlow { locationState.location?.position?.value }
+                .filterNotNull()
+                .first()
+            cameraState.animateTo(CameraPosition(target = position, zoom = 15.0))
+            pendingLocateMe = false
         }
     }
 
@@ -233,6 +277,7 @@ fun MapScreen(
                                 mapOf(
                                     "name" to JsonPrimitive(stop.name),
                                     "color" to JsonPrimitive(stop.markerColorHex()),
+                                    "icon" to JsonPrimitive(stop.markerIconKey()),
                                 ),
                             ),
                         )
@@ -240,15 +285,48 @@ fun MapScreen(
                 )
             }
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
+            // Non-SDF glyphs tinted white up front: crisper than SDF rendering at this size.
+            val glyphSize = DpSize(13.dp, 13.dp)
+            val glyphTint = ColorFilter.tint(Color.White)
+            val stopIconImage = switch(
+                input = feature["icon"].asString(),
+                case("tram", image(rememberVectorPainter(Icons.Default.Tram), glyphSize, colorFilter = glyphTint)),
+                case("subway", image(rememberVectorPainter(Icons.Default.Subway), glyphSize, colorFilter = glyphTint)),
+                case("ferry", image(rememberVectorPainter(Icons.Default.DirectionsBoat), glyphSize, colorFilter = glyphTint)),
+                case("airplane", image(rememberVectorPainter(Icons.Default.Flight), glyphSize, colorFilter = glyphTint)),
+                case("rail", image(rememberVectorPainter(Icons.Default.Train), glyphSize, colorFilter = glyphTint)),
+                fallback = image(rememberVectorPainter(Icons.Default.DirectionsBus), glyphSize, colorFilter = glyphTint),
+            )
             Anchor.Replace("poi_transit") {
                 CircleLayer(
                     id = "transport-stops",
                     source = stopsSource,
                     minZoom = STOPS_FETCH_MIN_ZOOM,
-                    radius = const(6.dp),
+                    // Small dots while zoomed out, growing into icon-bearing pins by z16.
+                    radius = interpolate(
+                        linear(),
+                        zoom(),
+                        13 to const(4.dp),
+                        15 to const(6.dp),
+                        16 to const(12.dp),
+                    ),
                     color = feature["color"].convertToColor(),
                     strokeColor = const(MaterialTheme.colorScheme.surface),
-                    strokeWidth = const(2.dp),
+                    strokeWidth = const(1.5.dp),
+                )
+                SymbolLayer(
+                    id = "transport-stop-icons",
+                    source = stopsSource,
+                    minZoom = STOP_ICONS_MIN_ZOOM,
+                    iconImage = stopIconImage,
+                    // Scale the glyph together with the circle it sits on.
+                    iconSize = interpolate(
+                        linear(),
+                        zoom(),
+                        15 to const(0.6f),
+                        16 to const(1f),
+                    ),
+                    iconAllowOverlap = const(true),
                 )
                 SymbolLayer(
                     id = "transport-stop-labels",
@@ -258,7 +336,7 @@ fun MapScreen(
                     // Library default is "Open Sans..." which OpenFreeMap's glyph server 404s on.
                     textFont = const(listOf("Noto Sans Regular")),
                     textSize = const(0.75f.em),
-                    textOffset = offset(0f.em, 1.2f.em),
+                    textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),
                     textColor = const(MaterialTheme.colorScheme.onSurface),
                     textHaloColor = const(MaterialTheme.colorScheme.surface),
