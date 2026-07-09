@@ -2,6 +2,16 @@ package pl.dakil.transport.data.remote.dto
 
 import kotlinx.serialization.Serializable
 
+/**
+ * Google-encoded polyline (MOTIS `EncodedPolyline`). [precision] is the coordinate scaling
+ * exponent the points were encoded with (7 on `/v1`, 6 on `/v2`+ endpoints).
+ */
+@Serializable
+data class EncodedPolylineDto(
+    val points: String,
+    val precision: Int? = null,
+)
+
 @Serializable
 data class LegDto(
     val mode: String,
@@ -26,4 +36,5 @@ data class LegDto(
     val agencyName: String? = null,
     val cancelled: Boolean? = null,
     val intermediateStops: List<PlaceDto>? = null,
+    val legGeometry: EncodedPolylineDto? = null,
 )
