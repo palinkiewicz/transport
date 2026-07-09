@@ -184,6 +184,7 @@ fun SearchScreen(
                                 lat = from.lat,
                                 lon = from.lon,
                                 stopId = from.stopId,
+                                timeIso = state.dateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                             ),
                         )
                     }

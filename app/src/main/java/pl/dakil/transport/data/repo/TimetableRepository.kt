@@ -1,7 +1,6 @@
 package pl.dakil.transport.data.repo
 
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -26,7 +25,7 @@ class TimetableRepository @Inject constructor(
         val body = if (stop.stopId != null) {
             api.stoptimes(
                 stopId = stop.stopId,
-                time = time?.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                time = time?.toApiTimestamp(),
                 n = n,
                 pageCursor = pageCursor,
             )
@@ -34,7 +33,7 @@ class TimetableRepository @Inject constructor(
             api.stoptimes(
                 center = "${stop.lat},${stop.lon}",
                 radius = 300,
-                time = time?.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+                time = time?.toApiTimestamp(),
                 n = n,
                 pageCursor = pageCursor,
             )

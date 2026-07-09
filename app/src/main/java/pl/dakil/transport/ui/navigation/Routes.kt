@@ -35,4 +35,5 @@ data class DeparturesRoute(
     val lat: Double,
     val lon: Double,
     val stopId: String?,
+    val timeIso: String?,
 )

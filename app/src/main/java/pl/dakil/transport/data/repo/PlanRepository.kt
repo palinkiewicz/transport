@@ -1,7 +1,6 @@
 package pl.dakil.transport.data.repo
 
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
@@ -35,7 +34,7 @@ class PlanRepository @Inject constructor(
         val body = api.plan(
             fromPlace = from.queryValue,
             toPlace = to.queryValue,
-            time = time?.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
+            time = time?.toApiTimestamp(),
             maxTransfers = maxTransfers,
             pageCursor = pageCursor,
         )

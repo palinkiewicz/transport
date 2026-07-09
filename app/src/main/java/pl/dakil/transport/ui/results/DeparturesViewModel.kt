@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -62,6 +63,9 @@ class DeparturesViewModel @Inject constructor(
         stopId = savedStateHandle["stopId"],
     )
 
+    private val time: OffsetDateTime? =
+        savedStateHandle.get<String>("timeIso")?.let { OffsetDateTime.parse(it) }
+
     val stopName: String get() = stop.name
     val clickedPoleStopId: String? get() = stop.stopId
 
@@ -78,7 +82,7 @@ class DeparturesViewModel @Inject constructor(
     }
 
     private suspend fun refresh() {
-        timetableRepository.departures(stop).fold(
+        timetableRepository.departures(stop, time = time).fold(
             onSuccess = { result -> _uiState.value = DeparturesUiState.Content(result) },
             onFailure = { error ->
                 if (_uiState.value !is DeparturesUiState.Content) {

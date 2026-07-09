@@ -1,6 +1,9 @@
 package pl.dakil.transport.data.repo
 
 import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 import pl.dakil.transport.data.remote.dto.ItineraryDto
 import pl.dakil.transport.data.remote.dto.LegDto
 import pl.dakil.transport.data.remote.dto.MatchDto
@@ -30,7 +33,22 @@ fun PlaceDto.toTransitLocation(): TransitLocation =
         modes = modes?.map { TransportMode.fromApiValue(it) } ?: emptyList(),
     )
 
-private fun String.toOffsetDateTime(): OffsetDateTime = OffsetDateTime.parse(this)
+/**
+ * MOTIS silently misparses timestamps with more than millisecond precision — e.g. requesting
+ * `2026-07-09T08:38:49.43796+02:00` returns itineraries for July **5th** — so second-truncate
+ * every timestamp sent to the API. ([OffsetDateTime.now] carries nanoseconds, and the search
+ * screen's pickers only replace hour/minute/date, keeping the fractional seconds.)
+ */
+fun OffsetDateTime.toApiTimestamp(): String =
+    truncatedTo(ChronoUnit.SECONDS).format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
+
+/**
+ * The API returns times in UTC (`Z`), but the UI formats [OffsetDateTime]s with the offset
+ * embedded in the value itself (no zone conversion at format time) — so times must be
+ * converted to the device's local zone here, once, right after parsing.
+ */
+private fun String.toOffsetDateTime(): OffsetDateTime =
+    OffsetDateTime.parse(this).atZoneSameInstant(ZoneId.systemDefault()).toOffsetDateTime()
 
 fun LegDto.toDomain(): JourneyLeg =
     JourneyLeg(

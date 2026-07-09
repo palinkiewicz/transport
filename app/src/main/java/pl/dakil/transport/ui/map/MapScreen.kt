@@ -358,7 +358,7 @@ fun MapScreen(
                         scope.launch { sheetState.hide() }
                         selectedStop = null
                         onOpenTimetable(
-                            DeparturesRoute(stopName = stop.name, lat = stop.lat, lon = stop.lon, stopId = stop.stopId),
+                            DeparturesRoute(stopName = stop.name, lat = stop.lat, lon = stop.lon, stopId = stop.stopId, timeIso = null),
                         )
                     },
                 )
