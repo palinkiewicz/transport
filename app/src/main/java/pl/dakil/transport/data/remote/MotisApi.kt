@@ -49,4 +49,14 @@ interface MotisApi {
         @Query("max") max: String,
         @Query("grouped") grouped: Boolean? = null,
     ): ResponseBody
+
+    @GET("v6/map/trips")
+    suspend fun mapTrips(
+        @Query("min") min: String,
+        @Query("max") max: String,
+        @Query("zoom") zoom: Double,
+        @Query("startTime") startTime: String,
+        @Query("endTime") endTime: String,
+        @Query("precision") precision: Int? = null,
+    ): ResponseBody
 }

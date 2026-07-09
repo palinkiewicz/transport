@@ -9,12 +9,14 @@ import pl.dakil.transport.data.remote.dto.LegDto
 import pl.dakil.transport.data.remote.dto.MatchDto
 import pl.dakil.transport.data.remote.dto.PlaceDto
 import pl.dakil.transport.data.remote.dto.StopTimeDto
+import pl.dakil.transport.data.remote.dto.TripSegmentDto
 import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.domain.model.IntermediateStop
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.VehicleSegment
 
 fun MatchDto.toTransitLocation(): TransitLocation =
     TransitLocation(
@@ -91,6 +93,25 @@ fun ItineraryDto.toDomain(): Journey =
         transfers = transfers,
         legs = legs.map { it.toDomain() },
     )
+
+/**
+ * @param polylinePrecision precision the segment's polyline was requested with — `/map/trips`
+ * doesn't echo it back per polyline the way `legGeometry` does.
+ */
+fun TripSegmentDto.toDomain(polylinePrecision: Int): VehicleSegment {
+    val label = trips.firstOrNull()?.let { it.displayName ?: it.routeShortName } ?: mode
+    return VehicleSegment(
+        tripKey = trips.firstOrNull()?.tripId ?: "$label/${to.name}",
+        label = label,
+        headsign = to.name,
+        mode = TransportMode.fromApiValue(mode),
+        routeColor = routeColor?.takeIf { it.isNotBlank() },
+        realTime = realTime,
+        departure = departure.toOffsetDateTime(),
+        arrival = arrival.toOffsetDateTime(),
+        path = decodePolyline(polyline, polylinePrecision),
+    )
+}
 
 fun StopTimeDto.toDomain(): Departure {
     val time = place.departure ?: place.arrival ?: error("StopTime place is missing both arrival and departure")

@@ -20,6 +20,7 @@ maplibreCompose = "0.13.0"
 # (MaterialExpressiveTheme, ToggleButton, ButtonGroup, MaterialShapes) that SearchScreen uses.
 material3 = "1.5.0-alpha08"
 materialIconsExtended = "1.7.8"
+datastore = "1.1.7"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -47,6 +48,7 @@ retrofit-core = { group = "com.squareup.retrofit2", name = "retrofit", version.r
 okhttp-core = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+androidx-datastore-preferences = { group = "androidx.datastore", name = "datastore-preferences", version.ref = "datastore" }
 maplibre-compose-android = { group = "org.maplibre.compose", name = "maplibre-compose-android", version.ref = "maplibreCompose" }
 maplibre-compose-material3-android = { group = "org.maplibre.compose", name = "maplibre-compose-material3-android", version.ref = "maplibreCompose" }
 

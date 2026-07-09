@@ -159,10 +159,11 @@ private fun RouteShape.lineColorHex(): String =
     routeColor?.takeIf { GTFS_COLOR_REGEX.matches(it) }?.let { "#$it" } ?: markerColorHex(mode)
 
 /**
- * Key of the marker glyph shown inside the stop circle; matched against [stopIconImage] cases.
- * Several modes share one glyph (e.g. all rail variants), so this is coarser than [TransportMode].
+ * Key of the marker glyph shown inside stop/vehicle circles; matched against the icon-image
+ * switch cases. Several modes share one glyph (e.g. all rail variants), so this is coarser
+ * than [TransportMode].
  */
-private fun TransitLocation.markerIconKey(): String = when (primaryMode ?: TransportMode.OTHER) {
+private fun markerIconKey(mode: TransportMode): String = when (mode) {
     TransportMode.TRAM, TransportMode.FUNICULAR, TransportMode.AERIAL_LIFT -> "tram"
     TransportMode.SUBWAY -> "subway"
     TransportMode.FERRY -> "ferry"
@@ -172,6 +173,16 @@ private fun TransitLocation.markerIconKey(): String = when (primaryMode ?: Trans
     -> "rail"
     else -> "bus"
 }
+
+private fun TransitLocation.markerIconKey(): String = markerIconKey(primaryMode ?: TransportMode.OTHER)
+
+/** Marker fill for a vehicle: the feed's GTFS route color when valid, else the mode color. */
+private fun VehicleMarker.markerColorHex(): String =
+    routeColor?.takeIf { GTFS_COLOR_REGEX.matches(it) }?.let { "#$it" } ?: markerColorHex(mode)
+
+/** Stroke distinguishing live-tracked vehicles from schedule-only ones at a glance. */
+private const val VEHICLE_STROKE_LIVE = "#2E7D32"
+private const val VEHICLE_STROKE_TIMETABLE = "#9E9E9E"
 
 private const val STOPS_FETCH_MIN_ZOOM = 13f
 private const val STOP_ICONS_MIN_ZOOM = 15f
@@ -188,6 +199,8 @@ fun MapScreen(
 ) {
     val context = LocalContext.current
     val stops by viewModel.stops.collectAsStateWithLifecycle()
+    val vehicles by viewModel.vehicles.collectAsStateWithLifecycle()
+    val filters by viewModel.filters.collectAsStateWithLifecycle()
     val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
@@ -232,11 +245,13 @@ fun MapScreen(
             .debounce(400)
             .filter { moving -> !moving }
             .collect {
-                if (cameraState.position.zoom >= STOPS_FETCH_MIN_ZOOM) {
-                    val bbox = cameraState.projection?.queryVisibleBoundingBox()
-                    if (bbox != null) {
-                        viewModel.onViewportSettled(bbox.south, bbox.west, bbox.north, bbox.east)
-                    }
+                // The ViewModel gates stop/vehicle fetches on zoom itself.
+                val bbox = cameraState.projection?.queryVisibleBoundingBox()
+                if (bbox != null) {
+                    viewModel.onViewportSettled(
+                        bbox.south, bbox.west, bbox.north, bbox.east,
+                        zoom = cameraState.position.zoom,
+                    )
                 }
             }
     }
@@ -364,10 +379,35 @@ fun MapScreen(
                 )
             }
             val selectedSource = rememberGeoJsonSource(data = GeoJsonData.Features(selectedFeatures))
+            val vehicleFeatures = remember(vehicles) {
+                FeatureCollection(
+                    vehicles.map { vehicle ->
+                        Feature<Point, JsonObject?>(
+                            id = JsonPrimitive(vehicle.id),
+                            geometry = Point(
+                                Position(latitude = vehicle.position.lat, longitude = vehicle.position.lon),
+                            ),
+                            properties = JsonObject(
+                                mapOf(
+                                    "label" to JsonPrimitive(vehicle.label),
+                                    "color" to JsonPrimitive(vehicle.markerColorHex()),
+                                    // Stroke computed here rather than via a style expression:
+                                    // keeps the layer definitions free of boolean-case DSL.
+                                    "stroke" to JsonPrimitive(
+                                        if (vehicle.realTime) VEHICLE_STROKE_LIVE else VEHICLE_STROKE_TIMETABLE,
+                                    ),
+                                    "icon" to JsonPrimitive(markerIconKey(vehicle.mode)),
+                                ),
+                            ),
+                        )
+                    },
+                )
+            }
+            val vehiclesSource = rememberGeoJsonSource(data = GeoJsonData.Features(vehicleFeatures))
             // Non-SDF glyphs tinted white up front: crisper than SDF rendering at this size.
             val glyphSize = DpSize(13.dp, 13.dp)
             val glyphTint = ColorFilter.tint(Color.White)
-            val stopIconImage = switch(
+            val markerIconImage = switch(
                 input = feature["icon"].asString(),
                 case("tram", image(rememberVectorPainter(Icons.Default.Tram), glyphSize, colorFilter = glyphTint)),
                 case("subway", image(rememberVectorPainter(Icons.Default.Subway), glyphSize, colorFilter = glyphTint)),
@@ -432,7 +472,7 @@ fun MapScreen(
                     id = "transport-stop-icons",
                     source = stopsSource,
                     minZoom = STOP_ICONS_MIN_ZOOM,
-                    iconImage = stopIconImage,
+                    iconImage = markerIconImage,
                     // Scale the glyph together with the circle it sits on.
                     iconSize = interpolate(
                         linear(),
@@ -457,6 +497,45 @@ fun MapScreen(
                     // theme-derived grays wash out against it in dark mode.
                     textColor = const(Color(0xFF424242)),
                 )
+                // Vehicles stack above stops: they move, so they should never hide under pins.
+                CircleLayer(
+                    id = "transport-vehicles",
+                    source = vehiclesSource,
+                    radius = interpolate(
+                        linear(),
+                        zoom(),
+                        9 to const(5.dp),
+                        13 to const(8.dp),
+                        16 to const(12.dp),
+                    ),
+                    color = feature["color"].convertToColor(),
+                    strokeColor = feature["stroke"].convertToColor(),
+                    strokeWidth = const(1.5.dp),
+                )
+                SymbolLayer(
+                    id = "transport-vehicle-icons",
+                    source = vehiclesSource,
+                    minZoom = 11f,
+                    iconImage = markerIconImage,
+                    iconSize = interpolate(
+                        linear(),
+                        zoom(),
+                        11 to const(0.6f),
+                        16 to const(1f),
+                    ),
+                    iconAllowOverlap = const(true),
+                )
+                SymbolLayer(
+                    id = "transport-vehicle-labels",
+                    source = vehiclesSource,
+                    minZoom = 12f,
+                    textField = format(span(feature["label"].asString())),
+                    textFont = const(listOf("Roboto Regular")),
+                    textSize = const(0.75f.em),
+                    textOffset = offset(0f.em, 1.4f.em),
+                    textAnchor = const(SymbolAnchor.Top),
+                    textColor = const(Color(0xFF424242)),
+                )
             }
             if (locationState != null) {
                 LocationPuck(
@@ -473,6 +552,16 @@ fun MapScreen(
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .padding(16.dp),
+        )
+
+        MapFiltersMenu(
+            filters = filters,
+            onUpdate = viewModel::updateFilters,
+            onReset = viewModel::resetFilters,
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.statusBars)
+                .padding(start = 16.dp, top = 16.dp, end = 72.dp),
         )
 
         Column(

@@ -92,6 +92,7 @@ dependencies {
     implementation(libs.okhttp.core)
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.androidx.datastore.preferences)
 
     implementation(libs.maplibre.compose.android)
     implementation(libs.maplibre.compose.material3.android)

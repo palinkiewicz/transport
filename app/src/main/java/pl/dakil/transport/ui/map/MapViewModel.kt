@@ -3,25 +3,57 @@ package pl.dakil.transport.ui.map
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.updateAndGet
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.MapFiltersRepository
 import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.RoutesRepository
 import pl.dakil.transport.data.repo.StopsRepository
+import pl.dakil.transport.data.repo.VehiclesRepository
+import pl.dakil.transport.domain.model.GeoPoint
+import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.VehicleSegment
 import pl.dakil.transport.ui.search.SearchStateHolder
 
-data class Viewport(val south: Double, val west: Double, val north: Double, val east: Double)
+data class Viewport(
+    val south: Double,
+    val west: Double,
+    val north: Double,
+    val east: Double,
+    val zoom: Double,
+)
+
+/** One vehicle's marker on the map: its interpolated position at a moment in time. */
+data class VehicleMarker(
+    val id: String,
+    val label: String,
+    val headsign: String?,
+    val mode: TransportMode,
+    /** GTFS `RRGGBB` route color (no leading `#`), when the feed provides one. */
+    val routeColor: String?,
+    val realTime: Boolean,
+    val position: GeoPoint,
+)
 
 /** State of the "Show routes" overlay for the currently selected stop. */
 sealed interface StopRoutesUiState {
@@ -31,12 +63,23 @@ sealed interface StopRoutesUiState {
     data class Error(val message: String) : StopRoutesUiState
 }
 
+/** Stops aren't fetched/shown below this zoom (matches the stop layers' minZoom). */
+const val STOPS_MIN_ZOOM = 13.0
+
+/** Vehicles are fetched from lower zooms — the API itself culls local services when zoomed out. */
+const val VEHICLES_MIN_ZOOM = 9.0
+
+private const val VEHICLES_REFRESH_MS = 30_000L
+private const val VEHICLES_INTERPOLATE_MS = 1_000L
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val stopsRepository: StopsRepository,
     private val routesRepository: RoutesRepository,
+    private val vehiclesRepository: VehiclesRepository,
     private val mapStyleRepository: MapStyleRepository,
+    private val filtersRepository: MapFiltersRepository,
     private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
 
@@ -49,19 +92,88 @@ class MapViewModel @Inject constructor(
     private val _styleJson = MutableStateFlow<String?>(null)
     val styleJson: StateFlow<String?> = _styleJson
 
+    // Kept locally (seeded from disk once) rather than read through the repository flow, so
+    // rapid toggling in the filter menu never races the DataStore write round-trip.
+    private val _filters = MutableStateFlow(MapFilters.DEFAULT)
+    val filters: StateFlow<MapFilters> = _filters
+
     init {
         viewModelScope.launch {
             _styleJson.value = mapStyleRepository.transitFreeGmapsStyle()
         }
+        viewModelScope.launch {
+            _filters.value = filtersRepository.filters.first()
+        }
     }
 
-    val stops: StateFlow<List<TransitLocation>> = viewport
+    fun updateFilters(transform: (MapFilters) -> MapFilters) {
+        val updated = _filters.updateAndGet(transform)
+        viewModelScope.launch { filtersRepository.save(updated) }
+    }
+
+    fun resetFilters() = updateFilters { MapFilters.DEFAULT }
+
+    private val allStops: StateFlow<List<TransitLocation>> = viewport
         .filterNotNull()
         .distinctUntilChanged()
         .mapLatest { vp ->
-            stopsRepository.stopsInViewport(vp.south, vp.west, vp.north, vp.east).getOrDefault(emptyList())
+            if (vp.zoom < STOPS_MIN_ZOOM) {
+                emptyList()
+            } else {
+                stopsRepository.stopsInViewport(vp.south, vp.west, vp.north, vp.east).getOrDefault(emptyList())
+            }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val stops: StateFlow<List<TransitLocation>> =
+        combine(allStops, filters) { stops, filters -> stops.filter(filters::matchesStop) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    // Fetching is gated only on "any vehicle category on" (not the specific categories/data
+    // source), so tweaking filters refines the already-fetched segments instantly instead of
+    // hitting the shared Transitous API again.
+    private val vehicleSegments: StateFlow<List<VehicleSegment>> =
+        combine(
+            viewport,
+            filters.mapLatest { it.vehicleCategories.isNotEmpty() }.distinctUntilChanged(),
+        ) { vp, enabled ->
+            vp?.takeIf { enabled && it.zoom >= VEHICLES_MIN_ZOOM }
+        }
+            .distinctUntilChanged()
+            .flatMapLatest { vp ->
+                if (vp == null) {
+                    flowOf(emptyList())
+                } else {
+                    flow {
+                        while (true) {
+                            emit(
+                                vehiclesRepository
+                                    .vehiclesInViewport(vp.south, vp.west, vp.north, vp.east, vp.zoom)
+                                    .getOrDefault(emptyList()),
+                            )
+                            delay(VEHICLES_REFRESH_MS)
+                        }
+                    }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val vehicles: StateFlow<List<VehicleMarker>> =
+        combine(vehicleSegments, filters) { segments, filters -> segments.filter(filters::matchesVehicle) }
+            .flatMapLatest { segments ->
+                if (segments.isEmpty()) {
+                    flowOf(emptyList())
+                } else {
+                    // Re-interpolate positions every second between the 30s refetches.
+                    flow {
+                        while (true) {
+                            emit(markersAt(segments, OffsetDateTime.now()))
+                            delay(VEHICLES_INTERPOLATE_MS)
+                        }
+                    }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
     val selectedStop: StateFlow<TransitLocation?> = _selectedStop
@@ -72,8 +184,8 @@ class MapViewModel @Inject constructor(
     private var routesJob: Job? = null
 
     /** Called once the map camera has settled (already debounced by the caller). */
-    fun onViewportSettled(south: Double, west: Double, north: Double, east: Double) {
-        viewport.value = Viewport(south, west, north, east)
+    fun onViewportSettled(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
+        viewport.value = Viewport(south, west, north, east, zoom)
     }
 
     fun selectStop(stop: TransitLocation) {
@@ -115,3 +227,24 @@ class MapViewModel @Inject constructor(
 
     fun finishHere(location: TransitLocation) = searchStateHolder.setFinishHere(location)
 }
+
+/**
+ * One marker per vehicle at [time]: the segment whose time window contains [time] wins;
+ * a vehicle between segments (dwelling at a stop) sits at its next segment's start.
+ */
+private fun markersAt(segments: List<VehicleSegment>, time: OffsetDateTime): List<VehicleMarker> =
+    segments.groupBy { it.tripKey }.mapNotNull { (tripKey, tripSegments) ->
+        val current = tripSegments.firstOrNull { time >= it.departure && time <= it.arrival }
+            ?: tripSegments.filter { it.departure > time }.minByOrNull { it.departure }
+            ?: return@mapNotNull null
+        val position = current.positionAt(time) ?: return@mapNotNull null
+        VehicleMarker(
+            id = tripKey,
+            label = current.label,
+            headsign = current.headsign,
+            mode = current.mode,
+            routeColor = current.routeColor,
+            realTime = current.realTime,
+            position = position,
+        )
+    }
