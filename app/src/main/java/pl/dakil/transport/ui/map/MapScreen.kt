@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -146,6 +147,10 @@ private fun markerColorHex(mode: TransportMode): String = when (mode) {
 }
 
 private fun TransitLocation.markerColorHex(): String = markerColorHex(primaryMode ?: TransportMode.OTHER)
+
+/** [markerColorHex] as a Compose [Color], for UI elements echoing the map marker's look. */
+private fun markerColor(mode: TransportMode): Color =
+    Color(markerColorHex(mode).removePrefix("#").toLong(16) or 0xFF000000)
 
 private val GTFS_COLOR_REGEX = Regex("^[0-9a-fA-F]{6}$")
 
@@ -600,6 +605,22 @@ private fun StopInfoPanel(
     ) {
         Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                val mode = stop.primaryMode ?: TransportMode.OTHER
+                // Same colored-circle look as the stop's marker on the map.
+                Box(
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(36.dp)
+                        .background(markerColor(mode), CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = mode.icon,
+                        contentDescription = mode.label,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stop.name,
