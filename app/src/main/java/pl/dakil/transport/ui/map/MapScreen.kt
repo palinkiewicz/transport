@@ -337,11 +337,19 @@ fun MapScreen(
             sheetState = sheetState,
         ) {
             Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                Text(
-                    text = stop.name,
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                )
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Text(
+                        text = stop.name,
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    stop.primaryMode?.let { mode ->
+                        Text(
+                            text = mode.label,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 HorizontalDivider()
                 BottomSheetAction(
                     text = "Stop timetable",
