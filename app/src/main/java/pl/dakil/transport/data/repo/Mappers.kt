@@ -22,7 +22,13 @@ fun MatchDto.toTransitLocation(): TransitLocation =
     )
 
 fun PlaceDto.toTransitLocation(): TransitLocation =
-    TransitLocation(name = name, lat = lat, lon = lon, stopId = stopId)
+    TransitLocation(
+        name = name,
+        lat = lat,
+        lon = lon,
+        stopId = stopId,
+        modes = modes?.map { TransportMode.fromApiValue(it) } ?: emptyList(),
+    )
 
 private fun String.toOffsetDateTime(): OffsetDateTime = OffsetDateTime.parse(this)
 

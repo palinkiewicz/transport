@@ -58,6 +58,7 @@ import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.asString
 import org.maplibre.compose.expressions.dsl.const
+import org.maplibre.compose.expressions.dsl.convertToColor
 import org.maplibre.compose.expressions.dsl.feature
 import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.offset
@@ -85,7 +86,17 @@ import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.data.repo.LIBERTY_STYLE_URL
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.navigation.DeparturesRoute
+
+/** "#RRGGBB" hex string for the mode's marker color, as consumed by [convertToColor]. */
+private fun TransitLocation.markerColorHex(): String {
+    val color = (primaryMode ?: TransportMode.OTHER).color
+    val r = (color.red * 255).toInt()
+    val g = (color.green * 255).toInt()
+    val b = (color.blue * 255).toInt()
+    return "#%02X%02X%02X".format(r, g, b)
+}
 
 private const val STOPS_FETCH_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
@@ -218,7 +229,12 @@ fun MapScreen(
                         Feature<Point, JsonObject?>(
                             id = JsonPrimitive(stopKey(stop)),
                             geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
-                            properties = JsonObject(mapOf("name" to JsonPrimitive(stop.name))),
+                            properties = JsonObject(
+                                mapOf(
+                                    "name" to JsonPrimitive(stop.name),
+                                    "color" to JsonPrimitive(stop.markerColorHex()),
+                                ),
+                            ),
                         )
                     },
                 )
@@ -230,7 +246,7 @@ fun MapScreen(
                     source = stopsSource,
                     minZoom = STOPS_FETCH_MIN_ZOOM,
                     radius = const(6.dp),
-                    color = const(MaterialTheme.colorScheme.primary),
+                    color = feature["color"].convertToColor(),
                     strokeColor = const(MaterialTheme.colorScheme.surface),
                     strokeWidth = const(2.dp),
                 )
