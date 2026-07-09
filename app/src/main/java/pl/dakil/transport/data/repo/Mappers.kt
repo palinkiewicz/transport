@@ -10,6 +10,7 @@ import pl.dakil.transport.data.remote.dto.MatchDto
 import pl.dakil.transport.data.remote.dto.PlaceDto
 import pl.dakil.transport.data.remote.dto.StopTimeDto
 import pl.dakil.transport.domain.model.Departure
+import pl.dakil.transport.domain.model.IntermediateStop
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.domain.model.TransitLocation
@@ -71,7 +72,13 @@ fun LegDto.toDomain(): JourneyLeg =
         agencyName = agencyName,
         routeColor = routeColor,
         cancelled = cancelled ?: false,
-        intermediateStopNames = intermediateStops?.map { it.name } ?: emptyList(),
+        intermediateStops = intermediateStops?.map { stop ->
+            IntermediateStop(
+                name = stop.name,
+                arrivalTime = (stop.arrival ?: stop.departure)?.toOffsetDateTime(),
+                track = stop.track ?: stop.scheduledTrack,
+            )
+        } ?: emptyList(),
     )
 
 fun ItineraryDto.toDomain(): Journey =

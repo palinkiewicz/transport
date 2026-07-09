@@ -1,34 +1,41 @@
 package pl.dakil.transport.ui.results
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
@@ -39,8 +46,9 @@ import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
+import pl.dakil.transport.ui.components.parseRouteColor
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ResultsScreen(
     viewModel: ResultsViewModel,
@@ -48,16 +56,20 @@ fun ResultsScreen(
     onJourneySelected: (Int) -> Unit,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
+        modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
-            TopAppBar(
+            MediumFlexibleTopAppBar(
                 title = { Text("${viewModel.fromName} → ${viewModel.toName}") },
+                subtitle = { Text("Connections · live, refreshes every 30 s") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
@@ -91,12 +103,36 @@ fun ResultsScreen(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
-    Card(
+    Surface(
         onClick = onClick,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = departingInLabel(journey.departureTime),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = "${formatDuration(journey.transitDurationSeconds)} · ${transfersLabel(journey.transfers)}",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
+            LegTimelineBar(journey)
+
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 journey.walkToFirstStopMeters?.let { WalkDistance(it) }
                 FlowRow(
@@ -108,36 +144,54 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
                         ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                     }
                     if (journey.legs.none { it.isTransit }) {
-                        ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.name)
+                        ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.label)
                     }
                 }
                 journey.walkFromLastStopMeters?.let { WalkDistance(it) }
             }
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+            HorizontalDivider()
+
             StopTimeRow(
                 stopName = journey.firstStopName,
                 time = journey.departureTime,
                 scheduledTime = journey.departureScheduledTime,
             )
-            Spacer(Modifier.size(4.dp))
             StopTimeRow(
                 stopName = journey.lastStopName,
                 time = journey.arrivalTime,
                 scheduledTime = journey.arrivalScheduledTime,
             )
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(
-                    text = departingInLabel(journey.departureTime),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = formatDuration(journey.transitDurationSeconds),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        }
+    }
+}
+
+/**
+ * Proportional strip of the journey: one segment per leg, width proportional to leg duration,
+ * colored by route/mode (walk legs in a muted tone) — a glanceable shape of the trip.
+ */
+@Composable
+private fun LegTimelineBar(journey: Journey) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(8.dp)
+            .clip(CircleShape),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        journey.legs.forEach { leg ->
+            val color = if (leg.isTransit) {
+                parseRouteColor(leg.routeColor, leg.mode.color)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
             }
+            Box(
+                modifier = Modifier
+                    .weight(leg.duration.coerceAtLeast(60).toFloat())
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(color),
+            )
         }
     }
 }
@@ -173,6 +227,12 @@ private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: O
         )
         RealTimeText(time = time, scheduledTime = scheduledTime, realTime = true)
     }
+}
+
+private fun transfersLabel(transfers: Int): String = when (transfers) {
+    0 -> "direct"
+    1 -> "1 transfer"
+    else -> "$transfers transfers"
 }
 
 private fun formatWalkDistance(meters: Double): String =

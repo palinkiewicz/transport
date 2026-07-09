@@ -17,7 +17,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import pl.dakil.transport.domain.model.TransportMode
 
-private fun parseRouteColor(hex: String?, fallback: Color): Color {
+/** Parses a GTFS `RRGGBB` route color, falling back (e.g. to the mode color) when absent/invalid. */
+fun parseRouteColor(hex: String?, fallback: Color): Color {
     if (hex.isNullOrBlank()) return fallback
     return runCatching { Color(android.graphics.Color.parseColor("#$hex")) }.getOrDefault(fallback)
 }

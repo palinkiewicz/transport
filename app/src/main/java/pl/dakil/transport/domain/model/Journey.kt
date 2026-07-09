@@ -38,6 +38,13 @@ data class Journey(
         get() = Duration.between(departureTime, arrivalTime).seconds.coerceAtLeast(0)
 }
 
+/** A stop passed through (not boarded/alighted at) on a transit leg. */
+data class IntermediateStop(
+    val name: String,
+    val arrivalTime: OffsetDateTime? = null,
+    val track: String? = null,
+)
+
 data class JourneyLeg(
     val mode: TransportMode,
     val fromName: String,
@@ -58,7 +65,7 @@ data class JourneyLeg(
     val agencyName: String? = null,
     val routeColor: String? = null,
     val cancelled: Boolean = false,
-    val intermediateStopNames: List<String> = emptyList(),
+    val intermediateStops: List<IntermediateStop> = emptyList(),
 ) {
     val isTransit: Boolean get() = mode != TransportMode.WALK && mode != TransportMode.BIKE && mode != TransportMode.CAR
 
