@@ -31,15 +31,15 @@ class MapViewModel @Inject constructor(
     private val viewport = MutableStateFlow<Viewport?>(null)
 
     /**
-     * Patched Liberty style JSON (base transit stop icons removed); null while loading,
-     * failure means the UI should fall back to the plain style URL.
+     * Patched bundled style JSON (base transit stop icons removed, sources repointed);
+     * null only for the brief moment the asset is being read.
      */
-    private val _styleJson = MutableStateFlow<Result<String>?>(null)
-    val styleJson: StateFlow<Result<String>?> = _styleJson
+    private val _styleJson = MutableStateFlow<String?>(null)
+    val styleJson: StateFlow<String?> = _styleJson
 
     init {
         viewModelScope.launch {
-            _styleJson.value = mapStyleRepository.transitFreeLibertyStyle()
+            _styleJson.value = mapStyleRepository.transitFreeGmapsStyle()
         }
     }
 

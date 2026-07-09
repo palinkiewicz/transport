@@ -102,7 +102,6 @@ import org.maplibre.spatialk.geojson.Feature
 import org.maplibre.spatialk.geojson.FeatureCollection
 import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
-import pl.dakil.transport.data.repo.LIBERTY_STYLE_URL
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.navigation.DeparturesRoute
@@ -221,9 +220,8 @@ fun MapScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
-            baseStyle = styleJson?.let { result ->
-                result.getOrNull()?.let { BaseStyle.Json(it) } ?: BaseStyle.Uri(LIBERTY_STYLE_URL)
-            } ?: return@Box, // patched style still loading; it arrives within moments
+            baseStyle = styleJson?.let { BaseStyle.Json(it) }
+                ?: return@Box, // patched style still loading from assets; it arrives within moments
             cameraState = cameraState,
             styleState = styleState,
             options = MapOptions(ornamentOptions = OrnamentOptions.AllDisabled),
@@ -297,7 +295,9 @@ fun MapScreen(
                 case("rail", image(rememberVectorPainter(Icons.Default.Train), glyphSize, colorFilter = glyphTint)),
                 fallback = image(rememberVectorPainter(Icons.Default.DirectionsBus), glyphSize, colorFilter = glyphTint),
             )
-            Anchor.Replace("poi_transit") {
+            // Just above the base style's POI symbols, below road and place labels. NB: the
+            // anchor layer must exist in the style or MapLibre throws when adding these layers.
+            Anchor.Above("poi_z15") {
                 CircleLayer(
                     id = "transport-stops",
                     source = stopsSource,
@@ -333,8 +333,9 @@ fun MapScreen(
                     source = stopsSource,
                     minZoom = 14f,
                     textField = format(span(feature["name"].asString())),
-                    // Library default is "Open Sans..." which OpenFreeMap's glyph server 404s on.
-                    textFont = const(listOf("Noto Sans Regular")),
+                    // Must be a fontstack the style's glyph server actually serves (the library
+                    // default 404s there); Roboto also matches the basemap's typography.
+                    textFont = const(listOf("Roboto Regular")),
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),

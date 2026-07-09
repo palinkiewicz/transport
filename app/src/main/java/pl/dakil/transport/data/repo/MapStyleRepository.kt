@@ -1,5 +1,7 @@
 package pl.dakil.transport.data.repo
 
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
@@ -14,62 +16,87 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import okhttp3.OkHttpClient
-import okhttp3.Request
 
-const val LIBERTY_STYLE_URL = "https://tiles.openfreemap.org/styles/liberty"
+// Custom Google-Maps-like restyle of OSM Liberty, exported from Maputnik. Re-exports can be
+// dropped in as-is: everything environment-specific is patched at load time below.
+private const val STYLE_ASSET = "gmaps_style.json"
 
-// Liberty draws transit stop icons not only in `poi_transit` (which the map screen replaces with
-// its own stop layers) but also through these rank-based POI layers at zoom >= 15.
-private val RANKED_POI_LAYER_IDS = setOf("poi_r1", "poi_r7", "poi_r20")
+// The Maputnik export points its vector source at MapTiler with a placeholder demo key; the app
+// uses OpenFreeMap's tiles instead (same OpenMapTiles schema, no key needed).
+private const val OPENMAPTILES_SOURCE = "openmaptiles"
+private const val OPENMAPTILES_TILEJSON_URL = "https://tiles.openfreemap.org/planet"
 
-// Class list copied from Liberty's own `poi_transit` filter.
-private val TRANSIT_POI_CLASSES = listOf("airport", "bus", "rail")
+// These rank-based POI layers would draw base transit stop icons underneath the app's own stop
+// markers; their filters get a class exclusion added. Superset of the class names OpenMapTiles
+// uses for transit POIs — excluding a name that never occurs is harmless.
+private val POI_LAYER_IDS = setOf("poi_z15", "poi_z16")
+private val TRANSIT_POI_CLASSES =
+    listOf("airport", "bus", "rail", "railway", "harbor", "aerialway", "ferry_terminal")
+
+// The style's glyph server (orangemug's font-glyphs) 404s on the bare "Roboto Condensed"
+// fontstack; those labels would silently never render.
+private const val MISSING_FONT = "Roboto Condensed"
+private const val REPLACEMENT_FONT = "Roboto Condensed Regular"
 
 @Singleton
 class MapStyleRepository @Inject constructor(
-    private val okHttpClient: OkHttpClient,
+    @ApplicationContext private val context: Context,
     private val json: Json,
 ) {
 
     /**
-     * Downloads the Liberty base style and patches its rank-based POI layers so they no longer
-     * render transit stops; the app draws its own stop markers instead.
+     * Loads the bundled map style and patches it for use in the app: vector tiles repointed to
+     * OpenFreeMap, transit stops removed from the POI layers (the app draws its own stop
+     * markers), and unavailable fontstacks replaced.
      */
-    suspend fun transitFreeLibertyStyle(): Result<String> = runCatching {
-        val body = withContext(Dispatchers.IO) {
-            okHttpClient.newCall(Request.Builder().url(LIBERTY_STYLE_URL).build()).execute().use { response ->
-                check(response.isSuccessful) { "Style request failed: HTTP ${response.code}" }
-                checkNotNull(response.body).string()
-            }
-        }
+    suspend fun transitFreeGmapsStyle(): String = withContext(Dispatchers.IO) {
+        val body = context.assets.open(STYLE_ASSET).bufferedReader().use { it.readText() }
         val style = json.parseToJsonElement(body).jsonObject
-        val layers = style.getValue("layers").jsonArray.map { layer ->
-            val obj = layer.jsonObject
-            if (obj["id"]?.jsonPrimitive?.contentOrNull in RANKED_POI_LAYER_IDS) {
-                JsonObject(obj + ("filter" to excludeTransitClasses(obj.getValue("filter"))))
-            } else {
-                obj
-            }
-        }
-        json.encodeToString(JsonObject.serializer(), JsonObject(style + ("layers" to JsonArray(layers))))
+        val layers = style.getValue("layers").jsonArray.map { layer -> patchLayer(layer.jsonObject) }
+        val patched = JsonObject(
+            style +
+                ("sources" to patchSources(style.getValue("sources").jsonObject)) +
+                ("layers" to JsonArray(layers)),
+        )
+        json.encodeToString(JsonObject.serializer(), patched)
     }
 
+    private fun patchSources(sources: JsonObject): JsonObject {
+        val openmaptiles = sources.getValue(OPENMAPTILES_SOURCE).jsonObject
+        return JsonObject(
+            sources +
+                (OPENMAPTILES_SOURCE to JsonObject(openmaptiles + ("url" to JsonPrimitive(OPENMAPTILES_TILEJSON_URL)))),
+        )
+    }
+
+    private fun patchLayer(layer: JsonObject): JsonObject {
+        var patched = layer
+        if (patched["id"]?.jsonPrimitive?.contentOrNull in POI_LAYER_IDS) {
+            patched = JsonObject(patched + ("filter" to excludeTransitClasses(patched.getValue("filter"))))
+        }
+        patched["layout"]?.jsonObject?.get("text-font")?.jsonArray?.let { fonts ->
+            if (fonts.any { it.jsonPrimitive.contentOrNull == MISSING_FONT }) {
+                val fixedFonts = JsonArray(
+                    fonts.map { font ->
+                        if (font.jsonPrimitive.contentOrNull == MISSING_FONT) JsonPrimitive(REPLACEMENT_FONT) else font
+                    },
+                )
+                val layout = JsonObject(patched.getValue("layout").jsonObject + ("text-font" to fixedFonts))
+                patched = JsonObject(patched + ("layout" to layout))
+            }
+        }
+        return patched
+    }
+
+    // The style uses legacy filter syntax, so the exclusion is a legacy "!in" combined via "all".
     private fun excludeTransitClasses(filter: JsonElement): JsonElement = buildJsonArray {
         add(JsonPrimitive("all"))
         add(filter)
         add(
             buildJsonArray {
-                add(JsonPrimitive("!"))
-                add(
-                    buildJsonArray {
-                        add(JsonPrimitive("match"))
-                        add(buildJsonArray { add(JsonPrimitive("get")); add(JsonPrimitive("class")) })
-                        add(JsonArray(TRANSIT_POI_CLASSES.map(::JsonPrimitive)))
-                        add(JsonPrimitive(true))
-                        add(JsonPrimitive(false))
-                    },
-                )
+                add(JsonPrimitive("!in"))
+                add(JsonPrimitive("class"))
+                TRANSIT_POI_CLASSES.forEach { add(JsonPrimitive(it)) }
             },
         )
     }
