@@ -196,8 +196,10 @@ class MapViewModel @Inject constructor(
 
     /**
      * Marker of the selected vehicle, tracking its live position independently of the
-     * viewport fetches (refreshed from them whenever they still cover the trip); becomes
-     * null (closing the panel) when the vehicle finishes its run or is deselected.
+     * viewport fetches (refreshed from them whenever they still cover the trip). Fetches only
+     * cover a ~minute time window, so once they stop renewing the trip (panned/zoomed away)
+     * the marker freezes at the snapshot's last known position rather than disappearing —
+     * only deselection closes the panel, matching the selected stop's behavior.
      */
     val selectedVehicle: StateFlow<VehicleMarker?> =
         combine(selectedVehicleSegments, vehicleSegments) { selected, fetched ->
@@ -210,7 +212,12 @@ class MapViewModel @Inject constructor(
                 } else {
                     flow {
                         while (true) {
-                            emit(markersAt(segments, OffsetDateTime.now()).firstOrNull())
+                            val now = OffsetDateTime.now()
+                            emit(
+                                markersAt(segments, now).firstOrNull()
+                                    // Past the segments' time coverage: hold the last position.
+                                    ?: segments.maxByOrNull { it.arrival }?.markerAt(now),
+                            )
                             delay(VEHICLES_INTERPOLATE_MS)
                         }
                     }
@@ -310,19 +317,24 @@ class MapViewModel @Inject constructor(
  * a vehicle between segments (dwelling at a stop) sits at its next segment's start.
  */
 private fun markersAt(segments: List<VehicleSegment>, time: OffsetDateTime): List<VehicleMarker> =
-    segments.groupBy { it.tripKey }.mapNotNull { (tripKey, tripSegments) ->
+    segments.groupBy { it.tripKey }.mapNotNull { (_, tripSegments) ->
         val current = tripSegments.firstOrNull { time >= it.departure && time <= it.arrival }
             ?: tripSegments.filter { it.departure > time }.minByOrNull { it.departure }
             ?: return@mapNotNull null
-        val position = current.positionAt(time) ?: return@mapNotNull null
-        VehicleMarker(
-            id = tripKey,
-            tripId = current.tripId,
-            label = current.label,
-            headsign = current.headsign,
-            mode = current.mode,
-            routeColor = current.routeColor,
-            realTime = current.realTime,
-            position = position,
-        )
+        current.markerAt(time)
     }
+
+/** This segment's vehicle as a marker, positioned at [time] (clamped to the segment's path). */
+private fun VehicleSegment.markerAt(time: OffsetDateTime): VehicleMarker? {
+    val position = positionAt(time) ?: return null
+    return VehicleMarker(
+        id = tripKey,
+        tripId = tripId,
+        label = label,
+        headsign = headsign,
+        mode = mode,
+        routeColor = routeColor,
+        realTime = realTime,
+        position = position,
+    )
+}
