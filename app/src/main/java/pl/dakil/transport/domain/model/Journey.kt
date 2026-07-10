@@ -66,6 +66,9 @@ data class JourneyLeg(
     val agencyName: String? = null,
     val routeColor: String? = null,
     val cancelled: Boolean = false,
+    /** True/false only when the feed says so; null = the feed doesn't provide the attribute. */
+    val wheelchairAccessible: Boolean? = null,
+    val bikesAllowed: Boolean? = null,
     val intermediateStops: List<IntermediateStop> = emptyList(),
 ) {
     val isTransit: Boolean get() = mode != TransportMode.WALK && mode != TransportMode.BIKE && mode != TransportMode.CAR

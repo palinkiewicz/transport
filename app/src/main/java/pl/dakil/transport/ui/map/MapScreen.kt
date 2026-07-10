@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Accessible
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -39,8 +38,6 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.NotAccessible
-import androidx.compose.material.icons.filled.PedalBike
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Subway
@@ -127,7 +124,9 @@ import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 import androidx.compose.ui.text.style.TextOverflow
+import pl.dakil.transport.ui.components.AttributeChip
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.navigation.DeparturesRoute
 import pl.dakil.transport.ui.navigation.TripRoute
@@ -798,27 +797,15 @@ private fun VehicleInfoPanel(
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
             ) {
                 if (vehicle.realTime) {
-                    VehicleAttributeChip(Icons.Default.Sensors, "Live", Color(0xFF2E7D32))
+                    AttributeChip(Icons.Default.Sensors, "Live", Color(0xFF2E7D32))
                 } else {
-                    VehicleAttributeChip(Icons.Default.Schedule, "Scheduled")
+                    AttributeChip(Icons.Default.Schedule, "Scheduled")
                 }
                 when (val state = detailsState) {
-                    is VehicleDetailsUiState.Shown -> {
-                        state.details.wheelchairAccessible?.let { accessible ->
-                            if (accessible) {
-                                VehicleAttributeChip(Icons.Default.Accessible, "Wheelchair")
-                            } else {
-                                VehicleAttributeChip(Icons.Default.NotAccessible, "No wheelchair")
-                            }
-                        }
-                        state.details.bikesAllowed?.let { allowed ->
-                            if (allowed) {
-                                VehicleAttributeChip(Icons.Default.PedalBike, "Bikes")
-                            } else {
-                                VehicleAttributeChip(Icons.Default.PedalBike, "No bikes")
-                            }
-                        }
-                    }
+                    is VehicleDetailsUiState.Shown -> VehicleAmenityChips(
+                        wheelchairAccessible = state.details.wheelchairAccessible,
+                        bikesAllowed = state.details.bikesAllowed,
+                    )
                     is VehicleDetailsUiState.Loading -> CircularProgressIndicator(
                         modifier = Modifier.size(20.dp),
                         strokeWidth = 2.dp,
@@ -840,37 +827,6 @@ private fun VehicleInfoPanel(
                     PanelActionButton("Trip timetable", Icons.Default.Schedule, onOpenTrip)
                 }
             }
-        }
-    }
-}
-
-/** Small icon+label pill for one vehicle attribute (live status, wheelchair, bikes). */
-@Composable
-private fun VehicleAttributeChip(
-    icon: ImageVector,
-    label: String,
-    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
-) {
-    Surface(
-        shape = RoundedCornerShape(8.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(16.dp),
-            )
-            Spacer(Modifier.width(4.dp))
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = tint,
-            )
         }
     }
 }

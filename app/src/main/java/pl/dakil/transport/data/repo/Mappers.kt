@@ -74,6 +74,12 @@ fun LegDto.toDomain(): JourneyLeg =
         agencyName = agencyName,
         routeColor = routeColor,
         cancelled = cancelled ?: false,
+        wheelchairAccessible = when (wheelchairAccessible) {
+            "ACCESSIBLE" -> true
+            "NOT_ACCESSIBLE" -> false
+            else -> null
+        },
+        bikesAllowed = bikesAllowed,
         intermediateStops = intermediateStops?.map { stop ->
             IntermediateStop(
                 name = stop.name,

@@ -54,6 +54,7 @@ import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
@@ -197,6 +198,17 @@ private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOver
                 ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                 leg.headsign?.let {
                     Text("towards $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (leg.wheelchairAccessible == true || leg.bikesAllowed == true) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 6.dp),
+                    ) {
+                        VehicleAmenityChips(
+                            wheelchairAccessible = leg.wheelchairAccessible,
+                            bikesAllowed = leg.bikesAllowed,
+                        )
+                    }
                 }
                 IntermediateStopsSection(leg, legColor)
             } else {

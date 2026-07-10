@@ -37,6 +37,7 @@ import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 
 /** Timetable of a single vehicle run: every stop on the route with live times. */
@@ -83,6 +84,19 @@ fun TripScreen(
                         .fillMaxWidth(),
                     contentPadding = PaddingValues(vertical = 8.dp),
                 ) {
+                    if (state.wheelchairAccessible == true || state.bikesAllowed == true) {
+                        item(key = "amenities") {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+                            ) {
+                                VehicleAmenityChips(
+                                    wheelchairAccessible = state.wheelchairAccessible,
+                                    bikesAllowed = state.bikesAllowed,
+                                )
+                            }
+                        }
+                    }
                     items(state.stops.size) { index ->
                         TripStopRow(
                             stop = state.stops[index],

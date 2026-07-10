@@ -25,9 +25,17 @@ data class TripStop(
 
 sealed interface TripUiState {
     data object Loading : TripUiState
-    data class Content(val stops: List<TripStop>) : TripUiState
+    data class Content(
+        val stops: List<TripStop>,
+        /** True only when every transit leg of the run reports the amenity; null = feed silent. */
+        val wheelchairAccessible: Boolean? = null,
+        val bikesAllowed: Boolean? = null,
+    ) : TripUiState
     data class Error(val message: String) : TripUiState
 }
+
+/** Collapses per-leg amenity flags into one value for the whole run (null when no leg reports). */
+private fun List<Boolean>.allOrNull(): Boolean? = takeIf { it.isNotEmpty() }?.all { it }
 
 /** Flattens the trip itinerary (joined interlined legs) into a single ordered stop list. */
 fun Journey.toTripStops(): List<TripStop> = buildList {
@@ -76,7 +84,14 @@ class TripViewModel @Inject constructor(
 
     private suspend fun refresh() {
         timetableRepository.trip(tripId).fold(
-            onSuccess = { journey -> _uiState.value = TripUiState.Content(journey.toTripStops()) },
+            onSuccess = { journey ->
+                val transitLegs = journey.legs.filter { it.isTransit }
+                _uiState.value = TripUiState.Content(
+                    stops = journey.toTripStops(),
+                    wheelchairAccessible = transitLegs.mapNotNull { it.wheelchairAccessible }.allOrNull(),
+                    bikesAllowed = transitLegs.mapNotNull { it.bikesAllowed }.allOrNull(),
+                )
+            },
             onFailure = { error ->
                 if (_uiState.value !is TripUiState.Content) {
                     _uiState.value = TripUiState.Error(error.message ?: "Something went wrong")
