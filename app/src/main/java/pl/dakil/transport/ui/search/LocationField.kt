@@ -1,89 +1,49 @@
 package pl.dakil.transport.ui.search
 
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuAnchorType
-import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import pl.dakil.transport.domain.model.TransitLocation
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 
 /**
- * Borderless location autocomplete field, meant to sit inside the route card on the
- * search screen (the card supplies the container; the field itself is transparent).
+ * Borderless location field for the search screen's route card (the card supplies the
+ * container). Not editable in place — tapping it opens the full-screen location picker.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LocationField(
     label: String,
-    query: String,
-    suggestions: List<TransitLocation>,
-    onQueryChange: (String) -> Unit,
-    onSelect: (TransitLocation) -> Unit,
+    value: String?,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded && suggestions.isNotEmpty(),
-        onExpandedChange = { expanded = it },
-        modifier = modifier,
+    Box(
+        contentAlignment = Alignment.CenterStart,
+        modifier = modifier
+            .heightIn(min = 56.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick, role = Role.Button)
+            .padding(horizontal = 16.dp),
     ) {
-        TextField(
-            value = query,
-            onValueChange = {
-                onQueryChange(it)
-                expanded = true
+        Text(
+            text = value ?: label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (value == null) {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            } else {
+                MaterialTheme.colorScheme.onSurface
             },
-            placeholder = { Text(label) },
-            singleLine = true,
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = Color.Transparent,
-                unfocusedContainerColor = Color.Transparent,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-                errorIndicatorColor = Color.Transparent,
-            ),
-            modifier = Modifier
-                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable)
-                .fillMaxWidth(),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        ExposedDropdownMenu(
-            expanded = expanded && suggestions.isNotEmpty(),
-            onDismissRequest = { expanded = false },
-        ) {
-            suggestions.forEach { location ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(location.name)
-                            if (location.city != null) {
-                                Text(
-                                    text = location.city,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        }
-                    },
-                    onClick = {
-                        onSelect(location)
-                        expanded = false
-                    },
-                )
-            }
-        }
     }
 }

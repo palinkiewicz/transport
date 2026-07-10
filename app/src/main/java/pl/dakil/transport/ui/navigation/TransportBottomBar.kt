@@ -3,6 +3,7 @@ package pl.dakil.transport.ui.navigation
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -23,6 +24,7 @@ private data class BottomBarDestination(
 private val bottomBarDestinations = listOf(
     BottomBarDestination(MapRoute, "Map", Icons.Default.Map),
     BottomBarDestination(SearchRoute, "Search route", Icons.Default.Search),
+    BottomBarDestination(FavouritesRoute, "Favourites", Icons.Default.Star),
 )
 
 @Composable
@@ -32,13 +34,8 @@ fun TransportBottomBar(navController: NavHostController) {
 
     NavigationBar {
         bottomBarDestinations.forEach { destination ->
-            val selected = when (destination.route) {
-                is MapRoute -> currentDestination?.hasRoute<MapRoute>() == true
-                is SearchRoute -> currentDestination?.hasRoute<SearchRoute>() == true
-                else -> false
-            }
             NavigationBarItem(
-                selected = selected,
+                selected = currentDestination?.hasRoute(destination.route::class) == true,
                 onClick = {
                     navController.navigate(destination.route) {
                         popUpTo(navController.graph.findStartDestination().id) {

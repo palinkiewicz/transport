@@ -52,6 +52,7 @@ import java.time.format.DateTimeFormatter
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.ErrorBox
+import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
@@ -326,9 +327,6 @@ private fun IntermediateStopsSection(leg: JourneyLeg, legColor: androidx.compose
         }
     }
 }
-
-private fun formatDistance(meters: Double): String =
-    if (meters < 1000) "${meters.toInt()} m" else "%.1f km".format(meters / 1000)
 
 private fun formatDuration(seconds: Long): String {
     val totalMinutes = seconds / 60

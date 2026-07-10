@@ -9,17 +9,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import pl.dakil.transport.ui.favourites.FavouritesScreen
 import pl.dakil.transport.ui.itinerary.ItineraryScreen
 import pl.dakil.transport.ui.map.MapScreen
 import pl.dakil.transport.ui.results.DeparturesScreen
 import pl.dakil.transport.ui.results.ResultsScreen
 import pl.dakil.transport.ui.results.ResultsViewModel
+import pl.dakil.transport.ui.search.LocationPickerScreen
 import pl.dakil.transport.ui.search.SearchScreen
 import pl.dakil.transport.ui.trip.TripScreen
 
@@ -28,7 +31,7 @@ fun AppNavHost() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val showBottomBar = backStackEntry?.destination?.let {
-        it.hasRoute<MapRoute>() || it.hasRoute<SearchRoute>()
+        it.hasRoute<MapRoute>() || it.hasRoute<SearchRoute>() || it.hasRoute<FavouritesRoute>()
     } ?: true
 
     Scaffold(
@@ -58,6 +61,23 @@ fun AppNavHost() {
                 SearchScreen(
                     onSearchConnections = { route -> navController.navigate(route) },
                     onSearchDepartures = { route -> navController.navigate(route) },
+                    onPickLocation = { isFrom -> navController.navigate(LocationPickerRoute(isFrom)) },
+                )
+            }
+            composable<LocationPickerRoute> {
+                LocationPickerScreen(onBack = { navController.popBackStack() })
+            }
+            composable<FavouritesRoute> {
+                FavouritesScreen(
+                    onOpenSearch = {
+                        navController.navigate(SearchRoute) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    },
+                    onOpenConnection = { route -> navController.navigate(route) },
+                    onOpenTrip = { route -> navController.navigate(route) },
                 )
             }
             navigation<ResultsGraph>(startDestination = ResultsRoute::class) {

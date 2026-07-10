@@ -22,11 +22,14 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.MapFiltersRepository
 import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.RoutesRepository
 import pl.dakil.transport.data.repo.StopsRepository
 import pl.dakil.transport.data.repo.VehiclesRepository
+import pl.dakil.transport.domain.model.FavoriteLine
+import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.RouteShape
@@ -56,7 +59,13 @@ data class VehicleMarker(
     val routeColor: String?,
     val realTime: Boolean,
     val position: GeoPoint,
-)
+) {
+    /** This vehicle's line as a favourite; null when there is no trip id to open it with. */
+    val favoriteLine: FavoriteLine?
+        get() = tripId?.let {
+            FavoriteLine(label = label, headsign = headsign, mode = mode, routeColor = routeColor, tripId = it)
+        }
+}
 
 /** State of the selected vehicle's trip details (info panel attributes + route overlay). */
 sealed interface VehicleDetailsUiState {
@@ -91,8 +100,21 @@ class MapViewModel @Inject constructor(
     private val vehiclesRepository: VehiclesRepository,
     private val mapStyleRepository: MapStyleRepository,
     private val filtersRepository: MapFiltersRepository,
+    private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
+
+    /** Starred items, for the info panels' star buttons. */
+    val favorites: StateFlow<Favorites> = favoritesRepository.favorites
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Favorites.EMPTY)
+
+    fun toggleFavoriteStop(stop: TransitLocation) {
+        viewModelScope.launch { favoritesRepository.toggleLocation(stop) }
+    }
+
+    fun toggleFavoriteLine(line: FavoriteLine) {
+        viewModelScope.launch { favoritesRepository.toggleLine(line) }
+    }
 
     private val viewport = MutableStateFlow<Viewport?>(null)
 

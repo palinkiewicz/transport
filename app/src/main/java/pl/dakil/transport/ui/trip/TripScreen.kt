@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.ui.components.ErrorBox
+import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
@@ -49,6 +50,7 @@ fun TripScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -68,6 +70,9 @@ fun TripScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    FavoriteButton(isFavorite = isFavorite, onToggle = viewModel::toggleFavorite)
                 },
                 scrollBehavior = scrollBehavior,
             )

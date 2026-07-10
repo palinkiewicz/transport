@@ -81,6 +81,7 @@ private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 fun SearchScreen(
     onSearchConnections: (ResultsRoute) -> Unit,
     onSearchDepartures: (DeparturesRoute) -> Unit,
+    onPickLocation: (isFrom: Boolean) -> Unit,
     viewModel: SearchViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,10 +107,8 @@ fun SearchScreen(
 
             RouteCard(
                 uiState = uiState,
-                onFromQueryChange = viewModel::onFromQueryChange,
-                onSelectFrom = viewModel::selectFrom,
-                onToQueryChange = viewModel::onToQueryChange,
-                onSelectTo = viewModel::selectTo,
+                onPickFrom = { onPickLocation(true) },
+                onPickTo = { onPickLocation(false) },
                 onSwap = viewModel::swapFromTo,
             )
 
@@ -309,16 +308,15 @@ private fun ModeToggle(mode: SearchMode, onModeChange: (SearchMode) -> Unit) {
 
 /**
  * Transit-style route card: origin/destination fields joined by a dotted "route rail",
- * with a shape-morphing swap button on the divider between them.
+ * with a shape-morphing swap button on the divider between them. The fields open the
+ * full-screen location picker rather than editing in place.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun RouteCard(
     uiState: SearchUiState,
-    onFromQueryChange: (String) -> Unit,
-    onSelectFrom: (pl.dakil.transport.domain.model.TransitLocation) -> Unit,
-    onToQueryChange: (String) -> Unit,
-    onSelectTo: (pl.dakil.transport.domain.model.TransitLocation) -> Unit,
+    onPickFrom: () -> Unit,
+    onPickTo: () -> Unit,
     onSwap: () -> Unit,
 ) {
     Surface(
@@ -338,10 +336,8 @@ private fun RouteCard(
                 )
                 LocationField(
                     label = if (uiState.mode == SearchMode.CONNECTIONS) "Start" else "Stop",
-                    query = uiState.fromQuery,
-                    suggestions = uiState.fromSuggestions,
-                    onQueryChange = onFromQueryChange,
-                    onSelect = onSelectFrom,
+                    value = uiState.fromSelected?.name,
+                    onClick = onPickFrom,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -380,10 +376,8 @@ private fun RouteCard(
                         )
                         LocationField(
                             label = "Destination",
-                            query = uiState.toQuery,
-                            suggestions = uiState.toSuggestions,
-                            onQueryChange = onToQueryChange,
-                            onSelect = onSelectTo,
+                            value = uiState.toSelected?.name,
+                            onClick = onPickTo,
                             modifier = Modifier.weight(1f),
                         )
                     }

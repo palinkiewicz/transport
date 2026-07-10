@@ -25,6 +25,10 @@ fun MatchDto.toTransitLocation(): TransitLocation =
         lon = lon,
         stopId = if (type == "STOP") id else null,
         city = areas?.firstOrNull { it.default == true }?.name,
+        // OSM admin levels: 4 = state/province, 2 = country.
+        state = areas?.firstOrNull { it.adminLevel == 4.0 }?.name,
+        country = country ?: areas?.firstOrNull { it.adminLevel == 2.0 }?.name,
+        modes = modes?.map { TransportMode.fromApiValue(it) } ?: emptyList(),
     )
 
 fun PlaceDto.toTransitLocation(): TransitLocation =

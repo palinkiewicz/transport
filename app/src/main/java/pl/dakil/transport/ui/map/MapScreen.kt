@@ -125,6 +125,7 @@ import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 import androidx.compose.ui.text.style.TextOverflow
 import pl.dakil.transport.ui.components.AttributeChip
+import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
@@ -193,8 +194,6 @@ private const val STOPS_FETCH_MIN_ZOOM = 13f
 private const val STOP_ICONS_MIN_ZOOM = 15f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
 
-private fun stopKey(location: TransitLocation): String = location.stopId ?: "${location.lat},${location.lon}"
-
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun MapScreen(
@@ -212,6 +211,7 @@ fun MapScreen(
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
     val selectedVehicle by viewModel.selectedVehicle.collectAsStateWithLifecycle()
     val vehicleDetails by viewModel.vehicleDetails.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -245,7 +245,7 @@ fun MapScreen(
 
     // The map click callback below is captured once by MaplibreMap and never refreshed, so it
     // must read current data through State objects rather than capture the values directly.
-    val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy(::stopKey) })
+    val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy { it.favoriteKey } })
     val vehiclesById by rememberUpdatedState(remember(vehicles) { vehicles.associateBy { it.id } })
     val currentSelectedStop by rememberUpdatedState(selectedStop)
     val currentSelectedVehicle by rememberUpdatedState(selectedVehicle)
@@ -346,7 +346,7 @@ fun MapScreen(
                 FeatureCollection(
                     stops.map { stop ->
                         Feature<Point, JsonObject?>(
-                            id = JsonPrimitive(stopKey(stop)),
+                            id = JsonPrimitive(stop.favoriteKey),
                             geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
                             properties = JsonObject(
                                 mapOf(
@@ -668,6 +668,8 @@ fun MapScreen(
                     StopInfoPanel(
                         stop = stop,
                         routesState = stopRoutes,
+                        isFavorite = favorites.containsLocation(stop),
+                        onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
                         onClose = { viewModel.clearSelection() },
                         onOpenTimetable = {
                             viewModel.clearSelection()
@@ -707,6 +709,8 @@ fun MapScreen(
                     VehicleInfoPanel(
                         vehicle = vehicle,
                         detailsState = vehicleDetails,
+                        isFavorite = vehicle.favoriteLine?.let(favorites::containsLine),
+                        onToggleFavorite = { vehicle.favoriteLine?.let(viewModel::toggleFavoriteLine) },
                         onClose = { viewModel.clearVehicleSelection() },
                         onOpenTrip = vehicle.tripId?.let { tripId ->
                             {
@@ -738,6 +742,9 @@ fun MapScreen(
 private fun VehicleInfoPanel(
     vehicle: VehicleMarker,
     detailsState: VehicleDetailsUiState,
+    /** Null hides the star entirely (no trip id to identify the line by). */
+    isFavorite: Boolean?,
+    onToggleFavorite: () -> Unit,
     onClose: () -> Unit,
     onOpenTrip: (() -> Unit)?,
 ) {
@@ -785,6 +792,9 @@ private fun VehicleInfoPanel(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
+                }
+                if (isFavorite != null) {
+                    FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
                 }
                 IconButton(onClick = onClose) {
                     Icon(Icons.Default.Close, contentDescription = "Close")
@@ -840,6 +850,8 @@ private fun VehicleInfoPanel(
 private fun StopInfoPanel(
     stop: TransitLocation,
     routesState: StopRoutesUiState,
+    isFavorite: Boolean,
+    onToggleFavorite: () -> Unit,
     onClose: () -> Unit,
     onOpenTimetable: () -> Unit,
     onBeginHere: () -> Unit,
@@ -882,6 +894,7 @@ private fun StopInfoPanel(
                         )
                     }
                 }
+                FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
                 IconButton(onClick = onClose) {
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }

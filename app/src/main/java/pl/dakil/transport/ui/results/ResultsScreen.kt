@@ -46,9 +46,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
 import java.time.OffsetDateTime
-import kotlin.math.roundToInt
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.ui.components.ErrorBox
+import pl.dakil.transport.ui.components.FavoriteButton
+import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
@@ -63,6 +64,7 @@ fun ResultsScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
+    val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -75,6 +77,9 @@ fun ResultsScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    FavoriteButton(isFavorite = isFavorite, onToggle = viewModel::toggleFavorite)
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -229,7 +234,7 @@ private fun WalkDistance(meters: Double) {
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            text = formatWalkDistance(meters),
+            text = formatDistance(meters),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -257,9 +262,6 @@ private fun transfersLabel(transfers: Int): String = when (transfers) {
     1 -> "1 transfer"
     else -> "$transfers transfers"
 }
-
-private fun formatWalkDistance(meters: Double): String =
-    if (meters < 1000) "${meters.roundToInt()} m" else "%.1f km".format(meters / 1000)
 
 private fun formatDuration(seconds: Long): String {
     val totalMinutes = seconds / 60

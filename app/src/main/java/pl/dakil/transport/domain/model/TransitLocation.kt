@@ -1,16 +1,29 @@
 package pl.dakil.transport.domain.model
 
+import kotlinx.serialization.Serializable
+
 /** A location the user picked as a start/end/via point: either a transit stop or a bare coordinate. */
+@Serializable
 data class TransitLocation(
     val name: String,
     val lat: Double,
     val lon: Double,
     val stopId: String? = null,
     val city: String? = null,
+    val state: String? = null,
+    val country: String? = null,
     val modes: List<TransportMode> = emptyList(),
 ) {
     /** Value to send as `fromPlace`/`toPlace`/`stopId` query parameters. */
     val queryValue: String
+        get() = stopId ?: "$lat,$lon"
+
+    /** "City, State, Country" subtitle for list rows; null when no area info is known. */
+    val areaLabel: String?
+        get() = listOfNotNull(city, state, country).ifEmpty { null }?.joinToString(", ")
+
+    /** Stable identity for favorites/dedup: the stop id, or the bare coordinate. */
+    val favoriteKey: String
         get() = stopId ?: "$lat,$lon"
 
     /** Mode used to color/icon this stop on the map when it serves more than one mode. */

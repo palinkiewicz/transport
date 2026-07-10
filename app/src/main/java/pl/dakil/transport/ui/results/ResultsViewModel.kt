@@ -9,10 +9,15 @@ import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.repo.PlanRepository
 import pl.dakil.transport.data.repo.PlanResult
+import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.ResultsRoute
@@ -29,6 +34,7 @@ const val REFRESH_INTERVAL_SECONDS = 30
 class ResultsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val planRepository: PlanRepository,
+    private val favoritesRepository: FavoritesRepository,
 ) : ViewModel() {
 
     private val route = ResultsRoute(
@@ -50,6 +56,17 @@ class ResultsViewModel @Inject constructor(
 
     val fromName: String get() = route.fromName
     val toName: String get() = route.toName
+
+    /** This search's start+end pair as a favourite (date/time deliberately not included). */
+    private val favoriteConnection = FavoriteConnection(from, to)
+
+    val isFavorite: StateFlow<Boolean> = favoritesRepository.favorites
+        .map { it.containsConnection(favoriteConnection) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun toggleFavorite() {
+        viewModelScope.launch { favoritesRepository.toggleConnection(favoriteConnection) }
+    }
 
     private val _uiState = MutableStateFlow<ResultsUiState>(ResultsUiState.Loading)
     val uiState: StateFlow<ResultsUiState> = _uiState

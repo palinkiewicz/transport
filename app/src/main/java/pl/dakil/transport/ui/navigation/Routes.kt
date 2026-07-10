@@ -8,6 +8,13 @@ object MapRoute
 @Serializable
 object SearchRoute
 
+@Serializable
+object FavouritesRoute
+
+/** Full-screen location search filling the Search screen's start (`isFrom`) or destination field. */
+@Serializable
+data class LocationPickerRoute(val isFrom: Boolean)
+
 /** Groups [ResultsRoute] and [ItineraryRoute] so they can share a [pl.dakil.transport.ui.results.ResultsViewModel]. */
 @Serializable
 object ResultsGraph

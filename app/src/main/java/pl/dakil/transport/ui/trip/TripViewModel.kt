@@ -8,9 +8,14 @@ import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.repo.TimetableRepository
+import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.results.REFRESH_INTERVAL_SECONDS
@@ -56,6 +61,7 @@ fun Journey.toTripStops(): List<TripStop> = buildList {
 class TripViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val timetableRepository: TimetableRepository,
+    private val favoritesRepository: FavoritesRepository,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle["tripId"]!!
@@ -63,6 +69,22 @@ class TripViewModel @Inject constructor(
     val headsign: String? = savedStateHandle["headsign"]
     val mode: TransportMode = TransportMode.fromApiValue(savedStateHandle["modeName"])
     val routeColor: String? = savedStateHandle["routeColor"]
+
+    private val favoriteLine = FavoriteLine(
+        label = lineLabel,
+        headsign = headsign,
+        mode = mode,
+        routeColor = routeColor,
+        tripId = tripId,
+    )
+
+    val isFavorite: StateFlow<Boolean> = favoritesRepository.favorites
+        .map { it.containsLine(favoriteLine) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    fun toggleFavorite() {
+        viewModelScope.launch { favoritesRepository.toggleLine(favoriteLine) }
+    }
 
     private val _uiState = MutableStateFlow<TripUiState>(TripUiState.Loading)
     val uiState: StateFlow<TripUiState> = _uiState
