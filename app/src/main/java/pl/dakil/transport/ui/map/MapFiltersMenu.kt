@@ -40,7 +40,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.TransitFilterCategory
-import pl.dakil.transport.domain.model.VehicleDataFilter
+import pl.dakil.transport.domain.model.VehicleSource
 
 /**
  * Power-user map layer filter: a compact button that expands into a dense panel with
@@ -122,10 +122,9 @@ private fun FiltersPanel(
                 onSelectedChange = { categories -> onUpdate { it.copy(vehicleCategories = categories) } },
                 modifier = Modifier.padding(top = 8.dp),
             ) {
-                VehicleDataToggle(
-                    value = filters.vehicleData,
-                    enabled = filters.vehicleCategories.isNotEmpty(),
-                    onSelect = { data -> onUpdate { it.copy(vehicleData = data) } },
+                VehicleSourcesToggle(
+                    selected = filters.vehicleSources,
+                    onSelectedChange = { sources -> onUpdate { it.copy(vehicleSources = sources) } },
                 )
             }
         }
@@ -192,30 +191,32 @@ private fun FilterSection(
     }
 }
 
+/** Multi-select Live/Timetable toggle; at least one source always stays selected. */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-private fun VehicleDataToggle(
-    value: VehicleDataFilter,
-    enabled: Boolean,
-    onSelect: (VehicleDataFilter) -> Unit,
+private fun VehicleSourcesToggle(
+    selected: Set<VehicleSource>,
+    onSelectedChange: (Set<VehicleSource>) -> Unit,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
     ) {
-        VehicleDataFilter.entries.forEachIndexed { index, option ->
+        VehicleSource.entries.forEachIndexed { index, option ->
             ToggleButton(
-                checked = value == option,
-                onCheckedChange = { if (it) onSelect(option) },
-                enabled = enabled,
-                shapes = when (index) {
-                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    VehicleDataFilter.entries.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
+                checked = option in selected,
+                onCheckedChange = { on ->
+                    val updated = if (on) selected + option else selected - option
+                    if (updated.isNotEmpty()) onSelectedChange(updated)
+                },
+                shapes = if (index == 0) {
+                    ButtonGroupDefaults.connectedLeadingButtonShapes()
+                } else {
+                    ButtonGroupDefaults.connectedTrailingButtonShapes()
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .semantics { role = Role.RadioButton },
+                    .semantics { role = Role.Checkbox },
             ) {
                 Text(option.label)
             }

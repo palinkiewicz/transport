@@ -102,6 +102,7 @@ fun TripSegmentDto.toDomain(polylinePrecision: Int): VehicleSegment {
     val label = trips.firstOrNull()?.let { it.displayName ?: it.routeShortName } ?: mode
     return VehicleSegment(
         tripKey = trips.firstOrNull()?.tripId ?: "$label/${to.name}",
+        tripId = trips.firstOrNull()?.tripId,
         label = label,
         headsign = to.name,
         mode = TransportMode.fromApiValue(mode),

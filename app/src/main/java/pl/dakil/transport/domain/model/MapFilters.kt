@@ -2,10 +2,9 @@ package pl.dakil.transport.domain.model
 
 import kotlinx.serialization.Serializable
 
-/** Which vehicles to show by data source: everything, live-tracked only, or schedule-only. */
+/** Data source of a vehicle position: live-tracked or computed from the schedule. */
 @Serializable
-enum class VehicleDataFilter(val label: String) {
-    ALL("All"),
+enum class VehicleSource(val label: String) {
     LIVE("Live"),
     TIMETABLE("Timetable"),
 }
@@ -20,7 +19,8 @@ data class MapFilters(
     val stopCategories: Set<TransitFilterCategory> = TransitFilterCategory.entries.toSet(),
     /** Vehicle markers to show; empty (the default) disables vehicles entirely. */
     val vehicleCategories: Set<TransitFilterCategory> = emptySet(),
-    val vehicleData: VehicleDataFilter = VehicleDataFilter.ALL,
+    /** Which data sources of vehicles to show; never empty (enforced by the UI). */
+    val vehicleSources: Set<VehicleSource> = VehicleSource.entries.toSet(),
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 
@@ -34,11 +34,8 @@ data class MapFilters(
     fun matchesVehicle(vehicle: VehicleSegment): Boolean {
         val category = TransitFilterCategory.of(vehicle.mode) ?: TransitFilterCategory.OTHER
         if (category !in vehicleCategories) return false
-        return when (vehicleData) {
-            VehicleDataFilter.ALL -> true
-            VehicleDataFilter.LIVE -> vehicle.realTime
-            VehicleDataFilter.TIMETABLE -> !vehicle.realTime
-        }
+        val source = if (vehicle.realTime) VehicleSource.LIVE else VehicleSource.TIMETABLE
+        return source in vehicleSources
     }
 
     companion object {

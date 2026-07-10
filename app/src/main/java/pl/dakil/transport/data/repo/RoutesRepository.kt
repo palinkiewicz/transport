@@ -13,9 +13,11 @@ import pl.dakil.transport.data.remote.decode
 import pl.dakil.transport.data.remote.dto.ItineraryDto
 import pl.dakil.transport.data.remote.dto.StopTimeDto
 import pl.dakil.transport.data.remote.dto.StopTimesResponseDto
+import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.TripDetails
 
 /** How many upcoming departures to sample when discovering which lines serve a stop. */
 private const val DEPARTURES_SAMPLE_SIZE = 48
@@ -59,14 +61,43 @@ class RoutesRepository @Inject constructor(
         }
     }
 
+    /**
+     * Geometry plus amenity/accessibility attributes of one vehicle run, for the map's
+     * vehicle info panel. Attributes come from the trip's first transit leg.
+     */
+    suspend fun tripDetails(tripId: String, lineLabel: String): Result<TripDetails> = runCatching {
+        val body = api.trip(tripId = tripId)
+        val itinerary = json.decode<ItineraryDto>(body)
+        val leg = itinerary.legs.firstOrNull { it.tripShortName != null || it.routeShortName != null || it.headsign != null }
+            ?: itinerary.legs.firstOrNull()
+        val segments = itinerary.shapeSegments()
+        TripDetails(
+            headsign = leg?.headsign,
+            agencyName = leg?.agencyName,
+            routeLongName = leg?.routeLongName,
+            wheelchairAccessible = when (leg?.wheelchairAccessible) {
+                "ACCESSIBLE" -> true
+                "NOT_ACCESSIBLE" -> false
+                else -> null
+            },
+            bikesAllowed = leg?.bikesAllowed,
+            shape = if (segments.isEmpty()) {
+                null
+            } else {
+                RouteShape(
+                    lineLabel = lineLabel,
+                    headsign = leg?.headsign,
+                    mode = TransportMode.fromApiValue(leg?.mode),
+                    routeColor = leg?.routeColor?.takeIf { it.isNotBlank() },
+                    segments = segments,
+                )
+            },
+        )
+    }
+
     private suspend fun tripShape(stopTime: StopTimeDto): RouteShape? {
         val body = api.trip(tripId = requireNotNull(stopTime.tripId))
-        val segments = json.decode<ItineraryDto>(body).legs
-            .mapNotNull { leg ->
-                leg.legGeometry
-                    ?.let { decodePolyline(it.points, it.precision ?: DEFAULT_POLYLINE_PRECISION) }
-                    ?.takeIf { it.size >= 2 }
-            }
+        val segments = json.decode<ItineraryDto>(body).shapeSegments()
         if (segments.isEmpty()) return null
         return RouteShape(
             lineLabel = stopTime.lineLabel(),
@@ -76,6 +107,13 @@ class RoutesRepository @Inject constructor(
             segments = segments,
         )
     }
+
+    private fun ItineraryDto.shapeSegments(): List<List<GeoPoint>> = legs
+        .mapNotNull { leg ->
+            leg.legGeometry
+                ?.let { decodePolyline(it.points, it.precision ?: DEFAULT_POLYLINE_PRECISION) }
+                ?.takeIf { it.size >= 2 }
+        }
 
     private fun StopTimeDto.lineLabel(): String =
         routeShortName ?: displayName ?: tripShortName ?: headsign ?: mode

@@ -13,6 +13,8 @@ import kotlin.math.sqrt
 data class VehicleSegment(
     /** Groups segments belonging to one vehicle; falls back to the label when the id is absent. */
     val tripKey: String,
+    /** Trip id for detail lookups (trip endpoint); null when the API omits it. */
+    val tripId: String?,
     /** Line label to show next to the marker, e.g. "S1" or "Bus 175". */
     val label: String,
     /** Destination of the trip, from the segment's arrival place. */

@@ -45,6 +45,7 @@ fun AppNavHost() {
             composable<MapRoute> {
                 MapScreen(
                     onOpenTimetable = { route -> navController.navigate(route) },
+                    onOpenTrip = { route -> navController.navigate(route) },
                     onNavigateToSearch = {
                         navController.navigate(SearchRoute) {
                             popUpTo(MapRoute) { saveState = true }

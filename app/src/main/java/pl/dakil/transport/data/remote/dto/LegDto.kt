@@ -37,4 +37,7 @@ data class LegDto(
     val cancelled: Boolean? = null,
     val intermediateStops: List<PlaceDto>? = null,
     val legGeometry: EncodedPolylineDto? = null,
+    val bikesAllowed: Boolean? = null,
+    /** MOTIS `WheelchairAccessibility`: `ACCESSIBLE` / `NOT_ACCESSIBLE`; absent = unknown. */
+    val wheelchairAccessible: String? = null,
 )

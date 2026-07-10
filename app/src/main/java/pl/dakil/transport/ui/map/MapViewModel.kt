@@ -32,6 +32,7 @@ import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.TripDetails
 import pl.dakil.transport.domain.model.VehicleSegment
 import pl.dakil.transport.ui.search.SearchStateHolder
 
@@ -46,6 +47,8 @@ data class Viewport(
 /** One vehicle's marker on the map: its interpolated position at a moment in time. */
 data class VehicleMarker(
     val id: String,
+    /** Trip id for the details fetch and the trip timetable screen; null when the API omits it. */
+    val tripId: String?,
     val label: String,
     val headsign: String?,
     val mode: TransportMode,
@@ -54,6 +57,14 @@ data class VehicleMarker(
     val realTime: Boolean,
     val position: GeoPoint,
 )
+
+/** State of the selected vehicle's trip details (info panel attributes + route overlay). */
+sealed interface VehicleDetailsUiState {
+    data object Hidden : VehicleDetailsUiState
+    data object Loading : VehicleDetailsUiState
+    data class Shown(val details: TripDetails) : VehicleDetailsUiState
+    data class Error(val message: String) : VehicleDetailsUiState
+}
 
 /** State of the "Show routes" overlay for the currently selected stop. */
 sealed interface StopRoutesUiState {
@@ -178,6 +189,22 @@ class MapViewModel @Inject constructor(
     private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
     val selectedStop: StateFlow<TransitLocation?> = _selectedStop
 
+    private val selectedVehicleId = MutableStateFlow<String?>(null)
+
+    /**
+     * Marker of the selected vehicle, tracking its live position; becomes null (closing the
+     * panel) when the vehicle leaves the viewport, finishes its run, or is filtered away.
+     */
+    val selectedVehicle: StateFlow<VehicleMarker?> =
+        combine(vehicles, selectedVehicleId) { markers, id ->
+            id?.let { markers.firstOrNull { marker -> marker.id == it } }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    private val _vehicleDetails = MutableStateFlow<VehicleDetailsUiState>(VehicleDetailsUiState.Hidden)
+    val vehicleDetails: StateFlow<VehicleDetailsUiState> = _vehicleDetails
+
+    private var vehicleDetailsJob: Job? = null
+
     private val _stopRoutes = MutableStateFlow<StopRoutesUiState>(StopRoutesUiState.Hidden)
     val stopRoutes: StateFlow<StopRoutesUiState> = _stopRoutes
 
@@ -189,6 +216,7 @@ class MapViewModel @Inject constructor(
     }
 
     fun selectStop(stop: TransitLocation) {
+        clearVehicleSelection()
         if (_selectedStop.value != stop) hideRoutes()
         _selectedStop.value = stop
     }
@@ -196,6 +224,37 @@ class MapViewModel @Inject constructor(
     fun clearSelection() {
         _selectedStop.value = null
         hideRoutes()
+        clearVehicleSelection()
+    }
+
+    /** Selects a vehicle and starts loading its details + route overlay (shown while selected). */
+    fun selectVehicle(vehicle: VehicleMarker) {
+        _selectedStop.value = null
+        hideRoutes()
+        if (selectedVehicleId.value == vehicle.id) return
+        selectedVehicleId.value = vehicle.id
+        vehicleDetailsJob?.cancel()
+        val tripId = vehicle.tripId
+        if (tripId == null) {
+            // No trip id — the panel can still show marker-level info, just no details/route.
+            _vehicleDetails.value = VehicleDetailsUiState.Hidden
+            return
+        }
+        _vehicleDetails.value = VehicleDetailsUiState.Loading
+        vehicleDetailsJob = viewModelScope.launch {
+            routesRepository.tripDetails(tripId, vehicle.label).fold(
+                onSuccess = { _vehicleDetails.value = VehicleDetailsUiState.Shown(it) },
+                onFailure = { error ->
+                    _vehicleDetails.value = VehicleDetailsUiState.Error(error.message ?: "Something went wrong")
+                },
+            )
+        }
+    }
+
+    fun clearVehicleSelection() {
+        vehicleDetailsJob?.cancel()
+        selectedVehicleId.value = null
+        _vehicleDetails.value = VehicleDetailsUiState.Hidden
     }
 
     fun showRoutes() {
@@ -240,6 +299,7 @@ private fun markersAt(segments: List<VehicleSegment>, time: OffsetDateTime): Lis
         val position = current.positionAt(time) ?: return@mapNotNull null
         VehicleMarker(
             id = tripKey,
+            tripId = current.tripId,
             label = current.label,
             headsign = current.headsign,
             mode = current.mode,

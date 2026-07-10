@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Accessible
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -38,8 +39,11 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.NotAccessible
+import androidx.compose.material.icons.filled.PedalBike
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
@@ -123,8 +127,11 @@ import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import androidx.compose.ui.text.style.TextOverflow
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.navigation.DeparturesRoute
+import pl.dakil.transport.ui.navigation.TripRoute
 
 /**
  * "#RRGGBB" hex string for the mode's marker color, as consumed by [convertToColor].
@@ -194,6 +201,7 @@ private fun stopKey(location: TransitLocation): String = location.stopId ?: "${l
 @Composable
 fun MapScreen(
     onOpenTimetable: (DeparturesRoute) -> Unit,
+    onOpenTrip: (TripRoute) -> Unit,
     onNavigateToSearch: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
 ) {
@@ -204,6 +212,8 @@ fun MapScreen(
     val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
+    val selectedVehicle by viewModel.selectedVehicle.collectAsStateWithLifecycle()
+    val vehicleDetails by viewModel.vehicleDetails.collectAsStateWithLifecycle()
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -238,7 +248,9 @@ fun MapScreen(
     // The map click callback below is captured once by MaplibreMap and never refreshed, so it
     // must read current data through State objects rather than capture the values directly.
     val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy(::stopKey) })
+    val vehiclesById by rememberUpdatedState(remember(vehicles) { vehicles.associateBy { it.id } })
     val currentSelectedStop by rememberUpdatedState(selectedStop)
+    val currentSelectedVehicle by rememberUpdatedState(selectedVehicle)
 
     LaunchedEffect(cameraState) {
         snapshotFlow { cameraState.isCameraMoving }
@@ -284,43 +296,47 @@ fun MapScreen(
             options = MapOptions(ornamentOptions = OrnamentOptions.AllDisabled),
             onMapClick = { _, clickOffset ->
                 val projection = cameraState.projection
-                val stop = if (projection != null) {
+                if (projection == null) {
+                    ClickResult.Pass
+                } else {
                     val hitRect = DpRect(
                         left = clickOffset.x - STOP_TAP_TARGET_RADIUS,
                         top = clickOffset.y - STOP_TAP_TARGET_RADIUS,
                         right = clickOffset.x + STOP_TAP_TARGET_RADIUS,
                         bottom = clickOffset.y + STOP_TAP_TARGET_RADIUS,
                     )
-                    val candidates = projection.queryRenderedFeatures(
-                        rect = hitRect,
-                        layerIds = setOf("transport-stops"),
-                    )
-                    val nearestId = candidates.minByOrNull { candidate ->
-                        val position = (candidate.geometry as? Point)?.coordinates
-                        val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
-                        if (candidateOffset != null) {
-                            val dx = (candidateOffset.x - clickOffset.x).value
-                            val dy = (candidateOffset.y - clickOffset.y).value
-                            dx * dx + dy * dy
-                        } else {
-                            Float.MAX_VALUE
+                    fun nearestFeatureId(layerId: String): String? = projection
+                        .queryRenderedFeatures(rect = hitRect, layerIds = setOf(layerId))
+                        .minByOrNull { candidate ->
+                            val position = (candidate.geometry as? Point)?.coordinates
+                            val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
+                            if (candidateOffset != null) {
+                                val dx = (candidateOffset.x - clickOffset.x).value
+                                val dy = (candidateOffset.y - clickOffset.y).value
+                                dx * dx + dy * dy
+                            } else {
+                                Float.MAX_VALUE
+                            }
+                        }?.id?.content
+                    // Vehicles render above stops, so they win the tap too.
+                    val vehicle = nearestFeatureId("transport-vehicles")?.let { vehiclesById[it] }
+                    val stop = if (vehicle == null) nearestFeatureId("transport-stops")?.let { stopsById[it] } else null
+                    when {
+                        vehicle != null -> {
+                            viewModel.selectVehicle(vehicle)
+                            ClickResult.Consume
                         }
-                    }?.id?.content
-                    nearestId?.let { stopsById[it] }
-                } else {
-                    null
-                }
-                when {
-                    stop != null -> {
-                        viewModel.selectStop(stop)
-                        ClickResult.Consume
+                        stop != null -> {
+                            viewModel.selectStop(stop)
+                            ClickResult.Consume
+                        }
+                        // Tapping empty map dismisses whichever info panel is open.
+                        currentSelectedStop != null || currentSelectedVehicle != null -> {
+                            viewModel.clearSelection()
+                            ClickResult.Consume
+                        }
+                        else -> ClickResult.Pass
                     }
-                    // Tapping empty map dismisses the open stop panel.
-                    currentSelectedStop != null -> {
-                        viewModel.clearSelection()
-                        ClickResult.Consume
-                    }
-                    else -> ClickResult.Pass
                 }
             },
         ) {
@@ -346,7 +362,15 @@ fun MapScreen(
                 )
             }
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
-            val routeShapes = (stopRoutes as? StopRoutesUiState.Shown)?.routes ?: emptyList()
+            // The selected vehicle's route joins the stop's "Show routes" overlay for as long
+            // as the vehicle stays selected.
+            val vehicleRouteShape = if (selectedVehicle != null) {
+                (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape
+            } else {
+                null
+            }
+            val routeShapes = ((stopRoutes as? StopRoutesUiState.Shown)?.routes ?: emptyList()) +
+                listOfNotNull(vehicleRouteShape)
             val routeFeatures = remember(routeShapes) {
                 FeatureCollection(
                     routeShapes.flatMap { route ->
@@ -364,7 +388,7 @@ fun MapScreen(
                 )
             }
             val routesSource = rememberGeoJsonSource(data = GeoJsonData.Features(routeFeatures))
-            val selectedFeatures = remember(selectedStop) {
+            val selectedFeatures = remember(selectedStop, selectedVehicle) {
                 FeatureCollection(
                     listOfNotNull(
                         selectedStop?.let { stop ->
@@ -372,6 +396,17 @@ fun MapScreen(
                                 geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
                                 properties = JsonObject(
                                     mapOf("color" to JsonPrimitive(stop.markerColorHex())),
+                                ),
+                            )
+                        },
+                        // The vehicle halo follows the marker's interpolated position.
+                        selectedVehicle?.let { vehicle ->
+                            Feature<Point, JsonObject?>(
+                                geometry = Point(
+                                    Position(latitude = vehicle.position.lat, longitude = vehicle.position.lon),
+                                ),
+                                properties = JsonObject(
+                                    mapOf("color" to JsonPrimitive(vehicle.markerColorHex())),
                                 ),
                             )
                         },
@@ -667,6 +702,182 @@ fun MapScreen(
                     )
                 }
             }
+
+            // Same animate-out pattern for the vehicle panel.
+            var displayedVehicle by remember { mutableStateOf<VehicleMarker?>(null) }
+            selectedVehicle?.let { displayedVehicle = it }
+            AnimatedVisibility(
+                visible = selectedVehicle != null,
+                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            ) {
+                displayedVehicle?.let { vehicle ->
+                    VehicleInfoPanel(
+                        vehicle = vehicle,
+                        detailsState = vehicleDetails,
+                        onClose = { viewModel.clearVehicleSelection() },
+                        onOpenTrip = vehicle.tripId?.let { tripId ->
+                            {
+                                viewModel.clearVehicleSelection()
+                                onOpenTrip(
+                                    TripRoute(
+                                        tripId = tripId,
+                                        lineLabel = vehicle.label,
+                                        headsign = vehicle.headsign,
+                                        modeName = vehicle.mode.name,
+                                        routeColor = vehicle.routeColor,
+                                    ),
+                                )
+                            }
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Inline info panel for a tapped vehicle, mirroring [StopInfoPanel]. Shows the trip's
+ * attributes as they load ([detailsState]) and opens the full trip timetable.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun VehicleInfoPanel(
+    vehicle: VehicleMarker,
+    detailsState: VehicleDetailsUiState,
+    onClose: () -> Unit,
+    onOpenTrip: (() -> Unit)?,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+    ) {
+        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Same colored-circle look as the vehicle's marker on the map.
+                Box(
+                    modifier = Modifier
+                        .padding(end = 12.dp)
+                        .size(36.dp)
+                        .background(
+                            parseRouteColor(vehicle.routeColor, markerColor(vehicle.mode)),
+                            CircleShape,
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = vehicle.mode.icon,
+                        contentDescription = vehicle.mode.label,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp),
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = vehicle.headsign?.let { "${vehicle.label} → $it" } ?: vehicle.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val details = (detailsState as? VehicleDetailsUiState.Shown)?.details
+                    Text(
+                        text = listOfNotNull(
+                            vehicle.mode.label,
+                            details?.agencyName ?: details?.routeLongName,
+                        ).joinToString(" · "),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                IconButton(onClick = onClose) {
+                    Icon(Icons.Default.Close, contentDescription = "Close")
+                }
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
+            ) {
+                if (vehicle.realTime) {
+                    VehicleAttributeChip(Icons.Default.Sensors, "Live", Color(0xFF2E7D32))
+                } else {
+                    VehicleAttributeChip(Icons.Default.Schedule, "Scheduled")
+                }
+                when (val state = detailsState) {
+                    is VehicleDetailsUiState.Shown -> {
+                        state.details.wheelchairAccessible?.let { accessible ->
+                            if (accessible) {
+                                VehicleAttributeChip(Icons.Default.Accessible, "Wheelchair")
+                            } else {
+                                VehicleAttributeChip(Icons.Default.NotAccessible, "No wheelchair")
+                            }
+                        }
+                        state.details.bikesAllowed?.let { allowed ->
+                            if (allowed) {
+                                VehicleAttributeChip(Icons.Default.PedalBike, "Bikes")
+                            } else {
+                                VehicleAttributeChip(Icons.Default.PedalBike, "No bikes")
+                            }
+                        }
+                    }
+                    is VehicleDetailsUiState.Loading -> CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                    is VehicleDetailsUiState.Error -> Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    else -> {}
+                }
+            }
+
+            if (onOpenTrip != null) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 4.dp, end = 8.dp),
+                ) {
+                    PanelActionButton("Trip timetable", Icons.Default.Schedule, onOpenTrip)
+                }
+            }
+        }
+    }
+}
+
+/** Small icon+label pill for one vehicle attribute (live status, wheelchair, bikes). */
+@Composable
+private fun VehicleAttributeChip(
+    icon: ImageVector,
+    label: String,
+    tint: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = tint,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = tint,
+            )
         }
     }
 }
