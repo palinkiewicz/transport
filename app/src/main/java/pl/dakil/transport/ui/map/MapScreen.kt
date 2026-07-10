@@ -41,7 +41,6 @@ import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.NotAccessible
 import androidx.compose.material.icons.filled.PedalBike
-import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Subway
@@ -362,8 +361,8 @@ fun MapScreen(
                 )
             }
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
-            // The selected vehicle's route joins the stop's "Show routes" overlay for as long
-            // as the vehicle stays selected.
+            // The selected vehicle's route joins the selected stop's routes overlay for as
+            // long as the vehicle stays selected.
             val vehicleRouteShape = if (selectedVehicle != null) {
                 (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape
             } else {
@@ -670,12 +669,6 @@ fun MapScreen(
                     StopInfoPanel(
                         stop = stop,
                         routesState = stopRoutes,
-                        onToggleRoutes = {
-                            when (stopRoutes) {
-                                is StopRoutesUiState.Shown, StopRoutesUiState.Loading -> viewModel.hideRoutes()
-                                else -> viewModel.showRoutes()
-                            }
-                        },
                         onClose = { viewModel.clearSelection() },
                         onOpenTimetable = {
                             viewModel.clearSelection()
@@ -891,7 +884,6 @@ private fun VehicleAttributeChip(
 private fun StopInfoPanel(
     stop: TransitLocation,
     routesState: StopRoutesUiState,
-    onToggleRoutes: () -> Unit,
     onClose: () -> Unit,
     onOpenTimetable: () -> Unit,
     onBeginHere: () -> Unit,
@@ -938,7 +930,15 @@ private fun StopInfoPanel(
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }
             }
+            // Line chips + route overlay load automatically on selection; the spinner covers
+            // the brief fetch window.
             when (routesState) {
+                is StopRoutesUiState.Loading -> CircularProgressIndicator(
+                    modifier = Modifier
+                        .padding(top = 4.dp, bottom = 4.dp)
+                        .size(20.dp),
+                    strokeWidth = 2.dp,
+                )
                 is StopRoutesUiState.Shown -> FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -960,22 +960,6 @@ private fun StopInfoPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 4.dp, end = 8.dp),
             ) {
-                FilledTonalButton(onClick = onToggleRoutes) {
-                    if (routesState is StopRoutesUiState.Loading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(ButtonDefaults.IconSize),
-                            strokeWidth = 2.dp,
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.Route,
-                            contentDescription = null,
-                            modifier = Modifier.size(ButtonDefaults.IconSize),
-                        )
-                    }
-                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-                    Text(if (routesState is StopRoutesUiState.Shown) "Hide routes" else "Show routes")
-                }
                 PanelActionButton("Timetable", Icons.Default.Schedule, onOpenTimetable)
                 PanelActionButton("Begin here", Icons.Default.NearMe, onBeginHere)
                 PanelActionButton("Finish here", Icons.Default.Flag, onFinishHere)

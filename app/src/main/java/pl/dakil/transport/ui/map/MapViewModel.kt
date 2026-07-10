@@ -66,7 +66,7 @@ sealed interface VehicleDetailsUiState {
     data class Error(val message: String) : VehicleDetailsUiState
 }
 
-/** State of the "Show routes" overlay for the currently selected stop. */
+/** State of the routes overlay + line chips loaded for the currently selected stop. */
 sealed interface StopRoutesUiState {
     data object Hidden : StopRoutesUiState
     data object Loading : StopRoutesUiState
@@ -189,16 +189,34 @@ class MapViewModel @Inject constructor(
     private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
     val selectedStop: StateFlow<TransitLocation?> = _selectedStop
 
-    private val selectedVehicleId = MutableStateFlow<String?>(null)
+    // The selected vehicle's trip segments, snapshotted at selection time so the selection
+    // survives the viewport-gated fetch dropping the trip (zooming out, panning away) — the
+    // same persistence the selected stop gets by being held as plain state above.
+    private val selectedVehicleSegments = MutableStateFlow<List<VehicleSegment>?>(null)
 
     /**
-     * Marker of the selected vehicle, tracking its live position; becomes null (closing the
-     * panel) when the vehicle leaves the viewport, finishes its run, or is filtered away.
+     * Marker of the selected vehicle, tracking its live position independently of the
+     * viewport fetches (refreshed from them whenever they still cover the trip); becomes
+     * null (closing the panel) when the vehicle finishes its run or is deselected.
      */
     val selectedVehicle: StateFlow<VehicleMarker?> =
-        combine(vehicles, selectedVehicleId) { markers, id ->
-            id?.let { markers.firstOrNull { marker -> marker.id == it } }
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+        combine(selectedVehicleSegments, vehicleSegments) { selected, fetched ->
+            val tripKey = selected?.firstOrNull()?.tripKey
+            if (tripKey == null) null else fetched.filter { it.tripKey == tripKey }.ifEmpty { selected }
+        }
+            .flatMapLatest { segments ->
+                if (segments == null) {
+                    flowOf<VehicleMarker?>(null)
+                } else {
+                    flow {
+                        while (true) {
+                            emit(markersAt(segments, OffsetDateTime.now()).firstOrNull())
+                            delay(VEHICLES_INTERPOLATE_MS)
+                        }
+                    }
+                }
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private val _vehicleDetails = MutableStateFlow<VehicleDetailsUiState>(VehicleDetailsUiState.Hidden)
     val vehicleDetails: StateFlow<VehicleDetailsUiState> = _vehicleDetails
@@ -217,8 +235,9 @@ class MapViewModel @Inject constructor(
 
     fun selectStop(stop: TransitLocation) {
         clearVehicleSelection()
-        if (_selectedStop.value != stop) hideRoutes()
+        if (_selectedStop.value == stop) return
         _selectedStop.value = stop
+        loadRoutes(stop)
     }
 
     fun clearSelection() {
@@ -231,8 +250,8 @@ class MapViewModel @Inject constructor(
     fun selectVehicle(vehicle: VehicleMarker) {
         _selectedStop.value = null
         hideRoutes()
-        if (selectedVehicleId.value == vehicle.id) return
-        selectedVehicleId.value = vehicle.id
+        if (selectedVehicleSegments.value?.firstOrNull()?.tripKey == vehicle.id) return
+        selectedVehicleSegments.value = vehicleSegments.value.filter { it.tripKey == vehicle.id }
         vehicleDetailsJob?.cancel()
         val tripId = vehicle.tripId
         if (tripId == null) {
@@ -253,12 +272,11 @@ class MapViewModel @Inject constructor(
 
     fun clearVehicleSelection() {
         vehicleDetailsJob?.cancel()
-        selectedVehicleId.value = null
+        selectedVehicleSegments.value = null
         _vehicleDetails.value = VehicleDetailsUiState.Hidden
     }
 
-    fun showRoutes() {
-        val stop = _selectedStop.value ?: return
+    private fun loadRoutes(stop: TransitLocation) {
         routesJob?.cancel()
         _stopRoutes.value = StopRoutesUiState.Loading
         routesJob = viewModelScope.launch {
@@ -277,7 +295,7 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun hideRoutes() {
+    private fun hideRoutes() {
         routesJob?.cancel()
         _stopRoutes.value = StopRoutesUiState.Hidden
     }
