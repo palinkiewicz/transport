@@ -187,7 +187,6 @@ private fun FavoriteConnection.toResultsRoute(): ResultsRoute = ResultsRoute(
     toLat = to.lat,
     toLon = to.lon,
     toStopId = to.stopId,
-    maxTransfers = null,
     timeIso = null,
 )
 

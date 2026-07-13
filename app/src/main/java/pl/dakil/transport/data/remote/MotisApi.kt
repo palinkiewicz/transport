@@ -17,12 +17,48 @@ interface MotisApi {
         @Query("numResults") numResults: Int? = null,
     ): ResponseBody
 
+    // Array params (transitModes etc.) are passed pre-joined as "A,B,C" — the MOTIS spec
+    // declares them `explode: false`, so a repeated-@Query list would be the wrong encoding.
     @GET("v6/plan")
     suspend fun plan(
         @Query("fromPlace") fromPlace: String,
         @Query("toPlace") toPlace: String,
         @Query("time") time: String? = null,
+        @Query("arriveBy") arriveBy: Boolean? = null,
         @Query("maxTransfers") maxTransfers: Int? = null,
+        @Query("transitModes") transitModes: String? = null,
+        @Query("minTransferTime") minTransferTime: Int? = null,
+        @Query("additionalTransferTime") additionalTransferTime: Int? = null,
+        @Query("transferTimeFactor") transferTimeFactor: Double? = null,
+        @Query("maxTravelTime") maxTravelTime: Int? = null,
+        @Query("useRoutedTransfers") useRoutedTransfers: Boolean? = null,
+        @Query("pedestrianProfile") pedestrianProfile: String? = null,
+        @Query("pedestrianSpeed") pedestrianSpeed: Double? = null,
+        @Query("cyclingSpeed") cyclingSpeed: Double? = null,
+        @Query("elevationCosts") elevationCosts: String? = null,
+        @Query("requireBikeTransport") requireBikeTransport: Boolean? = null,
+        @Query("requireCarTransport") requireCarTransport: Boolean? = null,
+        @Query("directModes") directModes: String? = null,
+        @Query("preTransitModes") preTransitModes: String? = null,
+        @Query("postTransitModes") postTransitModes: String? = null,
+        @Query("maxDirectTime") maxDirectTime: Int? = null,
+        @Query("maxPreTransitTime") maxPreTransitTime: Int? = null,
+        @Query("maxPostTransitTime") maxPostTransitTime: Int? = null,
+        @Query("directRentalFormFactors") directRentalFormFactors: String? = null,
+        @Query("preTransitRentalFormFactors") preTransitRentalFormFactors: String? = null,
+        @Query("postTransitRentalFormFactors") postTransitRentalFormFactors: String? = null,
+        @Query("directRentalPropulsionTypes") directRentalPropulsionTypes: String? = null,
+        @Query("preTransitRentalPropulsionTypes") preTransitRentalPropulsionTypes: String? = null,
+        @Query("postTransitRentalPropulsionTypes") postTransitRentalPropulsionTypes: String? = null,
+        @Query("ignoreDirectRentalReturnConstraints") ignoreDirectRentalReturnConstraints: Boolean? = null,
+        @Query("ignorePreTransitRentalReturnConstraints") ignorePreTransitRentalReturnConstraints: Boolean? = null,
+        @Query("ignorePostTransitRentalReturnConstraints") ignorePostTransitRentalReturnConstraints: Boolean? = null,
+        @Query("searchWindow") searchWindow: Int? = null,
+        @Query("numItineraries") numItineraries: Int? = null,
+        @Query("slowDirect") slowDirect: Boolean? = null,
+        @Query("fastestDirectFactor") fastestDirectFactor: Double? = null,
+        @Query("passengers") passengers: Int? = null,
+        @Query("luggage") luggage: Int? = null,
         @Query("pageCursor") pageCursor: String? = null,
     ): ResponseBody
 
@@ -33,6 +69,7 @@ interface MotisApi {
         @Query("radius") radius: Int? = null,
         @Query("time") time: String? = null,
         @Query("arriveBy") arriveBy: Boolean? = null,
+        @Query("mode") mode: String? = null,
         @Query("n") n: Int? = null,
         @Query("pageCursor") pageCursor: String? = null,
     ): ResponseBody

@@ -11,14 +11,17 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.data.repo.PlanRepository
 import pl.dakil.transport.data.repo.PlanResult
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.ResultsRoute
 
@@ -35,6 +38,7 @@ class ResultsViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val planRepository: PlanRepository,
     private val favoritesRepository: FavoritesRepository,
+    private val searchOptionsRepository: SearchOptionsRepository,
 ) : ViewModel() {
 
     private val route = ResultsRoute(
@@ -46,9 +50,14 @@ class ResultsViewModel @Inject constructor(
         toLat = savedStateHandle["toLat"]!!,
         toLon = savedStateHandle["toLon"]!!,
         toStopId = savedStateHandle["toStopId"],
-        maxTransfers = savedStateHandle["maxTransfers"],
         timeIso = savedStateHandle["timeIso"],
     )
+
+    /**
+     * Options are read once from prefs and frozen for this results session, so the 30s
+     * refresh loop and paging always query with the parameters the search was started with.
+     */
+    private lateinit var options: SearchOptions
 
     private val from = TransitLocation(route.fromName, route.fromLat, route.fromLon, route.fromStopId)
     private val to = TransitLocation(route.toName, route.toLat, route.toLon, route.toStopId)
@@ -86,6 +95,7 @@ class ResultsViewModel @Inject constructor(
         refreshJob?.cancel()
         if (showLoading) _uiState.value = ResultsUiState.Loading
         refreshJob = viewModelScope.launch {
+            if (!::options.isInitialized) options = searchOptionsRepository.options.first()
             while (true) {
                 refresh()
                 for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
@@ -111,7 +121,7 @@ class ResultsViewModel @Inject constructor(
     }
 
     private suspend fun refresh() {
-        planRepository.plan(from, to, time, route.maxTransfers, pageCursor).fold(
+        planRepository.plan(from, to, time, options, pageCursor).fold(
             onSuccess = { result -> _uiState.value = ResultsUiState.Content(result) },
             onFailure = { error ->
                 if (_uiState.value !is ResultsUiState.Content) {

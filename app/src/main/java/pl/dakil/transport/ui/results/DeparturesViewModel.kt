@@ -9,9 +9,12 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.Departure
+import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.StopDepartures
 import pl.dakil.transport.domain.model.TransitLocation
 
@@ -52,6 +55,7 @@ fun List<Departure>.groupedByPole(clickedPoleStopId: String?): List<DepartureGro
 class DeparturesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val timetableRepository: TimetableRepository,
+    private val searchOptionsRepository: SearchOptionsRepository,
 ) : ViewModel() {
 
     private val stop = TransitLocation(
@@ -73,8 +77,12 @@ class DeparturesViewModel @Inject constructor(
     private val _secondsUntilRefresh = MutableStateFlow(REFRESH_INTERVAL_SECONDS)
     val secondsUntilRefresh: StateFlow<Int> = _secondsUntilRefresh
 
+    /** Frozen for the session like [ResultsViewModel]'s options — see the note there. */
+    private lateinit var options: SearchOptions
+
     init {
         viewModelScope.launch {
+            options = searchOptionsRepository.options.first()
             while (true) {
                 refresh()
                 for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
@@ -86,7 +94,7 @@ class DeparturesViewModel @Inject constructor(
     }
 
     private suspend fun refresh() {
-        timetableRepository.departures(stop, time = time).fold(
+        timetableRepository.departures(stop, time = time, options = options).fold(
             onSuccess = { result -> _uiState.value = DeparturesUiState.Content(result) },
             onFailure = { error ->
                 if (_uiState.value !is DeparturesUiState.Content) {

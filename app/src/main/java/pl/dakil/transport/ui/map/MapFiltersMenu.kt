@@ -3,14 +3,11 @@ package pl.dakil.transport.ui.map
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -41,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.TransitFilterCategory
 import pl.dakil.transport.domain.model.VehicleSource
+import pl.dakil.transport.ui.components.MultiChoiceToggleFlow
 
 /**
  * Power-user map layer filter: a compact button that expands into a dense panel with
@@ -135,7 +133,6 @@ private fun FiltersPanel(
  * A titled group of per-category toggles with an all/none quick action, plus optional
  * [extraContent] rendered between the title row and the toggles (e.g. a sub-selector).
  */
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun FilterSection(
     title: String,
@@ -165,29 +162,13 @@ private fun FilterSection(
             it()
             Spacer(Modifier.size(8.dp))
         }
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            TransitFilterCategory.entries.forEach { category ->
-                val checked = category in selected
-                ToggleButton(
-                    checked = checked,
-                    onCheckedChange = { on ->
-                        onSelectedChange(if (on) selected + category else selected - category)
-                    },
-                    modifier = Modifier.semantics { role = Role.Checkbox },
-                ) {
-                    Icon(
-                        imageVector = category.icon,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    Text(category.label)
-                }
-            }
-        }
+        MultiChoiceToggleFlow(
+            options = TransitFilterCategory.entries,
+            selected = selected,
+            onSelectedChange = onSelectedChange,
+            label = { it.label },
+            icon = { it.icon },
+        )
     }
 }
 

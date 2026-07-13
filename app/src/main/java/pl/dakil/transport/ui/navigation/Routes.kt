@@ -29,7 +29,6 @@ data class ResultsRoute(
     val toLat: Double,
     val toLon: Double,
     val toStopId: String?,
-    val maxTransfers: Int?,
     val timeIso: String?,
 )
 

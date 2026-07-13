@@ -2,7 +2,6 @@ package pl.dakil.transport.ui.search
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,7 +32,6 @@ import androidx.compose.material.icons.filled.TripOrigin
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,7 +48,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
-import androidx.compose.material3.ToggleButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.material3.toShape
@@ -61,15 +58,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import pl.dakil.transport.ui.components.IntSliderRow
+import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.navigation.DeparturesRoute
 import pl.dakil.transport.ui.navigation.ResultsRoute
 
@@ -133,11 +129,41 @@ fun SearchScreen(
                 }
             }
 
+            // Depart-at/arrive-by for connections doubles as the departures/arrivals board
+            // switch in Departures mode — both map to the API's `arriveBy`.
+            SingleChoiceConnectedRow(
+                options = listOf(false, true),
+                selected = uiState.options.arriveBy,
+                onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },
+                label = { arriveBy ->
+                    when (uiState.mode) {
+                        SearchMode.CONNECTIONS -> if (arriveBy) "Arrive by" else "Depart at"
+                        SearchMode.DEPARTURES -> if (arriveBy) "Arrivals" else "Departures"
+                    }
+                },
+            )
+
             AnimatedVisibility(visible = uiState.mode == SearchMode.CONNECTIONS) {
-                MaxTransfersPicker(
-                    value = uiState.maxTransfers,
-                    onSelect = viewModel::setMaxTransfers,
+                IntSliderRow(
+                    title = "Max transfers",
+                    value = uiState.options.maxTransfers,
+                    onValueCommit = { transfers -> viewModel.updateOptions { it.copy(maxTransfers = transfers) } },
+                    min = 0,
+                    max = 12,
                 )
+            }
+
+            AnimatedContent(targetState = uiState.mode, label = "advanced-options") { mode ->
+                when (mode) {
+                    SearchMode.CONNECTIONS -> ConnectionsAdvancedOptions(
+                        options = uiState.options,
+                        onUpdate = viewModel::updateOptions,
+                    )
+                    SearchMode.DEPARTURES -> DeparturesAdvancedOptions(
+                        options = uiState.options,
+                        onUpdate = viewModel::updateOptions,
+                    )
+                }
             }
 
             Button(
@@ -156,7 +182,6 @@ fun SearchScreen(
                                 toLat = to.lat,
                                 toLon = to.lon,
                                 toStopId = to.stopId,
-                                maxTransfers = state.maxTransfers,
                                 timeIso = state.dateTime.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME),
                             ),
                         )
@@ -272,38 +297,15 @@ private fun SearchHeader(mode: SearchMode) {
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun ModeToggle(mode: SearchMode, onModeChange: (SearchMode) -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-    ) {
-        ToggleButton(
-            checked = mode == SearchMode.CONNECTIONS,
-            onCheckedChange = { if (it) onModeChange(SearchMode.CONNECTIONS) },
-            shapes = ButtonGroupDefaults.connectedLeadingButtonShapes(),
-            modifier = Modifier
-                .weight(1f)
-                .semantics { role = Role.RadioButton },
-        ) {
-            Icon(Icons.Default.Route, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Connections")
-        }
-        ToggleButton(
-            checked = mode == SearchMode.DEPARTURES,
-            onCheckedChange = { if (it) onModeChange(SearchMode.DEPARTURES) },
-            shapes = ButtonGroupDefaults.connectedTrailingButtonShapes(),
-            modifier = Modifier
-                .weight(1f)
-                .semantics { role = Role.RadioButton },
-        ) {
-            Icon(Icons.Default.DepartureBoard, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Departures")
-        }
-    }
+    SingleChoiceConnectedRow(
+        options = SearchMode.entries,
+        selected = mode,
+        onSelect = onModeChange,
+        label = { if (it == SearchMode.CONNECTIONS) "Connections" else "Departures" },
+        icon = { if (it == SearchMode.CONNECTIONS) Icons.Default.Route else Icons.Default.DepartureBoard },
+    )
 }
 
 /**
@@ -387,27 +389,3 @@ private fun RouteCard(
     }
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun MaxTransfersPicker(value: Int?, onSelect: (Int?) -> Unit) {
-    val options = listOf<Int?>(null, 0, 1, 2, 3, 4, 5)
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Max transfers", style = MaterialTheme.typography.titleSmall)
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-        ) {
-            options.forEach { option ->
-                ToggleButton(
-                    checked = value == option,
-                    onCheckedChange = { if (it) onSelect(option) },
-                    modifier = Modifier.semantics { role = Role.RadioButton },
-                ) {
-                    Text(option?.toString() ?: "Any")
-                }
-            }
-        }
-    }
-}

@@ -9,8 +9,10 @@ import pl.dakil.transport.data.remote.decode
 import pl.dakil.transport.data.remote.dto.ItineraryDto
 import pl.dakil.transport.data.remote.dto.StopTimesResponseDto
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.StopDepartures
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.toModeParam
 
 @Singleton
 class TimetableRepository @Inject constructor(
@@ -21,22 +23,26 @@ class TimetableRepository @Inject constructor(
     suspend fun departures(
         stop: TransitLocation,
         time: OffsetDateTime? = null,
-        n: Int = 20,
+        options: SearchOptions = SearchOptions.DEFAULT,
         pageCursor: String? = null,
     ): Result<StopDepartures> = runCatching {
         val body = if (stop.stopId != null) {
             api.stoptimes(
                 stopId = stop.stopId,
                 time = time?.toApiTimestamp(),
-                n = n,
+                arriveBy = options.arriveBy.takeIf { it },
+                mode = options.departuresCategories.toModeParam(),
+                n = options.departuresCount,
                 pageCursor = pageCursor,
             )
         } else {
             api.stoptimes(
                 center = "${stop.lat},${stop.lon}",
-                radius = 300,
+                radius = options.departuresRadiusMeters,
                 time = time?.toApiTimestamp(),
-                n = n,
+                arriveBy = options.arriveBy.takeIf { it },
+                mode = options.departuresCategories.toModeParam(),
+                n = options.departuresCount,
                 pageCursor = pageCursor,
             )
         }
