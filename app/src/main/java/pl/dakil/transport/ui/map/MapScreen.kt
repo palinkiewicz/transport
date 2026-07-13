@@ -1,9 +1,7 @@
 package pl.dakil.transport.ui.map
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -12,7 +10,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -614,24 +611,10 @@ fun MapScreen(
                     contentAlignment = Alignment.BottomStart,
                 )
 
-                // Transitous API usage guidelines require a visible link to the data sources.
-                Text(
-                    text = "Data: transitous.org",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+                TransitousAttributionLabel(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 72.dp, bottom = 20.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                            RoundedCornerShape(4.dp),
-                        )
-                        .clickable {
-                            context.startActivity(
-                                Intent(Intent.ACTION_VIEW, Uri.parse("https://transitous.org/sources/")),
-                            )
-                        }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(end = 72.dp, bottom = 20.dp),
                 )
 
                 FloatingActionButton(

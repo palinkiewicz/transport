@@ -70,6 +70,8 @@ data class JourneyLeg(
     val wheelchairAccessible: Boolean? = null,
     val bikesAllowed: Boolean? = null,
     val intermediateStops: List<IntermediateStop> = emptyList(),
+    /** Decoded leg geometry for drawing the leg on a map; empty when the API omits it. */
+    val path: List<GeoPoint> = emptyList(),
 ) {
     val isTransit: Boolean get() = mode != TransportMode.WALK && mode != TransportMode.BIKE && mode != TransportMode.CAR
 

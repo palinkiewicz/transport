@@ -16,12 +16,18 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -35,6 +41,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -57,12 +64,19 @@ import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.map.RouteMap
+import pl.dakil.transport.ui.map.rememberJourneyRouteLines
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack: () -> Unit) {
+    var showMap by rememberSaveable { mutableStateOf(false) }
+    // Only offer the map when the journey actually carries drawable leg geometry.
+    val canShowMap = journey?.legs?.any { it.path.size >= 2 } == true
+    if (!canShowMap && showMap) showMap = false
+
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -75,14 +89,30 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
+                actions = {
+                    if (canShowMap) {
+                        IconButton(onClick = { showMap = !showMap }) {
+                            if (showMap) {
+                                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Show as list")
+                            } else {
+                                Icon(Icons.Default.Map, contentDescription = "Show on map")
+                            }
+                        }
+                    }
+                },
                 scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
-        if (journey == null) {
-            ErrorBox("Itinerary not available", Modifier.padding(innerPadding))
-        } else {
-            LazyColumn(
+        when {
+            journey == null -> ErrorBox("Itinerary not available", Modifier.padding(innerPadding))
+            showMap -> ItineraryMap(
+                journey = journey,
+                fromName = fromName,
+                toName = toName,
+                modifier = Modifier.padding(innerPadding),
+            )
+            else -> LazyColumn(
                 modifier = Modifier
                     .padding(innerPadding)
                     .fillMaxWidth(),
@@ -103,6 +133,69 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
         }
     }
 }
+
+/**
+ * The journey drawn on the app's base map (leg colors matching the list view), with a docked
+ * bottom pane carrying the at-a-glance summary and the sequence of lines to ride.
+ */
+@Composable
+private fun ItineraryMap(journey: Journey, fromName: String, toName: String, modifier: Modifier = Modifier) {
+    val lines = rememberJourneyRouteLines(journey)
+    RouteMap(
+        lines = lines,
+        modifier = modifier.fillMaxSize(),
+    ) {
+        ItineraryMapPane(journey, fromName, toName)
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ItineraryMapPane(journey: Journey, fromName: String, toName: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        tonalElevation = 3.dp,
+        shadowElevation = 8.dp,
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "$fromName → $toName",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = buildString {
+                    append(journey.departureTime.format(timeFormatter))
+                    append(" – ")
+                    append(journey.arrivalTime.format(timeFormatter))
+                    append(" · ")
+                    append(formatDuration(journey.transitDurationSeconds))
+                    append(" · ")
+                    append(pluralizeTransfers(journey.transfers))
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            val transitLegs = remember(journey) { journey.legs.filter { it.isTransit } }
+            if (transitLegs.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.padding(top = 12.dp),
+                ) {
+                    transitLegs.forEach { leg ->
+                        ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun pluralizeTransfers(count: Int): String =
+    if (count == 1) "1 transfer" else "$count transfers"
 
 @Composable
 private fun JourneySummary(journey: Journey) {

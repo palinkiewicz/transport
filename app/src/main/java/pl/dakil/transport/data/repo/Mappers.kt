@@ -92,6 +92,8 @@ fun LegDto.toDomain(): JourneyLeg =
                 track = stop.track ?: stop.scheduledTrack,
             )
         } ?: emptyList(),
+        // The plan endpoint is /v6, so polylines default to precision 6 when not echoed back.
+        path = legGeometry?.let { decodePolyline(it.points, it.precision ?: 6) } ?: emptyList(),
     )
 
 fun ItineraryDto.toDomain(): Journey =
