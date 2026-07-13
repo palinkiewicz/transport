@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.search
 
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -43,7 +44,8 @@ fun LocationField(
                 MaterialTheme.colorScheme.onSurface
             },
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.basicMarquee(iterations = Int.MAX_VALUE),
         )
     }
 }
