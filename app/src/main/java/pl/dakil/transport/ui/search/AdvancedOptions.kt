@@ -7,19 +7,26 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.ElectricScooter
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +62,68 @@ private fun formatMinutes(minutes: Int): String =
 
 private fun formatSpeed(metersPerSecond: Float): String =
     String.format(Locale.getDefault(), "%.1f m/s", metersPerSecond)
+
+private val ROUTING_INFO = listOf(
+    "Transit modes" to "Kinds of transit the journey may use. Deselecting a category " +
+        "excludes all its lines; with nothing selected no transit connections are computed.",
+    "Min transfer time" to "Minimum time reserved for every transfer between vehicles.",
+    "Extra transfer buffer" to "Additional safety margin added on top of each transfer's " +
+        "required time.",
+    "Transfer time factor" to "Multiplies the minimum required transfer times. Useful if you " +
+        "walk slower than the schedule assumes.",
+    "Limit travel time" to "Caps the total journey duration. Warning: a low cap can hide " +
+        "otherwise optimal journeys (e.g. ones with fewer transfers) and slow the search down.",
+    "Routed transfers" to "Computes transfers on the street network instead of using " +
+        "precomputed ones — more precise, but slower.",
+)
+
+private val ACCESSIBILITY_INFO = listOf(
+    "On foot / Wheelchair" to "Accessibility profile used for transfers and the first/last " +
+        "mile. Wheelchair prefers step-free paths.",
+    "Custom walking speed" to "Average walking speed used for street routing. Typical walking " +
+        "pace is about 1.2 m/s.",
+    "Custom cycling speed" to "Average cycling speed used for bike routing. A relaxed pace is " +
+        "around 4 m/s.",
+    "Avoid inclines" to "Prefers flatter routes even when they are longer. Low adds a small " +
+        "penalty for climbs, High a strong one.",
+    "Bike carriage" to "Only returns journeys where a bike may be taken along on every " +
+        "transit leg.",
+    "Car carriage" to "Only returns journeys where a car may be taken along (e.g. car " +
+        "trains and some ferries).",
+)
+
+private val STREET_LEGS_INFO = listOf(
+    "Direct" to "Connections from start to destination without using transit at all.",
+    "First mile" to "The street leg from the start to the first transit stop.",
+    "Last mile" to "The street leg from the last transit stop to the destination.",
+    "Modes" to "Ways the selected leg may be travelled. At least one stays selected. Note: " +
+        "transit journeys slower than the fastest direct connection are not returned.",
+    "Max time" to "Time cap for the selected leg. Trips whose leg exceeds it are not found.",
+    "Rental vehicles & propulsion" to "Only applies when the Rental mode is selected. " +
+        "Restricts shared vehicles by type and drive; nothing selected allows every kind.",
+    "Ignore return constraints" to "Also considers rental vehicles that would normally have " +
+        "to be returned to a station, as if they could be left anywhere.",
+)
+
+private val RESULTS_INFO = listOf(
+    "Search window" to "How far past the chosen time (or before it, when arriving by) " +
+        "departures are scanned.",
+    "Min itineraries" to "Minimum number of journeys to compute; the search window is " +
+        "extended until this many are found.",
+    "Fastest direct factor" to "Also returns transit journeys up to this factor slower than " +
+        "the fastest direct connection.",
+    "Slow direct connections" to "Keeps direct connections in the results even when transit " +
+        "would be faster.",
+    "Passengers & luggage" to "Experimental. Passed to on-demand transport and fare " +
+        "calculation where supported.",
+)
+
+private val DEPARTURES_INFO = listOf(
+    "Transit modes" to "Kinds of transport shown on the board.",
+    "Results" to "Number of departures or arrivals fetched per page.",
+    "Search radius" to "How far around the chosen coordinates stops are collected. Only " +
+        "applies when the picked place is not a stop itself.",
+)
 
 /**
  * Expandable panel with every plan-API option the Connections search supports, grouped into
@@ -142,6 +211,7 @@ fun DeparturesAdvancedOptions(
         },
         modifier = modifier,
     ) {
+        GroupTitle("Departures board", DEPARTURES_INFO)
         CategoryFlow(
             title = "Transit modes",
             selected = options.departuresCategories,
@@ -172,13 +242,57 @@ fun DeparturesAdvancedOptions(
     }
 }
 
+/**
+ * Group header with an info button that opens a dialog defining every option in the group
+ * ([info] pairs of option name to explanation).
+ */
 @Composable
-private fun GroupTitle(title: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-    )
+private fun GroupTitle(title: String, info: List<Pair<String, String>>) {
+    var showInfo by remember { mutableStateOf(false) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+        )
+        IconButton(onClick = { showInfo = true }) {
+            Icon(
+                Icons.Outlined.Info,
+                contentDescription = "About $title options",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+
+    if (showInfo) {
+        AlertDialog(
+            onDismissRequest = { showInfo = false },
+            confirmButton = {
+                TextButton(onClick = { showInfo = false }) { Text("OK") }
+            },
+            icon = { Icon(Icons.Outlined.Info, contentDescription = null) },
+            title = { Text(title) },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    info.forEach { (name, description) ->
+                        Column {
+                            Text(name, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            },
+        )
+    }
 }
 
 /** Transit category multi-select with the map-filters All/None quick action. */
@@ -217,7 +331,7 @@ private fun CategoryFlow(
 @Composable
 private fun RoutingGroup(options: SearchOptions, onUpdate: ((SearchOptions) -> SearchOptions) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        GroupTitle("Routing")
+        GroupTitle("Routing", ROUTING_INFO)
         CategoryFlow(
             title = "Transit modes",
             selected = options.transitCategories,
@@ -278,7 +392,7 @@ private fun RoutingGroup(options: SearchOptions, onUpdate: ((SearchOptions) -> S
 @Composable
 private fun AccessibilityGroup(options: SearchOptions, onUpdate: ((SearchOptions) -> SearchOptions) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        GroupTitle("Accessibility & street")
+        GroupTitle("Accessibility & street", ACCESSIBILITY_INFO)
         SingleChoiceConnectedRow(
             options = PedestrianProfile.entries,
             selected = options.pedestrianProfile,
@@ -352,7 +466,7 @@ private fun StreetLegsGroup(options: SearchOptions, onUpdate: ((SearchOptions) -
     var context by rememberSaveable { mutableStateOf(LegContext.DIRECT) }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        GroupTitle("Direct & first/last mile")
+        GroupTitle("Direct & first/last mile", STREET_LEGS_INFO)
         SingleChoiceConnectedRow(
             options = LegContext.entries,
             selected = context,
@@ -456,7 +570,7 @@ private fun StreetLegsGroup(options: SearchOptions, onUpdate: ((SearchOptions) -
 @Composable
 private fun ResultsGroup(options: SearchOptions, onUpdate: ((SearchOptions) -> SearchOptions) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        GroupTitle("Results")
+        GroupTitle("Results", RESULTS_INFO)
         IntSliderRow(
             title = "Search window",
             value = options.searchWindowMinutes,

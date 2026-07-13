@@ -93,8 +93,8 @@ fun SearchScreen(
         Column(
             modifier = Modifier
                 .padding(innerPadding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             SearchHeader(mode = uiState.mode)
@@ -106,6 +106,20 @@ fun SearchScreen(
                 onPickFrom = { onPickLocation(true) },
                 onPickTo = { onPickLocation(false) },
                 onSwap = viewModel::swapFromTo,
+            )
+
+            // Depart-at/arrive-by for connections doubles as the departures/arrivals board
+            // switch in Departures mode — both map to the API's `arriveBy`.
+            SingleChoiceConnectedRow(
+                options = listOf(false, true),
+                selected = uiState.options.arriveBy,
+                onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },
+                label = { arriveBy ->
+                    when (uiState.mode) {
+                        SearchMode.CONNECTIONS -> if (arriveBy) "Arrive by" else "Depart at"
+                        SearchMode.DEPARTURES -> if (arriveBy) "Arrivals" else "Departures"
+                    }
+                },
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -129,20 +143,6 @@ fun SearchScreen(
                 }
             }
 
-            // Depart-at/arrive-by for connections doubles as the departures/arrivals board
-            // switch in Departures mode — both map to the API's `arriveBy`.
-            SingleChoiceConnectedRow(
-                options = listOf(false, true),
-                selected = uiState.options.arriveBy,
-                onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },
-                label = { arriveBy ->
-                    when (uiState.mode) {
-                        SearchMode.CONNECTIONS -> if (arriveBy) "Arrive by" else "Depart at"
-                        SearchMode.DEPARTURES -> if (arriveBy) "Arrivals" else "Departures"
-                    }
-                },
-            )
-
             AnimatedVisibility(visible = uiState.mode == SearchMode.CONNECTIONS) {
                 IntSliderRow(
                     title = "Max transfers",
@@ -151,19 +151,6 @@ fun SearchScreen(
                     min = 0,
                     max = 12,
                 )
-            }
-
-            AnimatedContent(targetState = uiState.mode, label = "advanced-options") { mode ->
-                when (mode) {
-                    SearchMode.CONNECTIONS -> ConnectionsAdvancedOptions(
-                        options = uiState.options,
-                        onUpdate = viewModel::updateOptions,
-                    )
-                    SearchMode.DEPARTURES -> DeparturesAdvancedOptions(
-                        options = uiState.options,
-                        onUpdate = viewModel::updateOptions,
-                    )
-                }
             }
 
             Button(
@@ -211,6 +198,19 @@ fun SearchScreen(
                 )
                 Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(ButtonDefaults.LargeContainerHeight)))
                 Text("Search", style = ButtonDefaults.textStyleFor(ButtonDefaults.LargeContainerHeight))
+            }
+
+            AnimatedContent(targetState = uiState.mode, label = "advanced-options") { mode ->
+                when (mode) {
+                    SearchMode.CONNECTIONS -> ConnectionsAdvancedOptions(
+                        options = uiState.options,
+                        onUpdate = viewModel::updateOptions,
+                    )
+                    SearchMode.DEPARTURES -> DeparturesAdvancedOptions(
+                        options = uiState.options,
+                        onUpdate = viewModel::updateOptions,
+                    )
+                }
             }
         }
     }
