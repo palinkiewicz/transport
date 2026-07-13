@@ -53,6 +53,10 @@ fun AppNavHost() {
                         navController.navigate(SearchRoute) {
                             popUpTo(MapRoute) { saveState = true }
                             launchSingleTop = true
+                            // Restore the saved Search entry (and its ViewModel) instead of
+                            // creating a second one: a duplicated SearchViewModel would race
+                            // for SearchStateHolder prefills and swallow every location pick.
+                            restoreState = true
                         }
                     },
                 )
