@@ -59,13 +59,20 @@ fun AppNavHost() {
                             restoreState = true
                         }
                     },
+                    onOpenLocationSearch = {
+                        navController.navigate(LocationPickerRoute(PickerTarget.MAP))
+                    },
                 )
             }
             composable<SearchRoute> {
                 SearchScreen(
                     onSearchConnections = { route -> navController.navigate(route) },
                     onSearchDepartures = { route -> navController.navigate(route) },
-                    onPickLocation = { isFrom -> navController.navigate(LocationPickerRoute(isFrom)) },
+                    onPickLocation = { isFrom ->
+                        navController.navigate(
+                            LocationPickerRoute(if (isFrom) PickerTarget.FROM else PickerTarget.TO),
+                        )
+                    },
                 )
             }
             composable<LocationPickerRoute> {

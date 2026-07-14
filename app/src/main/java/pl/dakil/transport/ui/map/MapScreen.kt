@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Train
@@ -197,6 +199,7 @@ fun MapScreen(
     onOpenTimetable: (DeparturesRoute) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
     onNavigateToSearch: () -> Unit,
+    onOpenLocationSearch: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
@@ -239,6 +242,23 @@ fun MapScreen(
         firstPosition = CameraPosition(target = Position(latitude = 50.0, longitude = 10.0), zoom = 5.0),
     )
     val styleState = rememberStyleState()
+
+    // A location picked in the map's search field: the ViewModel has already selected it
+    // (info panel + halo); the screen's part is centering the camera on it.
+    val searchCameraTarget by viewModel.searchCameraTarget.collectAsStateWithLifecycle()
+    LaunchedEffect(searchCameraTarget) {
+        searchCameraTarget?.let { location ->
+            // Stop the entry-time locate-me animation from overriding the searched location.
+            pendingLocateMe = false
+            cameraState.animateTo(
+                CameraPosition(
+                    target = Position(latitude = location.lat, longitude = location.lon),
+                    zoom = 16.0,
+                ),
+            )
+            viewModel.consumeSearchCameraTarget()
+        }
+    }
 
     // The map click callback below is captured once by MaplibreMap and never refreshed, so it
     // must read current data through State objects rather than capture the values directly.
@@ -581,18 +601,29 @@ fun MapScreen(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(16.dp),
+                // Below the search bar (8dp gap + its 56dp height + 16dp spacing).
+                .padding(top = 80.dp, end = 16.dp),
         )
 
-        MapFiltersMenu(
-            filters = filters,
-            onUpdate = viewModel::updateFilters,
-            onReset = viewModel::resetFilters,
+        Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .padding(start = 16.dp, top = 16.dp, end = 72.dp),
-        )
+                .fillMaxWidth(),
+        ) {
+            MapSearchBar(
+                onClick = onOpenLocationSearch,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+            )
+            MapFiltersMenu(
+                filters = filters,
+                onUpdate = viewModel::updateFilters,
+                onReset = viewModel::resetFilters,
+                modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
+            )
+        }
 
         Column(
             modifier = Modifier
@@ -712,6 +743,36 @@ fun MapScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * M3-search-bar-styled field overlaying the top of the map. Not a real input: tapping it
+ * opens the full-screen [pl.dakil.transport.ui.search.LocationPickerScreen], whose pick
+ * flows back to the map as a selection + camera move.
+ */
+@Composable
+private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        shadowElevation = 6.dp,
+        modifier = modifier.height(56.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                Icons.Default.Search,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp),
+            )
+            Text(
+                text = "Search stops & places",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

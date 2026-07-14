@@ -41,6 +41,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LocationListItem
+import pl.dakil.transport.ui.navigation.PickerTarget
 
 /**
  * Full-screen location search (Google-Maps-style): a search field on top, and below it either
@@ -89,7 +90,15 @@ fun LocationPickerScreen(
                     TextField(
                         value = query,
                         onValueChange = viewModel::onQueryChange,
-                        placeholder = { Text(if (viewModel.isFrom) "Where from?" else "Where to?") },
+                        placeholder = {
+                            Text(
+                                when (viewModel.target) {
+                                    PickerTarget.FROM -> "Where from?"
+                                    PickerTarget.TO -> "Where to?"
+                                    PickerTarget.MAP -> "Search stops & places"
+                                },
+                            )
+                        },
                         singleLine = true,
                         trailingIcon = if (query.isNotEmpty()) {
                             {

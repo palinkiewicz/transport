@@ -130,6 +130,11 @@ class MapViewModel @Inject constructor(
     private val _filters = MutableStateFlow(MapFilters.DEFAULT)
     val filters: StateFlow<MapFilters> = _filters
 
+    // A location picked in the map's search field, pending the screen's camera move
+    // (the selection itself is applied here, via the regular selectStop path).
+    private val _searchCameraTarget = MutableStateFlow<TransitLocation?>(null)
+    val searchCameraTarget: StateFlow<TransitLocation?> = _searchCameraTarget
+
     init {
         viewModelScope.launch {
             _styleJson.value = mapStyleRepository.transitFreeGmapsStyle()
@@ -137,6 +142,20 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch {
             _filters.value = filtersRepository.filters.first()
         }
+        viewModelScope.launch {
+            searchStateHolder.pendingMapLocation.collect { location ->
+                if (location != null) {
+                    searchStateHolder.pendingMapLocation.value = null
+                    selectStop(location)
+                    _searchCameraTarget.value = location
+                }
+            }
+        }
+    }
+
+    /** Called by the screen once it has animated the camera to [searchCameraTarget]. */
+    fun consumeSearchCameraTarget() {
+        _searchCameraTarget.value = null
     }
 
     fun updateFilters(transform: (MapFilters) -> MapFilters) {

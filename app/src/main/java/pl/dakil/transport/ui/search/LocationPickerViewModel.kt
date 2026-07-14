@@ -23,6 +23,7 @@ import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.ui.navigation.PickerTarget
 
 /** One row of the location picker list. */
 data class PickerItem(
@@ -47,8 +48,8 @@ class LocationPickerViewModel @Inject constructor(
     private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
 
-    /** Whether this picker fills the "from" field (else the "to" field). */
-    val isFrom: Boolean = savedStateHandle["isFrom"]!!
+    /** What the pick fills: a Search screen field, or the map's selection. */
+    val target: PickerTarget = PickerTarget.valueOf(savedStateHandle["target"]!!)
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
@@ -94,8 +95,12 @@ class LocationPickerViewModel @Inject constructor(
         viewModelScope.launch { favoritesRepository.toggleLocation(location) }
     }
 
-    /** Hands the pick back to [SearchViewModel]; the screen pops itself right after. */
+    /** Hands the pick back to its consumer; the screen pops itself right after. */
     fun select(location: TransitLocation) {
-        if (isFrom) searchStateHolder.setBeginHere(location) else searchStateHolder.setFinishHere(location)
+        when (target) {
+            PickerTarget.FROM -> searchStateHolder.setBeginHere(location)
+            PickerTarget.TO -> searchStateHolder.setFinishHere(location)
+            PickerTarget.MAP -> searchStateHolder.setMapLocation(location)
+        }
     }
 }
