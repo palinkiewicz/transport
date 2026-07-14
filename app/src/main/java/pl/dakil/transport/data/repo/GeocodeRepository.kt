@@ -22,6 +22,10 @@ class GeocodeRepository @Inject constructor(
         if (text.isBlank()) return@runCatching emptyList()
         val place = if (biasLat != null && biasLon != null) "$biasLat,$biasLon" else null
         val body = api.geocode(text = text, place = place, numResults = 8)
-        json.decode<List<MatchDto>>(body).map { it.toTransitLocation() }
+        json.decode<List<MatchDto>>(body)
+            .map { it.toTransitLocation() }
+            // The geocoder can return the same stop twice (e.g. matched by name and by alias);
+            // duplicates would also crash the picker's LazyColumn, which keys rows by favoriteKey.
+            .distinctBy { it.favoriteKey }
     }
 }
