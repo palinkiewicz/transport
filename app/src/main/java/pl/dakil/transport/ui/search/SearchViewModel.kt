@@ -24,8 +24,18 @@ data class SearchUiState(
     val options: SearchOptions = SearchOptions.DEFAULT,
     val dateTime: OffsetDateTime = OffsetDateTime.now(),
 ) {
+    /**
+     * Start and destination are the same place — planning that trip makes the API answer with
+     * an HTTP 500 or a nonsensical one-minute walk, so the search is blocked instead.
+     */
+    val hasSameEndpoints: Boolean
+        get() = mode == SearchMode.CONNECTIONS &&
+            fromSelected != null && toSelected != null &&
+            fromSelected.isSamePlaceAs(toSelected)
+
     val canSearch: Boolean
-        get() = fromSelected != null && (mode == SearchMode.DEPARTURES || toSelected != null)
+        get() = fromSelected != null &&
+            (mode == SearchMode.DEPARTURES || (toSelected != null && !hasSameEndpoints))
 }
 
 @HiltViewModel

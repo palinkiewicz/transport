@@ -26,6 +26,18 @@ data class TransitLocation(
     val favoriteKey: String
         get() = stopId ?: "$lat,$lon"
 
+    /**
+     * Whether [other] is the same physical place: the same stop, or — when either side is a
+     * bare coordinate — the same position. Names are ignored: the same stop reached through
+     * the map and through search can be labelled differently.
+     */
+    fun isSamePlaceAs(other: TransitLocation): Boolean =
+        if (stopId != null && other.stopId != null) {
+            stopId == other.stopId
+        } else {
+            lat == other.lat && lon == other.lon
+        }
+
     /** Mode used to color/icon this stop on the map when it serves more than one mode. */
     val primaryMode: TransportMode?
         get() = modes.minByOrNull { MODE_PRIORITY.indexOf(it).let { i -> if (i == -1) Int.MAX_VALUE else i } }

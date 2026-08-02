@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.DepartureBoard
 import androidx.compose.material.icons.filled.DirectionsBus
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
@@ -107,6 +108,27 @@ fun SearchScreen(
                 onPickTo = { onPickLocation(false) },
                 onSwap = viewModel::swapFromTo,
             )
+
+            // Explains why Search is disabled; the route card itself gives no hint that the
+            // two picked places are one and the same.
+            AnimatedVisibility(visible = uiState.hasSameEndpoints) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        Icons.Default.ErrorOutline,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Text(
+                        text = "Start and destination are the same place — pick a different destination.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
 
             // Depart-at/arrive-by for connections doubles as the departures/arrivals board
             // switch in Departures mode — both map to the API's `arriveBy`.
