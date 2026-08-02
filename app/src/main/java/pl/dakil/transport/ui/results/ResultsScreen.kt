@@ -110,6 +110,8 @@ fun ResultsScreen(
                         items(state.result.journeys.size) { index ->
                             JourneyCard(
                                 journey = state.result.journeys[index],
+                                fromName = viewModel.fromName,
+                                toName = viewModel.toName,
                                 onClick = { onJourneySelected(index) },
                             )
                         }
@@ -130,7 +132,13 @@ fun ResultsScreen(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
+private fun JourneyCard(
+    journey: Journey,
+    /** Searched origin/destination, shown when the journey has no transit stops to name. */
+    fromName: String,
+    toName: String,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.extraLarge,
@@ -180,13 +188,16 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
 
             HorizontalDivider()
 
+            // A journey done entirely on foot/bike/car has no stops to name: its ends are the
+            // searched places themselves, which the API labels "START"/"END".
+            val isDirect = journey.legs.none { it.isTransit }
             StopTimeRow(
-                stopName = journey.firstStopName,
+                stopName = if (isDirect) fromName else journey.firstStopName,
                 time = journey.departureTime,
                 scheduledTime = journey.departureScheduledTime,
             )
             StopTimeRow(
-                stopName = journey.lastStopName,
+                stopName = if (isDirect) toName else journey.lastStopName,
                 time = journey.arrivalTime,
                 scheduledTime = journey.arrivalScheduledTime,
             )
