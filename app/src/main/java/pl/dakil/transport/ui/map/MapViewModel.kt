@@ -19,11 +19,13 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.MapFiltersRepository
+import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.RoutesRepository
 import pl.dakil.transport.data.repo.StopsRepository
@@ -96,6 +98,7 @@ private const val VEHICLES_INTERPOLATE_MS = 1_000L
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val stopsRepository: StopsRepository,
+    private val geocodeRepository: GeocodeRepository,
     private val routesRepository: RoutesRepository,
     private val vehiclesRepository: VehiclesRepository,
     private val mapStyleRepository: MapStyleRepository,
@@ -276,6 +279,8 @@ class MapViewModel @Inject constructor(
 
     private var routesJob: Job? = null
 
+    private var pointNameJob: Job? = null
+
     /** Called once the map camera has settled (already debounced by the caller). */
     fun onViewportSettled(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
         viewport.value = Viewport(south, west, north, east, zoom)
@@ -283,12 +288,30 @@ class MapViewModel @Inject constructor(
 
     fun selectStop(stop: TransitLocation) {
         clearVehicleSelection()
+        pointNameJob?.cancel()
         if (_selectedStop.value == stop) return
         _selectedStop.value = stop
         loadRoutes(stop)
     }
 
+    /**
+     * Selects a bare coordinate the user long-pressed on the map. Shown immediately (labelled
+     * with its coordinates) so the panel never lags the gesture; the reverse-geocoded name of
+     * whatever sits there replaces the label once it arrives, unless the selection changed
+     * in the meantime.
+     */
+    fun selectPoint(lat: Double, lon: Double) {
+        val point = TransitLocation(name = formatCoordinates(lat, lon), lat = lat, lon = lon)
+        selectStop(point)
+        pointNameJob?.cancel()
+        pointNameJob = viewModelScope.launch {
+            val name = geocodeRepository.nearestPlaceName(lat, lon).getOrNull() ?: return@launch
+            _selectedStop.update { current -> if (current == point) current.copy(name = name) else current }
+        }
+    }
+
     fun clearSelection() {
+        pointNameJob?.cancel()
         _selectedStop.value = null
         hideRoutes()
         clearVehicleSelection()
@@ -352,6 +375,10 @@ class MapViewModel @Inject constructor(
 
     fun finishHere(location: TransitLocation) = searchStateHolder.setFinishHere(location)
 }
+
+/** Human-readable coordinates, used to label and describe points picked on the map. */
+fun formatCoordinates(lat: Double, lon: Double): String =
+    String.format(java.util.Locale.US, "%.5f, %.5f", lat, lon)
 
 /**
  * One marker per vehicle at [time]: the segment whose time window contains [time] wins;

@@ -17,6 +17,11 @@ interface MotisApi {
         @Query("numResults") numResults: Int? = null,
     ): ResponseBody
 
+    @GET("v1/reverse-geocode")
+    suspend fun reverseGeocode(
+        @Query("place") place: String,
+    ): ResponseBody
+
     // Array params (transitModes etc.) are passed pre-joined as "A,B,C" — the MOTIS spec
     // declares them `explode: false`, so a repeated-@Query list would be the wrong encoding.
     @GET("v6/plan")

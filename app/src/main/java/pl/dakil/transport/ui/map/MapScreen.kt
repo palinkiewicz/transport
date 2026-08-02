@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Flight
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NearMe
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sensors
@@ -65,7 +66,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -193,6 +196,12 @@ private const val STOPS_FETCH_MIN_ZOOM = 13f
 private const val STOP_ICONS_MIN_ZOOM = 15f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
 
+/**
+ * Neutral marker color for a location that isn't a transit stop (a picked point or a plain
+ * place) — matches [markerColorHex] for [TransportMode.OTHER], which colors its halo.
+ */
+private val PICKED_POINT_COLOR = Color(0xFF78909C)
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun MapScreen(
@@ -203,6 +212,7 @@ fun MapScreen(
     viewModel: MapViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
     val stops by viewModel.stops.collectAsStateWithLifecycle()
     val vehicles by viewModel.vehicles.collectAsStateWithLifecycle()
     val filters by viewModel.filters.collectAsStateWithLifecycle()
@@ -354,6 +364,13 @@ fun MapScreen(
                     }
                 }
             },
+            // Long press picks a bare coordinate anywhere on the map — including places with no
+            // stop nearby — so it deliberately ignores whatever feature sits under the finger.
+            onMapLongClick = { position, _ ->
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                viewModel.selectPoint(position.latitude, position.longitude)
+                ClickResult.Consume
+            },
         ) {
             // This content lambda is composed once by the library and never swapped for an
             // updated instance, so values captured from the outer composition stay frozen at
@@ -429,6 +446,21 @@ fun MapScreen(
                 )
             }
             val selectedSource = rememberGeoJsonSource(data = GeoJsonData.Features(selectedFeatures))
+            // A picked point has no stop marker of its own to sit on, so it gets a pin glyph
+            // inside its halo — otherwise a long press would leave just a faint gray circle.
+            val pointFeatures = remember(selectedStop) {
+                FeatureCollection(
+                    listOfNotNull(
+                        selectedStop?.takeIf { it.stopId == null }?.let { point ->
+                            Feature<Point, JsonObject?>(
+                                geometry = Point(Position(latitude = point.lat, longitude = point.lon)),
+                                properties = null,
+                            )
+                        },
+                    ),
+                )
+            }
+            val pointSource = rememberGeoJsonSource(data = GeoJsonData.Features(pointFeatures))
             val vehicleFeatures = remember(vehicles) {
                 FeatureCollection(
                     vehicles.map { vehicle ->
@@ -501,6 +533,18 @@ fun MapScreen(
                     opacity = const(0.3f),
                     strokeColor = feature["color"].convertToColor(),
                     strokeWidth = const(1.5.dp),
+                )
+                SymbolLayer(
+                    id = "transport-picked-point",
+                    source = pointSource,
+                    iconImage = image(
+                        rememberVectorPainter(Icons.Default.Place),
+                        DpSize(24.dp, 24.dp),
+                        colorFilter = ColorFilter.tint(PICKED_POINT_COLOR),
+                    ),
+                    // Pin tip sits on the picked coordinate, like a dropped map pin.
+                    iconAnchor = const(SymbolAnchor.Bottom),
+                    iconAllowOverlap = const(true),
                 )
                 CircleLayer(
                     id = "transport-stops",
