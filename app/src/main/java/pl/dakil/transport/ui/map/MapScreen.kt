@@ -953,18 +953,21 @@ private fun StopInfoPanel(
     ) {
         Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                // A plain place or a point picked on the map is not served by any mode, so it
+                // gets a map pin rather than a (meaningless, always-bus) vehicle icon.
+                val isPoint = stop.stopId == null
                 val mode = stop.primaryMode ?: TransportMode.OTHER
                 // Same colored-circle look as the stop's marker on the map.
                 Box(
                     modifier = Modifier
                         .padding(end = 12.dp)
                         .size(36.dp)
-                        .background(markerColor(mode), CircleShape),
+                        .background(if (isPoint) PICKED_POINT_COLOR else markerColor(mode), CircleShape),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = mode.icon,
-                        contentDescription = mode.label,
+                        imageVector = if (isPoint) Icons.Default.Place else mode.icon,
+                        contentDescription = if (isPoint) "Place" else mode.label,
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
@@ -973,12 +976,21 @@ private fun StopInfoPanel(
                     Text(
                         text = stop.name,
                         style = MaterialTheme.typography.titleMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    stop.primaryMode?.let { mode ->
+                    val subtitle = if (isPoint) {
+                        stop.areaLabel ?: formatCoordinates(stop.lat, stop.lon)
+                    } else {
+                        stop.primaryMode?.label
+                    }
+                    subtitle?.let {
                         Text(
-                            text = mode.label,
+                            text = it,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     }
                 }
