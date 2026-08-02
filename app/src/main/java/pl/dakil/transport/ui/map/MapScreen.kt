@@ -952,10 +952,11 @@ private fun StopInfoPanel(
         shadowElevation = 8.dp,
     ) {
         Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+            // A plain place or a point picked on the map is not served by any mode, so it gets
+            // a map pin rather than a (meaningless, always-bus) vehicle icon, and none of the
+            // stop-specific content: no lines, no timetable.
+            val isPoint = stop.stopId == null
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // A plain place or a point picked on the map is not served by any mode, so it
-                // gets a map pin rather than a (meaningless, always-bus) vehicle icon.
-                val isPoint = stop.stopId == null
                 val mode = stop.primaryMode ?: TransportMode.OTHER
                 // Same colored-circle look as the stop's marker on the map.
                 Box(
@@ -999,8 +1000,8 @@ private fun StopInfoPanel(
                     Icon(Icons.Default.Close, contentDescription = "Close")
                 }
             }
-            // Line chips + route overlay load automatically on selection; the spinner covers
-            // the brief fetch window.
+            // Line chips + route overlay load automatically on selection (real stops only);
+            // the spinner covers the brief fetch window.
             when (routesState) {
                 is StopRoutesUiState.Loading -> CircularProgressIndicator(
                     modifier = Modifier
@@ -1029,7 +1030,9 @@ private fun StopInfoPanel(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.padding(top = 4.dp, end = 8.dp),
             ) {
-                PanelActionButton("Timetable", Icons.Default.Schedule, onOpenTimetable)
+                if (!isPoint) {
+                    PanelActionButton("Timetable", Icons.Default.Schedule, onOpenTimetable)
+                }
                 PanelActionButton("Begin here", Icons.Default.NearMe, onBeginHere)
                 PanelActionButton("Finish here", Icons.Default.Flag, onFinishHere)
             }

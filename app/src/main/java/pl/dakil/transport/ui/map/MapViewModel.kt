@@ -291,7 +291,9 @@ class MapViewModel @Inject constructor(
         pointNameJob?.cancel()
         if (_selectedStop.value == stop) return
         _selectedStop.value = stop
-        loadRoutes(stop)
+        // Lines through a bare point are only "whatever passes nearby" — misleading enough
+        // that the panel doesn't offer them (nor a timetable) for anything but a real stop.
+        if (stop.stopId != null) loadRoutes(stop) else hideRoutes()
     }
 
     /**
