@@ -19,11 +19,11 @@ data class Journey(
     /** Name of the last transit stop alighted at, i.e. skipping any final walk leg. */
     val lastStopName: String get() = transitLegs.lastOrNull()?.toName ?: legs.last().toName
 
-    /** Walking distance from the search origin to [firstStopName], if the journey starts with a walk. */
-    val walkToFirstStopMeters: Double? get() = legs.first().takeIf { !it.isTransit }?.distanceMeters
+    /** Leg from the search origin to [firstStopName] (walk, bike, car…), if the journey starts with one. */
+    val firstMileLeg: JourneyLeg? get() = legs.first().takeIf { !it.isTransit }
 
-    /** Walking distance from [lastStopName] to the search destination, if the journey ends with a walk. */
-    val walkFromLastStopMeters: Double? get() = legs.last().takeIf { !it.isTransit }?.distanceMeters
+    /** Leg from [lastStopName] to the search destination (walk, bike, car…), if the journey ends with one. */
+    val lastMileLeg: JourneyLeg? get() = legs.last().takeIf { !it.isTransit && legs.size > 1 }
 
     val departureTime: OffsetDateTime get() = transitLegs.firstOrNull()?.startTime ?: legs.first().startTime
     val departureScheduledTime: OffsetDateTime

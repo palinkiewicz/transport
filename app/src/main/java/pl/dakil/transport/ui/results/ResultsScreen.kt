@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.ButtonDefaults
@@ -47,6 +46,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
 import java.time.OffsetDateTime
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.formatDistance
@@ -168,14 +168,14 @@ private fun JourneyCard(journey: Journey, onClick: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
-                journey.walkToFirstStopMeters?.let { WalkDistance(it) }
+                journey.firstMileLeg?.let { AccessLegDistance(it) }
                 journey.legs.filter { it.isTransit }.forEach { leg ->
                     ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                 }
                 if (journey.legs.none { it.isTransit }) {
                     ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.label)
                 }
-                journey.walkFromLastStopMeters?.let { WalkDistance(it) }
+                journey.lastMileLeg?.let { AccessLegDistance(it) }
             }
 
             HorizontalDivider()
@@ -225,19 +225,21 @@ private fun LegTimelineBar(journey: Journey) {
 }
 
 @Composable
-private fun WalkDistance(meters: Double) {
+private fun AccessLegDistance(leg: JourneyLeg) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Icon(
-            Icons.AutoMirrored.Filled.DirectionsWalk,
-            contentDescription = "Walk",
+            leg.mode.icon,
+            contentDescription = leg.mode.label,
             modifier = Modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(
-            text = formatDistance(meters),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        leg.distanceMeters?.let { meters ->
+            Text(
+                text = formatDistance(meters),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
