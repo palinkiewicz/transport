@@ -283,9 +283,19 @@ private fun formatDuration(seconds: Long): String {
     return if (hours > 0) "$hours h $minutes min" else "$minutes min"
 }
 
+private const val MINUTES_PER_DAY = 24 * 60
+
 private fun departingLabel(minutesUntil: Long): String {
     val minutes = if (minutesUntil < 0) -minutesUntil else minutesUntil
-    val relative = if (minutes < 60) "$minutes min" else "${minutes / 60} h ${minutes % 60} min"
+    // A day or more out, the hours and minutes are noise (and stale by the time it matters).
+    val relative = when {
+        minutes >= MINUTES_PER_DAY -> {
+            val days = minutes / MINUTES_PER_DAY
+            "$days ${if (days == 1L) "day" else "days"}"
+        }
+        minutes < 60 -> "$minutes min"
+        else -> "${minutes / 60} h ${minutes % 60} min"
+    }
     return when {
         minutesUntil < 0 -> "Departed $relative ago"
         minutesUntil == 0L -> "Departing now"
