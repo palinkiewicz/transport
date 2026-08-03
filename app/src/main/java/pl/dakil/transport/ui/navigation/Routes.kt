@@ -5,14 +5,34 @@ import kotlinx.serialization.Serializable
 @Serializable
 object MapRoute
 
+/** Connections (A → B) search form. Bottom-bar tab. */
 @Serializable
-object SearchRoute
+object ConnectionsRoute
+
+/** Departures/arrivals board search form. Bottom-bar tab. */
+@Serializable
+object DeparturesRoute
 
 @Serializable
 object FavouritesRoute
 
-/** What a [LocationPickerRoute] pick fills: a Search screen field, or the map's selection. */
-enum class PickerTarget { FROM, TO, MAP }
+@Serializable
+object SettingsRoute
+
+/** What a [LocationPickerRoute] pick fills. */
+enum class PickerTarget {
+    /** The Connections form's start field. */
+    FROM,
+
+    /** The Connections form's destination field. */
+    TO,
+
+    /** The Departures form's stop field. */
+    STOP,
+
+    /** The Map screen's selection (also drives the camera). */
+    MAP,
+}
 
 /**
  * Full-screen location search. [target] is [PickerTarget]'s name — kept as a String because
@@ -53,8 +73,9 @@ data class TripRoute(
     val routeColor: String?,
 )
 
+/** The departures/arrivals board itself, for one stop. */
 @Serializable
-data class DeparturesRoute(
+data class DepartureBoardRoute(
     val stopName: String,
     val lat: Double,
     val lon: Double,

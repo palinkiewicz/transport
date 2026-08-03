@@ -95,6 +95,7 @@ fun LocationPickerScreen(
                                 when (viewModel.target) {
                                     PickerTarget.FROM -> "Where from?"
                                     PickerTarget.TO -> "Where to?"
+                                    PickerTarget.STOP -> "Which stop?"
                                     PickerTarget.MAP -> "Search stops & places"
                                 },
                             )

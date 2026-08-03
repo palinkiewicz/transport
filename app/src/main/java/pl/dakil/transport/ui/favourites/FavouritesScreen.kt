@@ -51,7 +51,7 @@ import pl.dakil.transport.ui.navigation.TripRoute
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FavouritesScreen(
-    onOpenSearch: () -> Unit,
+    onOpenConnectionsSearch: () -> Unit,
     onOpenConnection: (ResultsRoute) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
     viewModel: FavouritesViewModel = hiltViewModel(),
@@ -117,7 +117,7 @@ fun FavouritesScreen(
                             location = location,
                             onClick = {
                                 viewModel.setSearchDestination(location)
-                                onOpenSearch()
+                                onOpenConnectionsSearch()
                             },
                             trailingContent = {
                                 FavoriteButton(

@@ -8,8 +8,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
-import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -22,17 +22,17 @@ import pl.dakil.transport.ui.map.MapScreen
 import pl.dakil.transport.ui.results.DeparturesScreen
 import pl.dakil.transport.ui.results.ResultsScreen
 import pl.dakil.transport.ui.results.ResultsViewModel
+import pl.dakil.transport.ui.search.ConnectionsSearchScreen
+import pl.dakil.transport.ui.search.DeparturesSearchScreen
 import pl.dakil.transport.ui.search.LocationPickerScreen
-import pl.dakil.transport.ui.search.SearchScreen
+import pl.dakil.transport.ui.settings.SettingsScreen
 import pl.dakil.transport.ui.trip.TripScreen
 
 @Composable
 fun AppNavHost() {
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
-    val showBottomBar = backStackEntry?.destination?.let {
-        it.hasRoute<MapRoute>() || it.hasRoute<SearchRoute>() || it.hasRoute<FavouritesRoute>()
-    } ?: true
+    val showBottomBar = backStackEntry?.destination?.let(::isBottomBarDestination) ?: true
 
     Scaffold(
         bottomBar = { if (showBottomBar) TransportBottomBar(navController) },
@@ -49,30 +49,23 @@ fun AppNavHost() {
                 MapScreen(
                     onOpenTimetable = { route -> navController.navigate(route) },
                     onOpenTrip = { route -> navController.navigate(route) },
-                    onNavigateToSearch = {
-                        navController.navigate(SearchRoute) {
-                            popUpTo(MapRoute) { saveState = true }
-                            launchSingleTop = true
-                            // Restore the saved Search entry (and its ViewModel) instead of
-                            // creating a second one: a duplicated SearchViewModel would race
-                            // for SearchStateHolder prefills and swallow every location pick.
-                            restoreState = true
-                        }
-                    },
+                    onNavigateToConnections = { navController.navigateToTab(ConnectionsRoute) },
                     onOpenLocationSearch = {
                         navController.navigate(LocationPickerRoute(PickerTarget.MAP))
                     },
                 )
             }
-            composable<SearchRoute> {
-                SearchScreen(
-                    onSearchConnections = { route -> navController.navigate(route) },
-                    onSearchDepartures = { route -> navController.navigate(route) },
-                    onPickLocation = { isFrom ->
-                        navController.navigate(
-                            LocationPickerRoute(if (isFrom) PickerTarget.FROM else PickerTarget.TO),
-                        )
-                    },
+            composable<ConnectionsRoute> {
+                ConnectionsSearchScreen(
+                    onSearch = { route -> navController.navigate(route) },
+                    onPickFrom = { navController.navigate(LocationPickerRoute(PickerTarget.FROM)) },
+                    onPickTo = { navController.navigate(LocationPickerRoute(PickerTarget.TO)) },
+                )
+            }
+            composable<DeparturesRoute> {
+                DeparturesSearchScreen(
+                    onSearch = { route -> navController.navigate(route) },
+                    onPickStop = { navController.navigate(LocationPickerRoute(PickerTarget.STOP)) },
                 )
             }
             composable<LocationPickerRoute> {
@@ -80,16 +73,13 @@ fun AppNavHost() {
             }
             composable<FavouritesRoute> {
                 FavouritesScreen(
-                    onOpenSearch = {
-                        navController.navigate(SearchRoute) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    },
+                    onOpenConnectionsSearch = { navController.navigateToTab(ConnectionsRoute) },
                     onOpenConnection = { route -> navController.navigate(route) },
                     onOpenTrip = { route -> navController.navigate(route) },
                 )
+            }
+            composable<SettingsRoute> {
+                SettingsScreen()
             }
             navigation<ResultsGraph>(startDestination = ResultsRoute::class) {
                 composable<ResultsRoute> { entry ->
@@ -113,7 +103,7 @@ fun AppNavHost() {
                     )
                 }
             }
-            composable<DeparturesRoute> {
+            composable<DepartureBoardRoute> {
                 DeparturesScreen(
                     onBack = { navController.popBackStack() },
                     onDepartureSelected = { route -> navController.navigate(route) },
@@ -123,5 +113,18 @@ fun AppNavHost() {
                 TripScreen(onBack = { navController.popBackStack() })
             }
         }
+    }
+}
+
+/**
+ * Switches to a bottom-bar tab the same way the bar itself does, so the tab's saved state (and
+ * with it its already-created ViewModel) is restored rather than a second copy being stacked
+ * on top — two live copies of a search ViewModel would race for the shared picked locations.
+ */
+private fun NavHostController.navigateToTab(route: Any) {
+    navigate(route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }

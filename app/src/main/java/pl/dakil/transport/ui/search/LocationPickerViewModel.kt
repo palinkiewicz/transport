@@ -100,6 +100,7 @@ class LocationPickerViewModel @Inject constructor(
         when (target) {
             PickerTarget.FROM -> searchStateHolder.setBeginHere(location)
             PickerTarget.TO -> searchStateHolder.setFinishHere(location)
+            PickerTarget.STOP -> searchStateHolder.setDepartureStop(location)
             PickerTarget.MAP -> searchStateHolder.setMapLocation(location)
         }
     }

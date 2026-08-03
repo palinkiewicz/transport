@@ -131,7 +131,7 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
-import pl.dakil.transport.ui.navigation.DeparturesRoute
+import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.navigation.TripRoute
 
 /**
@@ -205,9 +205,9 @@ private val PICKED_POINT_COLOR = Color(0xFF78909C)
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun MapScreen(
-    onOpenTimetable: (DeparturesRoute) -> Unit,
+    onOpenTimetable: (DepartureBoardRoute) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
-    onNavigateToSearch: () -> Unit,
+    onNavigateToConnections: () -> Unit,
     onOpenLocationSearch: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
 ) {
@@ -732,7 +732,7 @@ fun MapScreen(
                         onOpenTimetable = {
                             viewModel.clearSelection()
                             onOpenTimetable(
-                                DeparturesRoute(
+                                DepartureBoardRoute(
                                     stopName = stop.name,
                                     lat = stop.lat,
                                     lon = stop.lon,
@@ -744,12 +744,12 @@ fun MapScreen(
                         onBeginHere = {
                             viewModel.clearSelection()
                             viewModel.beginHere(stop)
-                            onNavigateToSearch()
+                            onNavigateToConnections()
                         },
                         onFinishHere = {
                             viewModel.clearSelection()
                             viewModel.finishHere(stop)
-                            onNavigateToSearch()
+                            onNavigateToConnections()
                         },
                     )
                 }
