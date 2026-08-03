@@ -4,6 +4,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.MutableStateFlow
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.ViaPoint
 
 /**
  * The search forms' locations, held app-wide rather than per-screen.
@@ -25,6 +26,9 @@ class SearchStateHolder @Inject constructor() {
 
     /** Connections form: destination. */
     val to = MutableStateFlow<TransitLocation?>(null)
+
+    /** Connections form: intermediate stops, in travel order. At most [ViaPoint.MAX_VIA_POINTS]. */
+    val vias = MutableStateFlow<List<ViaPoint>>(emptyList())
 
     /** Departures form: the stop whose board to show. */
     val departureStop = MutableStateFlow<TransitLocation?>(null)
@@ -48,9 +52,37 @@ class SearchStateHolder @Inject constructor() {
         pendingMapLocation.value = location
     }
 
+    /** Reverses the whole route, intermediate stops included — they are held in travel order. */
     fun swapFromTo() {
         val previousFrom = from.value
         from.value = to.value
         to.value = previousFrom
+        vias.value = vias.value.reversed()
+    }
+
+    /**
+     * Fills the intermediate stop at [index], appending a new one when [index] is past the end
+     * (which is how the "Add stop" button adds one). Silently ignores anything beyond the API's
+     * cap, and anything the API cannot route through — `via` takes stop ids only.
+     */
+    fun setVia(index: Int, location: TransitLocation) {
+        if (location.stopId == null) return
+        vias.value = vias.value.toMutableList().apply {
+            if (index in indices) {
+                this[index] = this[index].copy(location = location)
+            } else if (size < ViaPoint.MAX_VIA_POINTS) {
+                add(ViaPoint(location))
+            }
+        }
+    }
+
+    fun setViaMinimumStay(index: Int, minutes: Int) {
+        vias.value = vias.value.mapIndexed { i, via ->
+            if (i == index) via.copy(minimumStayMinutes = minutes) else via
+        }
+    }
+
+    fun removeVia(index: Int) {
+        vias.value = vias.value.filterIndexed { i, _ -> i != index }
     }
 }

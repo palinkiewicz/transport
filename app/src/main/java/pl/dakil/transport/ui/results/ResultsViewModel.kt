@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.data.repo.PlanRepository
@@ -23,6 +24,7 @@ import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.ViaPoint
 import pl.dakil.transport.ui.navigation.ResultsRoute
 
 sealed interface ResultsUiState {
@@ -51,6 +53,7 @@ class ResultsViewModel @Inject constructor(
         toLon = savedStateHandle["toLon"]!!,
         toStopId = savedStateHandle["toStopId"],
         timeIso = savedStateHandle["timeIso"],
+        viasJson = savedStateHandle["viasJson"],
     )
 
     /**
@@ -63,8 +66,16 @@ class ResultsViewModel @Inject constructor(
     private val to = TransitLocation(route.toName, route.toLat, route.toLon, route.toStopId)
     private val time: OffsetDateTime? = route.timeIso?.let { OffsetDateTime.parse(it) }
 
+    /** Intermediate stops this search was started with; empty when the route carried none. */
+    private val vias: List<ViaPoint> = route.viasJson
+        ?.let { runCatching { Json.decodeFromString<List<ViaPoint>>(it) }.getOrNull() }
+        .orEmpty()
+
     val fromName: String get() = route.fromName
     val toName: String get() = route.toName
+
+    /** Names of the intermediate stops, for the results header. */
+    val viaNames: List<String> = vias.map { it.location.name }
 
     /** This search's start+end pair as a favourite (date/time deliberately not included). */
     private val favoriteConnection = FavoriteConnection(from, to)
@@ -121,7 +132,7 @@ class ResultsViewModel @Inject constructor(
     }
 
     private suspend fun refresh() {
-        planRepository.plan(from, to, time, options, pageCursor).fold(
+        planRepository.plan(from, to, time, options, pageCursor, vias).fold(
             onSuccess = { result -> _uiState.value = ResultsUiState.Content(result) },
             onFailure = { error ->
                 if (_uiState.value !is ResultsUiState.Content) {

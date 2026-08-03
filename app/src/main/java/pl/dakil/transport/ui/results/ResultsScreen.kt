@@ -71,7 +71,12 @@ fun ResultsScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             MediumFlexibleTopAppBar(
-                title = { Text("${viewModel.fromName} → ${viewModel.toName}") },
+                title = {
+                    // Intermediate stops are part of the route, so they belong in the title
+                    // rather than being silently applied to the results.
+                    val stops = listOf(viewModel.fromName) + viewModel.viaNames + viewModel.toName
+                    Text(stops.joinToString(" → "))
+                },
                 subtitle = { Text("Connections · refreshes in $secondsUntilRefresh sec") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

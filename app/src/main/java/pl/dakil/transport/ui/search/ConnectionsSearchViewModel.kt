@@ -11,13 +11,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.Json
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.ViaPoint
 
 data class ConnectionsUiState(
     val from: TransitLocation? = null,
     val to: TransitLocation? = null,
+    val vias: List<ViaPoint> = emptyList(),
     val options: SearchOptions = SearchOptions.DEFAULT,
     val dateTime: OffsetDateTime = OffsetDateTime.now(),
 ) {
@@ -30,6 +33,8 @@ data class ConnectionsUiState(
 
     val canSearch: Boolean
         get() = from != null && to != null && !hasSameEndpoints
+
+    val canAddVia: Boolean get() = vias.size < ViaPoint.MAX_VIA_POINTS
 }
 
 /**
@@ -50,10 +55,17 @@ class ConnectionsSearchViewModel @Inject constructor(
     val uiState: StateFlow<ConnectionsUiState> = combine(
         searchStateHolder.from,
         searchStateHolder.to,
+        searchStateHolder.vias,
         options,
         dateTime,
-    ) { from, to, options, dateTime ->
-        ConnectionsUiState(from = from, to = to, options = options, dateTime = dateTime)
+    ) { from, to, vias, options, dateTime ->
+        ConnectionsUiState(
+            from = from,
+            to = to,
+            vias = vias,
+            options = options,
+            dateTime = dateTime,
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionsUiState())
 
     init {
@@ -63,6 +75,15 @@ class ConnectionsSearchViewModel @Inject constructor(
     }
 
     fun swapFromTo() = searchStateHolder.swapFromTo()
+
+    fun setViaMinimumStay(index: Int, minutes: Int) =
+        searchStateHolder.setViaMinimumStay(index, minutes)
+
+    fun removeVia(index: Int) = searchStateHolder.removeVia(index)
+
+    /** The current intermediate stops encoded for [ResultsRoute.viasJson]; null when empty. */
+    fun viasRouteArg(): String? =
+        searchStateHolder.vias.value.takeIf { it.isNotEmpty() }?.let { Json.encodeToString(it) }
 
     /** Applies [transform] to the current options and persists the result. */
     fun updateOptions(transform: (SearchOptions) -> SearchOptions) {

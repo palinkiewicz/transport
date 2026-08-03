@@ -15,6 +15,8 @@ interface MotisApi {
         @Query("text") text: String,
         @Query("place") place: String? = null,
         @Query("numResults") numResults: Int? = null,
+        /** Comma-joined `LocationType`s to restrict results to (ADDRESS / PLACE / STOP). */
+        @Query("type") type: String? = null,
     ): ResponseBody
 
     @GET("v1/reverse-geocode")
@@ -28,6 +30,10 @@ interface MotisApi {
     suspend fun plan(
         @Query("fromPlace") fromPlace: String,
         @Query("toPlace") toPlace: String,
+        /** Up to two stop ids to route through; coordinates are rejected by the API. */
+        @Query("via") via: String? = null,
+        /** Minutes to stay at each `via` stop, in the same order. */
+        @Query("viaMinimumStay") viaMinimumStay: String? = null,
         @Query("time") time: String? = null,
         @Query("arriveBy") arriveBy: Boolean? = null,
         @Query("maxTransfers") maxTransfers: Int? = null,

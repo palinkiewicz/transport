@@ -13,7 +13,10 @@ import pl.dakil.transport.domain.model.PedestrianProfile
 import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.StreetMode
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.ViaPoint
 import pl.dakil.transport.domain.model.toModeParam
+import pl.dakil.transport.domain.model.toViaMinimumStayParam
+import pl.dakil.transport.domain.model.toViaParam
 
 private fun Float.toApiValue(unset: Float): Double? = takeIf { it != unset }?.toDouble()
 
@@ -45,6 +48,7 @@ class PlanRepository @Inject constructor(
         time: OffsetDateTime? = null,
         options: SearchOptions = SearchOptions.DEFAULT,
         pageCursor: String? = null,
+        vias: List<ViaPoint> = emptyList(),
     ): Result<PlanResult> = runCatching {
         // Options at their "unset" state map to null so the server defaults apply; time-based
         // params are converted here to the units the API expects (see MOTIS OpenAPI v2.10.2:
@@ -52,6 +56,8 @@ class PlanRepository @Inject constructor(
         val body = api.plan(
             fromPlace = from.queryValue,
             toPlace = to.queryValue,
+            via = vias.toViaParam(),
+            viaMinimumStay = vias.toViaMinimumStayParam(),
             time = time?.toApiTimestamp(),
             arriveBy = options.arriveBy.takeIf { it },
             maxTransfers = options.maxTransfers,

@@ -51,15 +51,27 @@ class LocationPickerViewModel @Inject constructor(
     /** What the pick fills: a Search screen field, or the map's selection. */
     val target: PickerTarget = PickerTarget.valueOf(savedStateHandle["target"]!!)
 
+    /** Which intermediate-stop slot to fill; only meaningful for [PickerTarget.VIA]. */
+    private val viaIndex: Int = savedStateHandle["viaIndex"] ?: 0
+
+    /**
+     * Intermediate stops must be transit stops — the plan API rejects coordinates for `via` —
+     * so the picker offers nothing that could not be used there.
+     */
+    val stopsOnly: Boolean = target == PickerTarget.VIA
+
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
     private val userPosition: GeoPoint? =
         locationService.lastKnownLocation()?.let { GeoPoint(it.lat, it.lon) }
 
-    /** "Your location" entry for the empty-query list; null without permission or a fix. */
+    /**
+     * "Your location" entry for the empty-query list; null without permission or a fix, and
+     * withheld when only stops are offerable — a raw fix is a coordinate, never a stop.
+     */
     val currentLocation: TransitLocation? =
-        userPosition?.let { TransitLocation.currentPosition(it.lat, it.lon) }
+        userPosition?.takeIf { !stopsOnly }?.let { TransitLocation.currentPosition(it.lat, it.lon) }
 
     private val suggestions: Flow<List<TransitLocation>> = _query
         .debounce(300)
@@ -68,7 +80,7 @@ class LocationPickerViewModel @Inject constructor(
             if (query.isBlank()) {
                 emptyList()
             } else {
-                geocodeRepository.suggest(query, userPosition?.lat, userPosition?.lon)
+                geocodeRepository.suggest(query, userPosition?.lat, userPosition?.lon, stopsOnly)
                     .getOrDefault(emptyList())
             }
         }
@@ -77,7 +89,9 @@ class LocationPickerViewModel @Inject constructor(
     /** Suggestions while typing; the favourite places when the query is blank. */
     val items: StateFlow<List<PickerItem>> =
         combine(_query, suggestions, favoritesRepository.favorites) { query, suggestions, favorites ->
-            val locations = if (query.isBlank()) favorites.locations else suggestions
+            val locations = (if (query.isBlank()) favorites.locations else suggestions)
+                // A starred address or map point can't stand in for a stop id.
+                .filter { !stopsOnly || it.stopId != null }
             locations.map { location ->
                 PickerItem(
                     location = location,
@@ -100,6 +114,7 @@ class LocationPickerViewModel @Inject constructor(
         when (target) {
             PickerTarget.FROM -> searchStateHolder.setBeginHere(location)
             PickerTarget.TO -> searchStateHolder.setFinishHere(location)
+            PickerTarget.VIA -> searchStateHolder.setVia(viaIndex, location)
             PickerTarget.STOP -> searchStateHolder.setDepartureStop(location)
             PickerTarget.MAP -> searchStateHolder.setMapLocation(location)
         }

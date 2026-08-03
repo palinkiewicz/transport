@@ -27,6 +27,13 @@ enum class PickerTarget {
     /** The Connections form's destination field. */
     TO,
 
+    /**
+     * One of the Connections form's intermediate stops, addressed by
+     * [LocationPickerRoute.viaIndex]. Restricted to transit stops: the plan API rejects
+     * coordinates for `via`.
+     */
+    VIA,
+
     /** The Departures form's stop field. */
     STOP,
 
@@ -36,11 +43,12 @@ enum class PickerTarget {
 
 /**
  * Full-screen location search. [target] is [PickerTarget]'s name — kept as a String because
- * type-safe nav args land in the ViewModel's SavedStateHandle as primitives.
+ * type-safe nav args land in the ViewModel's SavedStateHandle as primitives. [viaIndex] is the
+ * intermediate-stop slot being filled, and is ignored for every target but [PickerTarget.VIA].
  */
 @Serializable
-data class LocationPickerRoute(val target: String) {
-    constructor(target: PickerTarget) : this(target.name)
+data class LocationPickerRoute(val target: String, val viaIndex: Int = 0) {
+    constructor(target: PickerTarget, viaIndex: Int = 0) : this(target.name, viaIndex)
 }
 
 /** Groups [ResultsRoute] and [ItineraryRoute] so they can share a [pl.dakil.transport.ui.results.ResultsViewModel]. */
@@ -58,6 +66,13 @@ data class ResultsRoute(
     val toLon: Double,
     val toStopId: String?,
     val timeIso: String?,
+    /**
+     * Intermediate stops as a JSON array of [pl.dakil.transport.domain.model.ViaPoint], or null
+     * for none. Encoded as one string because type-safe nav args only carry primitives, and so
+     * the shape can grow without touching this route again — same reasoning as the
+     * one-JSON-blob prefs models.
+     */
+    val viasJson: String? = null,
 )
 
 @Serializable

@@ -14,14 +14,25 @@ class GeocodeRepository @Inject constructor(
     private val json: Json,
 ) {
 
+    /**
+     * Geocoder suggestions for [text]. With [stopsOnly] the API is asked for `STOP` matches
+     * alone, so every suggestion carries a stop id — required wherever coordinates are not
+     * accepted (intermediate stops, departure boards).
+     */
     suspend fun suggest(
         text: String,
         biasLat: Double? = null,
         biasLon: Double? = null,
+        stopsOnly: Boolean = false,
     ): Result<List<TransitLocation>> = runCatching {
         if (text.isBlank()) return@runCatching emptyList()
         val place = if (biasLat != null && biasLon != null) "$biasLat,$biasLon" else null
-        val body = api.geocode(text = text, place = place, numResults = 8)
+        val body = api.geocode(
+            text = text,
+            place = place,
+            numResults = 8,
+            type = if (stopsOnly) "STOP" else null,
+        )
         json.decode<List<MatchDto>>(body)
             .map { it.toTransitLocation() }
             // The geocoder can return the same stop twice (e.g. matched by name and by alias);

@@ -31,6 +31,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,7 @@ fun ConnectionsSearchScreen(
     onSearch: (ResultsRoute) -> Unit,
     onPickFrom: () -> Unit,
     onPickTo: () -> Unit,
+    onPickVia: (index: Int) -> Unit,
     viewModel: ConnectionsSearchViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -72,6 +74,10 @@ fun ConnectionsSearchScreen(
                 uiState = uiState,
                 onPickFrom = onPickFrom,
                 onPickTo = onPickTo,
+                onPickVia = onPickVia,
+                onAddVia = { onPickVia(uiState.vias.size) },
+                onRemoveVia = viewModel::removeVia,
+                onViaMinimumStayChange = viewModel::setViaMinimumStay,
                 onSwap = viewModel::swapFromTo,
             )
 
@@ -128,6 +134,7 @@ fun ConnectionsSearchScreen(
                             toLon = to.lon,
                             toStopId = to.stopId,
                             timeIso = uiState.dateTime.toRouteArg(),
+                            viasJson = viewModel.viasRouteArg(),
                         ),
                     )
                 },
@@ -153,6 +160,10 @@ private fun RouteCard(
     uiState: ConnectionsUiState,
     onPickFrom: () -> Unit,
     onPickTo: () -> Unit,
+    onPickVia: (index: Int) -> Unit,
+    onAddVia: () -> Unit,
+    onRemoveVia: (index: Int) -> Unit,
+    onViaMinimumStayChange: (index: Int, minutes: Int) -> Unit,
     onSwap: () -> Unit,
 ) {
     Surface(
@@ -199,6 +210,20 @@ private fun RouteCard(
                     Icon(Icons.Default.SwapVert, contentDescription = "Swap start and destination")
                 }
             }
+
+            // Intermediate stops sit between the two endpoints, in travel order.
+            uiState.vias.forEachIndexed { index, via ->
+                key(via.location.favoriteKey, index) {
+                    ViaStopRow(
+                        index = index,
+                        via = via,
+                        onPick = { onPickVia(index) },
+                        onRemove = { onRemoveVia(index) },
+                        onMinimumStayChange = { minutes -> onViaMinimumStayChange(index, minutes) },
+                    )
+                }
+            }
+            AddViaRow(canAdd = uiState.canAddVia, onAdd = onAddVia)
 
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(

@@ -95,6 +95,7 @@ fun LocationPickerScreen(
                                 when (viewModel.target) {
                                     PickerTarget.FROM -> "Where from?"
                                     PickerTarget.TO -> "Where to?"
+                                    PickerTarget.VIA -> "Stop along the way"
                                     PickerTarget.STOP -> "Which stop?"
                                     PickerTarget.MAP -> "Search stops & places"
                                 },
@@ -125,6 +126,16 @@ fun LocationPickerScreen(
                 }
             }
             LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+            // Explains the otherwise puzzling absence of addresses and the current location.
+            if (viewModel.stopsOnly) {
+                Text(
+                    text = "Only transit stops can be routed through.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                )
+            }
 
             LocationPickerList(
                 query = query,

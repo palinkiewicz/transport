@@ -60,6 +60,9 @@ fun AppNavHost() {
                     onSearch = { route -> navController.navigate(route) },
                     onPickFrom = { navController.navigate(LocationPickerRoute(PickerTarget.FROM)) },
                     onPickTo = { navController.navigate(LocationPickerRoute(PickerTarget.TO)) },
+                    onPickVia = { index ->
+                        navController.navigate(LocationPickerRoute(PickerTarget.VIA, index))
+                    },
                 )
             }
             composable<DeparturesRoute> {
