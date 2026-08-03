@@ -9,12 +9,6 @@ import pl.dakil.transport.data.remote.decode
 import pl.dakil.transport.data.remote.dto.TripSegmentDto
 import pl.dakil.transport.domain.model.VehicleSegment
 
-/**
- * How far into the future the trips query looks. The API returns every segment whose
- * operation overlaps the window, so "now + a minute" captures all currently moving vehicles.
- */
-private const val TIME_WINDOW_SECONDS = 60L
-
 /** Polyline precision requested from the API (its documented recommendation for zoom >= 11). */
 private const val POLYLINE_PRECISION = 5
 
@@ -27,6 +21,10 @@ class VehiclesRepository @Inject constructor(
     /**
      * Trip segments of vehicles currently operating in the viewport. [zoom] is forwarded to
      * the API, which uses it to cull short-distance services at low zoom levels.
+     *
+     * [windowSeconds] is how far ahead of now the query looks. The API returns every segment
+     * whose operation overlaps the window, so a wider window also keeps long inter-stop runs
+     * and trips sitting near the boundary from dropping out between fetches.
      */
     suspend fun vehiclesInViewport(
         south: Double,
@@ -34,6 +32,7 @@ class VehiclesRepository @Inject constructor(
         north: Double,
         east: Double,
         zoom: Double,
+        windowSeconds: Long,
     ): Result<List<VehicleSegment>> = runCatching {
         val now = OffsetDateTime.now()
         val body = api.mapTrips(
@@ -41,7 +40,7 @@ class VehiclesRepository @Inject constructor(
             max = "$north,$east",
             zoom = zoom,
             startTime = now.toApiTimestamp(),
-            endTime = now.plusSeconds(TIME_WINDOW_SECONDS).toApiTimestamp(),
+            endTime = now.plusSeconds(windowSeconds).toApiTimestamp(),
             precision = POLYLINE_PRECISION,
         )
         json.decode<List<TripSegmentDto>>(body).map { it.toDomain(POLYLINE_PRECISION) }

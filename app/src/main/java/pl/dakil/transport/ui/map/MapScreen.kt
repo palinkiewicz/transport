@@ -188,7 +188,10 @@ private fun TransitLocation.markerIconKey(): String = markerIconKey(primaryMode 
 private fun VehicleMarker.markerColorHex(): String =
     routeColor?.takeIf { GTFS_COLOR_REGEX.matches(it) }?.let { "#$it" } ?: markerColorHex(mode)
 
-/** Stroke distinguishing live-tracked vehicles from schedule-only ones at a glance. */
+/**
+ * Stroke distinguishing vehicles whose times a real-time feed corrected from ones running on
+ * the plain timetable. Neither is a tracked position — see [pl.dakil.transport.domain.model.VehicleMotionSettings].
+ */
 private const val VEHICLE_STROKE_LIVE = "#2E7D32"
 private const val VEHICLE_STROKE_TIMETABLE = "#9E9E9E"
 

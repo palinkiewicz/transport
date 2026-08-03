@@ -45,6 +45,7 @@ fun LabeledSliderRow(
     steps: Int,
     valueLabel: (Float) -> String,
     modifier: Modifier = Modifier,
+    supportingText: String? = null,
 ) {
     var dragValue by remember(value) { mutableFloatStateOf(value) }
     Column(modifier = modifier.fillMaxWidth()) {
@@ -58,6 +59,13 @@ fun LabeledSliderRow(
                 text = valueLabel(dragValue),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        if (supportingText != null) {
+            Text(
+                text = supportingText,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         Slider(
@@ -81,6 +89,7 @@ fun IntSliderRow(
     modifier: Modifier = Modifier,
     step: Int = 1,
     valueLabel: (Int) -> String = { it.toString() },
+    supportingText: String? = null,
 ) {
     LabeledSliderRow(
         title = title,
@@ -90,6 +99,7 @@ fun IntSliderRow(
         steps = (max - min) / step - 1,
         valueLabel = { valueLabel(it.roundToInt()) },
         modifier = modifier,
+        supportingText = supportingText,
     )
 }
 

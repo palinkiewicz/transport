@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
+import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.domain.model.SearchOptions
@@ -56,6 +57,7 @@ class DeparturesViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val timetableRepository: TimetableRepository,
     private val searchOptionsRepository: SearchOptionsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val stop = TransitLocation(
@@ -83,9 +85,10 @@ class DeparturesViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             options = searchOptionsRepository.options.first()
+            val interval = settingsRepository.settings.first().resultsRefreshSeconds
             while (true) {
                 refresh()
-                for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
+                for (seconds in interval downTo 1) {
                     _secondsUntilRefresh.value = seconds
                     delay(1_000)
                 }

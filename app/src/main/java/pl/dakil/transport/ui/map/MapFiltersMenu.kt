@@ -203,4 +203,12 @@ private fun VehicleSourcesToggle(
             }
         }
     }
+    // "Live" reads as GPS tracking, which the API does not offer — it distinguishes vehicles
+    // whose *times* a real-time feed corrected from ones running on the plain timetable.
+    Text(
+        text = "Positions are estimated from timetables; \"Live\" means real-time times.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 6.dp),
+    )
 }

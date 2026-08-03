@@ -34,6 +34,18 @@ data class VehicleSegment(
      * by distance. Clamped to the endpoints outside the segment's time window (a vehicle
      * dwelling at a stop sits at the segment boundary); null only when there is no geometry.
      */
+    /**
+     * How far through this segment [time] is, clamped to `0..1`. Used as the fine half of the
+     * progress key that keeps a vehicle from sliding backwards when a delay revision arrives.
+     */
+    fun fractionAt(time: OffsetDateTime): Double {
+        if (time <= departure) return 0.0
+        if (time >= arrival) return 1.0
+        val totalMillis = Duration.between(departure, arrival).toMillis()
+        if (totalMillis <= 0) return 0.0
+        return Duration.between(departure, time).toMillis().toDouble() / totalMillis
+    }
+
     fun positionAt(time: OffsetDateTime): GeoPoint? {
         if (path.isEmpty()) return null
         if (time <= departure || path.size == 1) return path.first()

@@ -8,12 +8,14 @@ import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Journey
@@ -62,6 +64,7 @@ class TripViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val timetableRepository: TimetableRepository,
     private val favoritesRepository: FavoritesRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle["tripId"]!!
@@ -94,9 +97,10 @@ class TripViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            val interval = settingsRepository.settings.first().resultsRefreshSeconds
             while (true) {
                 refresh()
-                for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
+                for (seconds in interval downTo 1) {
                     _secondsUntilRefresh.value = seconds
                     delay(1_000)
                 }

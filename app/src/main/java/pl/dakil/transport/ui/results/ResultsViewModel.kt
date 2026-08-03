@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
+import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.PlanRepository
 import pl.dakil.transport.data.repo.PlanResult
 import pl.dakil.transport.domain.model.FavoriteConnection
@@ -33,6 +34,7 @@ sealed interface ResultsUiState {
     data class Error(val message: String) : ResultsUiState
 }
 
+/** Fallback auto-refresh cadence, used until the stored setting has been read. */
 const val REFRESH_INTERVAL_SECONDS = 30
 
 @HiltViewModel
@@ -41,6 +43,7 @@ class ResultsViewModel @Inject constructor(
     private val planRepository: PlanRepository,
     private val favoritesRepository: FavoritesRepository,
     private val searchOptionsRepository: SearchOptionsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     private val route = ResultsRoute(
@@ -107,9 +110,10 @@ class ResultsViewModel @Inject constructor(
         if (showLoading) _uiState.value = ResultsUiState.Loading
         refreshJob = viewModelScope.launch {
             if (!::options.isInitialized) options = searchOptionsRepository.options.first()
+            val interval = settingsRepository.settings.first().resultsRefreshSeconds
             while (true) {
                 refresh()
-                for (seconds in REFRESH_INTERVAL_SECONDS downTo 1) {
+                for (seconds in interval downTo 1) {
                     _secondsUntilRefresh.value = seconds
                     delay(1_000)
                 }
