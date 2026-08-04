@@ -2,7 +2,20 @@ package pl.dakil.transport.ui.search
 
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import pl.dakil.transport.data.prefs.SessionStateRepository
+import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.domain.model.SessionState
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.ViaPoint
 
@@ -17,10 +30,21 @@ import pl.dakil.transport.domain.model.ViaPoint
  *
  * [pendingMapLocation] is the one exception and still works as a one-shot signal: it flows the
  * other way, from a `MAP`-target pick to [pl.dakil.transport.ui.map.MapViewModel], which
- * consumes it to select the location and drive the camera, then clears it.
+ * consumes it to select the location and drive the camera, then clears it. It is also the one
+ * field never persisted — a signal that outlived the process would fire at the wrong moment.
  */
+@OptIn(FlowPreview::class)
 @Singleton
-class SearchStateHolder @Inject constructor() {
+class SearchStateHolder @Inject constructor(
+    private val sessionStateRepository: SessionStateRepository,
+    private val settingsRepository: SettingsRepository,
+) {
+    // Its own scope: this is a process-lifetime singleton with no lifecycle to borrow.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Held back until the stored picks are read, so the empty initial state is never saved over them. */
+    private val restored = CompletableDeferred<Unit>()
+
     /** Connections form: start. */
     val from = MutableStateFlow<TransitLocation?>(null)
 
@@ -35,6 +59,35 @@ class SearchStateHolder @Inject constructor() {
 
     /** A map-target pick, consumed by the Map screen. */
     val pendingMapLocation = MutableStateFlow<TransitLocation?>(null)
+
+    init {
+        scope.launch {
+            if (settingsRepository.settings.first().rememberLastSearch) {
+                val stored = sessionStateRepository.state.first()
+                // Only fill what the user has not already picked in the meantime — the forms
+                // are usable before this read lands.
+                if (from.value == null) from.value = stored.from
+                if (to.value == null) to.value = stored.to
+                if (vias.value.isEmpty()) vias.value = stored.vias
+                if (departureStop.value == null) departureStop.value = stored.departureStop
+            }
+            restored.complete(Unit)
+        }
+        scope.launch {
+            restored.await()
+            combine(from, to, vias, departureStop) { from, to, vias, departureStop ->
+                SessionState(from = from, to = to, vias = vias, departureStop = departureStop)
+            }
+                // The forms are edited a field at a time; one write per settled state is plenty.
+                .debounce(SAVE_DEBOUNCE_MILLIS)
+                .distinctUntilChanged()
+                .collect { state ->
+                    if (settingsRepository.settings.first().rememberLastSearch) {
+                        sessionStateRepository.saveSearch(state)
+                    }
+                }
+        }
+    }
 
     fun setBeginHere(location: TransitLocation) {
         from.value = location
@@ -84,5 +137,9 @@ class SearchStateHolder @Inject constructor() {
 
     fun removeVia(index: Int) {
         vias.value = vias.value.filterIndexed { i, _ -> i != index }
+    }
+
+    private companion object {
+        const val SAVE_DEBOUNCE_MILLIS = 500L
     }
 }

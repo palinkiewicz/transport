@@ -283,8 +283,14 @@ fun MapScreen(
         }
     }
 
+    // The camera state is built once and never rebuilt, so its start position has to be known
+    // before it exists — hence waiting on the stored one rather than moving the camera after.
+    val initialCamera = viewModel.initialCamera.collectAsStateWithLifecycle().value ?: return
     val cameraState = rememberCameraState(
-        firstPosition = CameraPosition(target = Position(latitude = 50.0, longitude = 10.0), zoom = 5.0),
+        firstPosition = CameraPosition(
+            target = Position(latitude = initialCamera.lat, longitude = initialCamera.lon),
+            zoom = initialCamera.zoom,
+        ),
     )
     val styleState = rememberStyleState()
 

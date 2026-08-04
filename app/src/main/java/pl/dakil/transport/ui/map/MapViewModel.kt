@@ -7,12 +7,14 @@ import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
@@ -30,6 +32,7 @@ import kotlinx.coroutines.launch
 import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.MapFiltersRepository
+import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.repo.MapStyleRepository
@@ -41,6 +44,7 @@ import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
+import pl.dakil.transport.domain.model.MapCamera
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
@@ -103,7 +107,7 @@ sealed interface StopRoutesUiState {
     data class Error(val error: AppError) : StopRoutesUiState
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
+@OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val stopsRepository: StopsRepository,
@@ -114,6 +118,7 @@ class MapViewModel @Inject constructor(
     private val filtersRepository: MapFiltersRepository,
     private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
+    private val sessionStateRepository: SessionStateRepository,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
@@ -148,6 +153,14 @@ class MapViewModel @Inject constructor(
     private val viewport = MutableStateFlow<Viewport?>(null)
 
     /**
+     * Where the camera starts. Null while it is being read: the camera state is built once at
+     * first composition and never rebuilt, so the screen waits rather than start at the default
+     * and jump.
+     */
+    private val _initialCamera = MutableStateFlow<MapCamera?>(null)
+    val initialCamera: StateFlow<MapCamera?> = _initialCamera
+
+    /**
      * Patched bundled style JSON (base transit stop icons removed, sources repointed);
      * null only for the brief moment the asset is being read.
      */
@@ -167,6 +180,29 @@ class MapViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             _styleJson.value = mapStyleRepository.transitFreeGmapsStyle()
+        }
+        viewModelScope.launch {
+            val remember = settingsRepository.settings.first().rememberMapCamera
+            _initialCamera.value = sessionStateRepository.state.first().mapCamera
+                .takeIf { remember }
+                ?: MapCamera.DEFAULT
+        }
+        viewModelScope.launch {
+            // One write per settled viewport would be one per pan; the debounce keeps a fling
+            // across the map down to a single store.
+            viewport.filterNotNull()
+                .debounce(CAMERA_SAVE_DEBOUNCE_MILLIS)
+                .distinctUntilChanged()
+                .collect { viewport ->
+                    if (!settingsRepository.settings.first().rememberMapCamera) return@collect
+                    sessionStateRepository.saveMapCamera(
+                        MapCamera(
+                            lat = (viewport.south + viewport.north) / 2,
+                            lon = (viewport.west + viewport.east) / 2,
+                            zoom = viewport.zoom,
+                        ),
+                    )
+                }
         }
         viewModelScope.launch {
             _filters.value = filtersRepository.filters.first()
@@ -455,6 +491,10 @@ class MapViewModel @Inject constructor(
     fun beginHere(location: TransitLocation) = searchStateHolder.setBeginHere(location)
 
     fun finishHere(location: TransitLocation) = searchStateHolder.setFinishHere(location)
+
+    private companion object {
+        const val CAMERA_SAVE_DEBOUNCE_MILLIS = 1_000L
+    }
 }
 
 /** Human-readable coordinates, used to label and describe points picked on the map. */
