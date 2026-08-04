@@ -175,10 +175,14 @@ private fun JourneyCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Whether the walk to the first stop is part of the headline. Only true when there
-            // is a walk at all — otherwise "leave" and "depart" are the same moment.
-            val doorToDoor = timesMode.includesDoorToDoor && journey.startTime != journey.departureTime
-            val countdownFrom = if (doorToDoor) journey.startTime else journey.departureTime
+            // Two separate questions. The countdown only changes when there is a walk *before*
+            // boarding — that is what moves the moment you have to set off. The extra line is
+            // worth showing whenever either end differs, since walking to the destination
+            // changes when you actually arrive.
+            val leaving = timesMode.includesDoorToDoor && journey.startTime != journey.departureTime
+            val showDoorToDoor = timesMode.includesDoorToDoor &&
+                (journey.startTime != journey.departureTime || journey.endTime != journey.arrivalTime)
+            val countdownFrom = if (leaving) journey.startTime else journey.departureTime
             val minutesUntilDeparture = Duration.between(OffsetDateTime.now(), countdownFrom).toMinutes()
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -186,7 +190,7 @@ private fun JourneyCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = departingLabel(minutesUntilDeparture, leaving = doorToDoor),
+                    text = departingLabel(minutesUntilDeparture, leaving = leaving),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = if (minutesUntilDeparture < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
@@ -236,7 +240,7 @@ private fun JourneyCard(
                 StopTimeRow(stopName = fromName, time = journey.startTime, scheduledTime = null)
                 StopTimeRow(stopName = toName, time = journey.endTime, scheduledTime = null)
             } else {
-                if (timesMode == ConnectionTimesMode.BOTH && doorToDoor) {
+                if (timesMode == ConnectionTimesMode.BOTH && showDoorToDoor) {
                     DoorToDoorRow(journey, fromName, toName)
                 }
                 StopTimeRow(
