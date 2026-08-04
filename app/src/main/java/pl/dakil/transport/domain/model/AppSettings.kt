@@ -63,6 +63,31 @@ data class VehicleMotionSettings(
     }
 }
 
+/** Which bottom-bar tab the app opens on. */
+@Serializable
+enum class DefaultTab(val label: String) {
+    MAP("Map"),
+    CONNECTIONS("Connections"),
+    DEPARTURES("Departures"),
+    FAVOURITES("Favourites"),
+}
+
+/**
+ * Which times a connection result card shows. Stop times are when the vehicle itself departs
+ * and arrives; door-to-door times include the walk at each end, so they answer "when do I
+ * leave home" rather than "when does the bus go".
+ */
+@Serializable
+enum class ConnectionTimesMode(val label: String) {
+    STOP_TIMES("Stops"),
+    DOOR_TO_DOOR("Door to door"),
+    BOTH("Both"),
+    ;
+
+    /** Whether the walk at each end is part of the headline times (and the countdown). */
+    val includesDoorToDoor: Boolean get() = this != STOP_TIMES
+}
+
 /**
  * Everything the Settings screen tunes, persisted as one JSON blob. New fields must have
  * defaults so previously stored values keep decoding.
@@ -82,6 +107,27 @@ data class AppSettings(
 
     /** Stop markers are not fetched or drawn below this zoom level. */
     val stopsMinZoom: Float = 13.0f,
+
+    /** Which tab the app opens on. */
+    val defaultTab: DefaultTab = DefaultTab.MAP,
+
+    /** Which times the connection result cards lead with. */
+    val connectionTimesMode: ConnectionTimesMode = ConnectionTimesMode.BOTH,
+
+    /** Whether the search forms' locations survive a restart. */
+    val rememberLastSearch: Boolean = true,
+
+    /** Whether the map reopens where it was last left. */
+    val rememberMapCamera: Boolean = true,
+
+    /**
+     * Whether destination suggestions are re-ranked by distance from the start point (or the
+     * current position when no start is set) instead of keeping the server's own ranking.
+     */
+    val sortSuggestionsByDistance: Boolean = true,
+
+    /** Whether the itinerary map labels the stops where you board and alight. */
+    val showItineraryStopNames: Boolean = true,
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 

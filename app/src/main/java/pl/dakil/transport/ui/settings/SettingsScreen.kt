@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -24,6 +25,8 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
@@ -45,6 +48,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -55,9 +59,12 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import pl.dakil.transport.domain.model.AppSettings
+import pl.dakil.transport.domain.model.ConnectionTimesMode
+import pl.dakil.transport.domain.model.DefaultTab
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
+import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.components.SteppedSliderRow
 import pl.dakil.transport.ui.components.SwitchRow
 
@@ -97,9 +104,13 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
         ) {
-            VehicleMotionGroup(settings, viewModel)
-            DataRefreshGroup(settings, viewModel)
+            // Ordered by how many people touch them: everyday choices first, the deep
+            // interpolation tuning last (and collapsed).
+            GeneralGroup(settings, viewModel)
+            SearchAndResultsGroup(settings, viewModel)
             MapDetailGroup(settings, viewModel)
+            DataRefreshGroup(settings, viewModel)
+            VehicleMotionGroup(settings, viewModel)
             Spacer(Modifier.size(8.dp))
         }
     }
@@ -159,12 +170,76 @@ private fun NotGpsNotice(modifier: Modifier = Modifier) {
 }
 
 @Composable
+private fun GeneralGroup(settings: AppSettings, viewModel: SettingsViewModel) {
+    SettingsGroup(title = "General", icon = Icons.Default.Tune) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Opening screen", style = MaterialTheme.typography.titleSmall)
+            SingleChoiceConnectedRow(
+                options = DefaultTab.entries,
+                selected = settings.defaultTab,
+                onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },
+                label = { it.label },
+            )
+            Text(
+                text = "Which tab opens when you launch the app.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SwitchRow(
+            title = "Remember last search",
+            checked = settings.rememberLastSearch,
+            onCheckedChange = { on -> viewModel.update { it.copy(rememberLastSearch = on) } },
+            supportingText = "Your last from, to and departure stop survive a restart. Off, the " +
+                "forms start empty every time.",
+        )
+        SwitchRow(
+            title = "Remember map position",
+            checked = settings.rememberMapCamera,
+            onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },
+            supportingText = "Reopen the map where you left it instead of the default view.",
+        )
+    }
+}
+
+@Composable
+private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsViewModel) {
+    SettingsGroup(title = "Search & results", icon = Icons.Default.Search) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("Connection times", style = MaterialTheme.typography.titleSmall)
+            SingleChoiceConnectedRow(
+                options = ConnectionTimesMode.entries,
+                selected = settings.connectionTimesMode,
+                onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },
+                label = { it.label },
+            )
+            Text(
+                text = "Stop times are when the vehicle moves; door to door includes the walk at " +
+                    "each end, so the countdown tells you when to leave.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        SwitchRow(
+            title = "Sort suggestions by distance",
+            checked = settings.sortSuggestionsByDistance,
+            onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
+            supportingText = "Ranks place results by distance from your start point — or your " +
+                "position when no start is set — instead of the server's own ranking.",
+        )
+    }
+}
+
+@Composable
 private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewModel) {
     val motion = settings.vehicleMotion
     SettingsGroup(
         title = "Vehicle movement",
         icon = Icons.Default.DirectionsBus,
         onReset = viewModel::resetMotion.takeIf { !motion.isDefault },
+        // The deepest tuning in the app: visible, named, and one tap from open — but not
+        // occupying half the screen for everyone who never touches it.
+        initiallyExpanded = false,
     ) {
         NotGpsNotice()
         SwitchRow(
@@ -277,10 +352,22 @@ private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) 
             valueLabel = { String.format(Locale.getDefault(), "%.1f", it) },
             supportingText = "Below this zoom no vehicles are fetched at all.",
         )
+        SwitchRow(
+            title = "Itinerary stop names",
+            checked = settings.showItineraryStopNames,
+            onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
+            supportingText = "Labels the stops where you board and alight on the itinerary map.",
+        )
     }
 }
 
-/** A settings card: shaped icon tile, title, optional per-group reset, and its controls. */
+/**
+ * A settings card: shaped icon tile, title, optional per-group reset, and its controls.
+ *
+ * [initiallyExpanded] `false` makes the card collapsible and starts it closed — used for the
+ * power-user groups, so they stay visible and named on the screen instead of being exiled to
+ * an "advanced" sub-screen, without spending a screenful on sliders most people never move.
+ */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun SettingsGroup(
@@ -288,18 +375,42 @@ private fun SettingsGroup(
     icon: ImageVector,
     modifier: Modifier = Modifier,
     onReset: (() -> Unit)? = null,
+    initiallyExpanded: Boolean = true,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    // Always-expanded groups have no chevron and no state to keep.
+    val collapsible = !initiallyExpanded
+    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
+    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "group-chevron")
+
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
+        // No arrangement spacing here: the collapsed card would otherwise keep a 20.dp gap for
+        // the hidden content. The expanded content carries its own leading padding instead.
         Column(
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.padding(PaddingValues(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 20.dp)),
+            modifier = Modifier.padding(
+                PaddingValues(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = 16.dp,
+                    bottom = if (collapsible && !expanded) 16.dp else 20.dp,
+                ),
+            ),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = if (collapsible) {
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { expanded = !expanded }
+                } else {
+                    Modifier.fillMaxWidth()
+                },
+            ) {
                 Surface(
                     shape = MaterialShapes.Cookie9Sided.toShape(),
                     color = MaterialTheme.colorScheme.primaryContainer,
@@ -320,11 +431,28 @@ private fun SettingsGroup(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                if (onReset != null) {
+                if (onReset != null && expanded) {
                     OutlinedButton(onClick = onReset) { Text("Reset") }
                 }
+                if (collapsible) {
+                    Icon(
+                        Icons.Default.ExpandMore,
+                        contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(22.dp)
+                            .rotate(chevronRotation),
+                    )
+                }
             }
-            content()
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(20.dp),
+                    modifier = Modifier.padding(top = 20.dp),
+                    content = content,
+                )
+            }
         }
     }
 }
