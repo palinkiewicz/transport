@@ -15,12 +15,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.domain.model.AppError
@@ -31,7 +33,7 @@ import pl.dakil.transport.ui.navigation.PickerTarget
 /** One row of the location picker list. */
 data class PickerItem(
     val location: TransitLocation,
-    /** Straight-line distance from the user's last known position; null without a fix. */
+    /** Straight-line distance from the reference point; null when there is none to measure from. */
     val distanceMeters: Double?,
     val isFavorite: Boolean,
 )
@@ -49,6 +51,7 @@ class LocationPickerViewModel @Inject constructor(
     locationService: LocationService,
     private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
+    settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     /** What the pick fills: a Search screen field, or the map's selection. */
@@ -68,6 +71,17 @@ class LocationPickerViewModel @Inject constructor(
 
     private val userPosition: GeoPoint? =
         locationService.lastKnownLocation()?.let { GeoPoint(it.lat, it.lon) }
+
+    /**
+     * What "near" means for this pick: when choosing a destination for a journey that already
+     * has a start, it is that start — the trip is measured from there, not from wherever the
+     * phone happens to be. Everything else falls back to the current position. Drives the
+     * geocoder's bias, the distances shown, and the optional distance sort.
+     */
+    private val referencePosition: GeoPoint? = when (target) {
+        PickerTarget.TO -> searchStateHolder.from.value?.let { GeoPoint(it.lat, it.lon) } ?: userPosition
+        else -> userPosition
+    }
 
     /**
      * "Your location" entry for the empty-query list; null without permission or a fix, and
@@ -90,7 +104,7 @@ class LocationPickerViewModel @Inject constructor(
                     _searchError.value = null
                     emptyList()
                 } else {
-                    geocodeRepository.suggest(query, userPosition?.lat, userPosition?.lon, stopsOnly).fold(
+                    geocodeRepository.suggest(query, referencePosition?.lat, referencePosition?.lon, stopsOnly).fold(
                         onSuccess = { results ->
                             _searchError.value = null
                             results
@@ -111,18 +125,35 @@ class LocationPickerViewModel @Inject constructor(
         retryTicks.value++
     }
 
+    private val sortByDistance: Flow<Boolean> =
+        settingsRepository.settings.map { it.sortSuggestionsByDistance }
+
     /** Suggestions while typing; the favourite places when the query is blank. */
     val items: StateFlow<List<PickerItem>> =
-        combine(_query, suggestions, favoritesRepository.favorites) { query, suggestions, favorites ->
+        combine(
+            _query,
+            suggestions,
+            favoritesRepository.favorites,
+            sortByDistance,
+        ) { query, suggestions, favorites, sortByDistance ->
             val locations = (if (query.isBlank()) favorites.locations else suggestions)
                 // A starred address or map point can't stand in for a stop id.
                 .filter { !stopsOnly || it.stopId != null }
-            locations.map { location ->
+            val items = locations.map { location ->
                 PickerItem(
                     location = location,
-                    distanceMeters = userPosition?.let { GeoPoint(location.lat, location.lon).distanceMetersTo(it) },
+                    distanceMeters = referencePosition?.let {
+                        GeoPoint(location.lat, location.lon).distanceMetersTo(it)
+                    },
                     isFavorite = favorites.containsLocation(location),
                 )
+            }
+            // Favourites are already in the order the user built them; only the geocoder's
+            // ranking is worth overriding, and only when there is a point to measure from.
+            if (sortByDistance && query.isNotBlank() && referencePosition != null) {
+                items.sortedBy { it.distanceMeters ?: Double.MAX_VALUE }
+            } else {
+                items
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
