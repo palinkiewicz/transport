@@ -195,9 +195,23 @@ private fun VehicleMarker.markerColorHex(): String =
 private const val VEHICLE_STROKE_LIVE = "#2E7D32"
 private const val VEHICLE_STROKE_TIMETABLE = "#9E9E9E"
 
-private const val STOPS_FETCH_MIN_ZOOM = 13f
+/**
+ * Zooms at which the stop pins gain their mode icon and their name label, when the pins
+ * themselves are shown from the default zoom. A "Stops from zoom" setting below these carries
+ * them down with it, so lowering it never yields bare dots with no way to tell stops apart.
+ */
 private const val STOP_ICONS_MIN_ZOOM = 15f
+private const val STOP_LABELS_MIN_ZOOM = 14f
+private const val STOPS_DEFAULT_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
+
+/**
+ * Zoom at which a stop detail layer ([defaultZoom] by default) turns on, given the zoom stops
+ * appear at. Lowering "Stops from zoom" drags the detail down by the same amount, keeping the
+ * gap it normally has above the pins; raising it past a detail simply pushes the detail up.
+ */
+private fun detailZoom(stopsMinZoom: Float, defaultZoom: Float): Float =
+    (stopsMinZoom + (defaultZoom - STOPS_DEFAULT_MIN_ZOOM)).coerceAtLeast(stopsMinZoom)
 
 /**
  * Neutral marker color for a location that isn't a transit stop (a picked point or a plain
@@ -225,6 +239,9 @@ fun MapScreen(
     val selectedVehicle by viewModel.selectedVehicle.collectAsStateWithLifecycle()
     val vehicleDetails by viewModel.vehicleDetails.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    // Delegated on purpose: the map content lambda is composed once and never swapped, so the
+    // layers below must read this through its State (a captured value would freeze at startup).
+    val currentStopsMinZoom by viewModel.stopsMinZoom.collectAsStateWithLifecycle()
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -552,7 +569,7 @@ fun MapScreen(
                 CircleLayer(
                     id = "transport-stops",
                     source = stopsSource,
-                    minZoom = STOPS_FETCH_MIN_ZOOM,
+                    minZoom = currentStopsMinZoom,
                     // Small dots while zoomed out, growing into icon-bearing pins by z16.
                     radius = interpolate(
                         linear(),
@@ -568,7 +585,7 @@ fun MapScreen(
                 SymbolLayer(
                     id = "transport-stop-icons",
                     source = stopsSource,
-                    minZoom = STOP_ICONS_MIN_ZOOM,
+                    minZoom = detailZoom(currentStopsMinZoom, STOP_ICONS_MIN_ZOOM),
                     iconImage = markerIconImage,
                     // Scale the glyph together with the circle it sits on.
                     iconSize = interpolate(
@@ -582,7 +599,7 @@ fun MapScreen(
                 SymbolLayer(
                     id = "transport-stop-labels",
                     source = stopsSource,
-                    minZoom = 14f,
+                    minZoom = detailZoom(currentStopsMinZoom, STOP_LABELS_MIN_ZOOM),
                     textField = format(span(feature["name"].asString())),
                     // Must be a fontstack the style's glyph server actually serves (the library
                     // default 404s there); Roboto also matches the basemap's typography.

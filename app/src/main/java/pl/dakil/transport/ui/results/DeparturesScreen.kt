@@ -46,6 +46,8 @@ import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.RefreshButton
+import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.timeDeviationColor
 import pl.dakil.transport.ui.navigation.TripRoute
 
@@ -70,11 +72,14 @@ fun DeparturesScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(viewModel.stopName) },
-                subtitle = { Text("Live departures · refreshes in $secondsUntilRefresh sec") },
+                subtitle = { Text(refreshSubtitle("Live departures", secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
+                },
+                actions = {
+                    RefreshButton(secondsUntilRefresh, onRefresh = viewModel::refreshNow)
                 },
                 scrollBehavior = scrollBehavior,
             )

@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -76,25 +77,41 @@ class DeparturesViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<DeparturesUiState>(DeparturesUiState.Loading)
     val uiState: StateFlow<DeparturesUiState> = _uiState
 
-    private val _secondsUntilRefresh = MutableStateFlow(REFRESH_INTERVAL_SECONDS)
-    val secondsUntilRefresh: StateFlow<Int> = _secondsUntilRefresh
+    /** Countdown to the next automatic reload; null once auto-refresh is off. */
+    private val _secondsUntilRefresh = MutableStateFlow<Int?>(REFRESH_INTERVAL_SECONDS)
+    val secondsUntilRefresh: StateFlow<Int?> = _secondsUntilRefresh
 
     /** Frozen for the session like [ResultsViewModel]'s options — see the note there. */
     private lateinit var options: SearchOptions
 
+    private var refreshJob: Job? = null
+
     init {
-        viewModelScope.launch {
-            options = searchOptionsRepository.options.first()
-            val interval = settingsRepository.settings.first().resultsRefreshSeconds
+        startRefreshLoop()
+    }
+
+    private fun startRefreshLoop() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            if (!::options.isInitialized) options = searchOptionsRepository.options.first()
+            val settings = settingsRepository.settings.first()
             while (true) {
                 refresh()
-                for (seconds in interval downTo 1) {
+                if (!settings.autoRefreshEnabled) {
+                    // One load, then wait for the screen's refresh button instead of polling.
+                    _secondsUntilRefresh.value = null
+                    break
+                }
+                for (seconds in settings.resultsRefreshSeconds downTo 1) {
                     _secondsUntilRefresh.value = seconds
                     delay(1_000)
                 }
             }
         }
     }
+
+    /** Reloads the board now — the only way back to fresh data with auto-refresh off. */
+    fun refreshNow() = startRefreshLoop()
 
     private suspend fun refresh() {
         timetableRepository.departures(stop, time = time, options = options).fold(

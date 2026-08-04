@@ -29,8 +29,12 @@ data class VehicleMotionSettings(
      */
     val segmentRetentionSeconds: Int = 120,
 
-    /** Milliseconds between redraws. Lower is smoother and costs more CPU; no extra requests. */
-    val frameIntervalMillis: Int = 60,
+    /**
+     * Milliseconds between redraws. Lower is smoother and costs more CPU; no extra requests.
+     * The UI offers [FRAME_INTERVAL_STEPS] rather than a linear range: the useful settings are
+     * bunched under a second, while the power-saving end is only worth coarse steps.
+     */
+    val frameIntervalMillis: Int = 50,
 
     /**
      * Never let a vehicle slide backwards along its route. Real-time feeds revise delays
@@ -58,6 +62,16 @@ data class VehicleMotionSettings(
 
     companion object {
         val DEFAULT = VehicleMotionSettings()
+
+        /**
+         * Selectable values for [frameIntervalMillis]: fine-grained where smoothness is decided
+         * (tens of milliseconds), coarse where the point is only to stop redrawing often.
+         */
+        val FRAME_INTERVAL_STEPS = listOf(
+            50, 100, 200, 300, 400, 500, 600, 700, 800, 900,
+            1_000, 1_500, 2_000, 2_500, 3_000, 4_000, 5_000,
+            10_000, 15_000, 20_000, 25_000, 30_000,
+        )
     }
 }
 
@@ -68,6 +82,12 @@ data class VehicleMotionSettings(
 @Serializable
 data class AppSettings(
     val vehicleMotion: VehicleMotionSettings = VehicleMotionSettings(),
+
+    /**
+     * Whether the results list, departures board and trip view reload themselves while open.
+     * Off, they load once and offer a manual refresh instead.
+     */
+    val autoRefreshEnabled: Boolean = true,
 
     /** Seconds between automatic reloads of the results list and the departures board. */
     val resultsRefreshSeconds: Int = 30,

@@ -53,6 +53,8 @@ import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
+import pl.dakil.transport.ui.components.RefreshButton
+import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.parseRouteColor
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -77,13 +79,14 @@ fun ResultsScreen(
                     val stops = listOf(viewModel.fromName) + viewModel.viaNames + viewModel.toName
                     Text(stops.joinToString(" → "))
                 },
-                subtitle = { Text("Connections · refreshes in $secondsUntilRefresh sec") },
+                subtitle = { Text(refreshSubtitle("Connections", secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    RefreshButton(secondsUntilRefresh, onRefresh = viewModel::refreshNow)
                     FavoriteButton(isFavorite = isFavorite, onToggle = viewModel::toggleFavorite)
                 },
                 scrollBehavior = scrollBehavior,

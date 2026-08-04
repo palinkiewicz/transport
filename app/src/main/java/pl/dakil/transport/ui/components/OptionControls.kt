@@ -103,6 +103,39 @@ fun IntSliderRow(
     )
 }
 
+/**
+ * A slider over an explicit list of [values] rather than a numeric range: the slider moves
+ * through indices, so the steps can be as unevenly spaced as the setting deserves. A [value]
+ * that isn't in the list snaps to the nearest entry.
+ */
+@Composable
+fun <T> SteppedSliderRow(
+    title: String,
+    values: List<T>,
+    value: T,
+    onValueCommit: (T) -> Unit,
+    valueLabel: (T) -> String,
+    modifier: Modifier = Modifier,
+    supportingText: String? = null,
+    distance: (T, T) -> Float = { a, b -> if (a == b) 0f else 1f },
+) {
+    val index = remember(values, value) {
+        values.indices.minByOrNull { distance(values[it], value) } ?: 0
+    }
+    LabeledSliderRow(
+        title = title,
+        value = index.toFloat(),
+        onValueCommit = { onValueCommit(values[it.roundToInt().coerceIn(values.indices)]) },
+        valueRange = 0f..values.lastIndex.toFloat(),
+        steps = values.size - 2,
+        valueLabel = { position ->
+            valueLabel(values[position.roundToInt().coerceIn(values.indices)])
+        },
+        modifier = modifier,
+        supportingText = supportingText,
+    )
+}
+
 /** A full-width labeled switch row with optional supporting text under the title. */
 @Composable
 fun SwitchRow(

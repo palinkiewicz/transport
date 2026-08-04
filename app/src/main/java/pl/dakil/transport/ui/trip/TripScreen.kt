@@ -38,7 +38,9 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.VehicleAmenityChips
+import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.parseRouteColor
 
 /** Timetable of a single vehicle run: every stop on the route with live times. */
@@ -65,13 +67,14 @@ fun TripScreen(
                         }
                     }
                 },
-                subtitle = { Text("Trip timetable · refreshes in $secondsUntilRefresh sec") },
+                subtitle = { Text(refreshSubtitle("Trip timetable", secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
                 actions = {
+                    RefreshButton(secondsUntilRefresh, onRefresh = viewModel::refreshNow)
                     FavoriteButton(isFavorite = isFavorite, onToggle = viewModel::toggleFavorite)
                 },
                 scrollBehavior = scrollBehavior,

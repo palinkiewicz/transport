@@ -94,8 +94,9 @@ class ResultsViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<ResultsUiState>(ResultsUiState.Loading)
     val uiState: StateFlow<ResultsUiState> = _uiState
 
-    private val _secondsUntilRefresh = MutableStateFlow(REFRESH_INTERVAL_SECONDS)
-    val secondsUntilRefresh: StateFlow<Int> = _secondsUntilRefresh
+    /** Countdown to the next automatic reload; null once auto-refresh is off. */
+    private val _secondsUntilRefresh = MutableStateFlow<Int?>(REFRESH_INTERVAL_SECONDS)
+    val secondsUntilRefresh: StateFlow<Int?> = _secondsUntilRefresh
 
     /** Current page of results; null is the initial page for the requested time. */
     private var pageCursor: String? = null
@@ -110,16 +111,24 @@ class ResultsViewModel @Inject constructor(
         if (showLoading) _uiState.value = ResultsUiState.Loading
         refreshJob = viewModelScope.launch {
             if (!::options.isInitialized) options = searchOptionsRepository.options.first()
-            val interval = settingsRepository.settings.first().resultsRefreshSeconds
+            val settings = settingsRepository.settings.first()
             while (true) {
                 refresh()
-                for (seconds in interval downTo 1) {
+                if (!settings.autoRefreshEnabled) {
+                    // One load, then wait for the screen's refresh button instead of polling.
+                    _secondsUntilRefresh.value = null
+                    break
+                }
+                for (seconds in settings.resultsRefreshSeconds downTo 1) {
                     _secondsUntilRefresh.value = seconds
                     delay(1_000)
                 }
             }
         }
     }
+
+    /** Reloads the current page now — the only way back to fresh data with auto-refresh off. */
+    fun refreshNow() = startRefreshLoop(showLoading = false)
 
     /** Loads the previous (earlier connections) page, if the API offered one. */
     fun showPrevious() {

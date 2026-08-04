@@ -91,12 +91,6 @@ sealed interface StopRoutesUiState {
     data class Error(val message: String) : StopRoutesUiState
 }
 
-/**
- * Default zoom below which stop markers are neither fetched nor drawn (matches the stop
- * layers' minZoom). Overridable in Settings via [AppSettings.stopsMinZoom].
- */
-const val STOPS_MIN_ZOOM = 13.0
-
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class MapViewModel @Inject constructor(
@@ -117,6 +111,15 @@ class MapViewModel @Inject constructor(
     private val motionSettings: StateFlow<VehicleMotionSettings> = settings
         .map { it.vehicleMotion }
         .stateIn(viewModelScope, SharingStarted.Eagerly, VehicleMotionSettings.DEFAULT)
+
+    /**
+     * Zoom below which stops are neither fetched (below) nor drawn: the map layers read this
+     * too, so raising it doesn't leave the last fetched stops painted on an empty map, and
+     * lowering it actually shows the stops the fetch gate now allows.
+     */
+    val stopsMinZoom: StateFlow<Float> = settings
+        .map { it.stopsMinZoom }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings.DEFAULT.stopsMinZoom)
 
     /** Starred items, for the info panels' star buttons. */
     val favorites: StateFlow<Favorites> = favoritesRepository.favorites
