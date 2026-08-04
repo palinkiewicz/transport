@@ -54,8 +54,11 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
+import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.EmptyBox
@@ -65,17 +68,75 @@ import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.map.RouteMap
+import pl.dakil.transport.ui.map.RouteMapPoint
 import pl.dakil.transport.ui.map.rememberJourneyRouteLines
 
 private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
+/** A stop the itinerary names in both views, so a tap in one can point at it in the other. */
+private data class ItineraryStop(
+    val id: String,
+    val name: String,
+    val point: GeoPoint,
+    val time: OffsetDateTime,
+    val scheduledTime: OffsetDateTime,
+    val terminus: Boolean,
+)
+
+/**
+ * The stops where the journey boards and alights, in order. Intermediate stops are left out on
+ * purpose: they are pass-throughs, and labelling every one of them buries the map in text.
+ * Coordinates come from the leg geometry — [JourneyLeg] carries no endpoint coordinates of its
+ * own, and its path ends are exactly those points.
+ */
+private fun journeyStops(journey: Journey, fromName: String, toName: String): List<ItineraryStop> {
+    val transitIndices = journey.legs.indices.filter { journey.legs[it].isTransit }
+    return transitIndices.flatMapIndexed { order, index ->
+        val leg = journey.legs[index]
+        if (leg.path.size < 2) return@flatMapIndexed emptyList()
+        listOf(
+            ItineraryStop(
+                id = stopId(index, from = true),
+                name = if (index == 0) fromName else leg.fromName,
+                point = leg.path.first(),
+                time = leg.startTime,
+                scheduledTime = leg.scheduledStartTime,
+                terminus = order == 0,
+            ),
+            ItineraryStop(
+                id = stopId(index, from = false),
+                name = if (index == journey.legs.lastIndex) toName else leg.toName,
+                point = leg.path.last(),
+                time = leg.endTime,
+                scheduledTime = leg.scheduledEndTime,
+                terminus = order == transitIndices.lastIndex,
+            ),
+        )
+    }
+}
+
+/** Shared between the list rows and the map features so a tap in either resolves in the other. */
+private fun stopId(legIndex: Int, from: Boolean): String = "leg-$legIndex-${if (from) "from" else "to"}"
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack: () -> Unit) {
+fun ItineraryScreen(
+    journey: Journey?,
+    fromName: String,
+    toName: String,
+    onBack: () -> Unit,
+    viewModel: ItineraryViewModel = hiltViewModel(),
+) {
     var showMap by rememberSaveable { mutableStateOf(false) }
+    var selectedStopId by rememberSaveable { mutableStateOf<String?>(null) }
+    val showStopNames by viewModel.showStopNames.collectAsStateWithLifecycle()
     // Only offer the map when the journey actually carries drawable leg geometry.
     val canShowMap = journey?.legs?.any { it.path.size >= 2 } == true
     if (!canShowMap && showMap) showMap = false
+
+    val stops = remember(journey, fromName, toName) {
+        journey?.let { journeyStops(it, fromName, toName) }.orEmpty()
+    }
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -115,6 +176,10 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
                 journey = journey,
                 fromName = fromName,
                 toName = toName,
+                stops = stops,
+                selectedStopId = selectedStopId,
+                showStopNames = showStopNames,
+                onStopClick = { selectedStopId = it },
                 modifier = Modifier.padding(innerPadding),
             )
             else -> LazyColumn(
@@ -130,8 +195,21 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
                 items(journey.legs.size) { index ->
                     LegRow(
                         leg = journey.legs[index],
+                        legIndex = index,
                         fromNameOverride = if (index == 0) fromName else null,
                         toNameOverride = if (index == journey.legs.lastIndex) toName else null,
+                        // Tapping a stop in the list is a request to see where it is; only
+                        // stops the map can actually point at are tappable.
+                        onStopClick = if (!canShowMap) {
+                            null
+                        } else {
+                            { id: String ->
+                                if (stops.any { it.id == id }) {
+                                    selectedStopId = id
+                                    showMap = true
+                                }
+                            }
+                        },
                     )
                 }
             }
@@ -144,19 +222,41 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
  * bottom pane carrying the at-a-glance summary and the sequence of lines to ride.
  */
 @Composable
-private fun ItineraryMap(journey: Journey, fromName: String, toName: String, modifier: Modifier = Modifier) {
+private fun ItineraryMap(
+    journey: Journey,
+    fromName: String,
+    toName: String,
+    stops: List<ItineraryStop>,
+    selectedStopId: String?,
+    showStopNames: Boolean,
+    onStopClick: (String?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val lines = rememberJourneyRouteLines(journey)
+    val points = remember(stops) {
+        stops.map { RouteMapPoint(id = it.id, point = it.point, name = it.name, terminus = it.terminus) }
+    }
     RouteMap(
         lines = lines,
+        points = points,
+        selectedPointId = selectedStopId,
+        showPointLabels = showStopNames,
+        onPointClick = onStopClick,
         modifier = modifier.fillMaxSize(),
     ) {
-        ItineraryMapPane(journey, fromName, toName)
+        ItineraryMapPane(journey, fromName, toName, stops.firstOrNull { it.id == selectedStopId })
     }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ItineraryMapPane(journey: Journey, fromName: String, toName: String) {
+private fun ItineraryMapPane(
+    journey: Journey,
+    fromName: String,
+    toName: String,
+    /** The tapped stop, if any: the pane answers about that stop instead of the whole trip. */
+    selectedStop: ItineraryStop?,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
@@ -165,24 +265,29 @@ private fun ItineraryMapPane(journey: Journey, fromName: String, toName: String)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "$fromName → $toName",
+                text = selectedStop?.name ?: "$fromName → $toName",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = buildString {
-                    append(journey.departureTime.format(timeFormatter))
-                    append(" – ")
-                    append(journey.arrivalTime.format(timeFormatter))
-                    append(" · ")
-                    append(formatDuration(journey.transitDurationSeconds))
-                    append(" · ")
-                    append(pluralizeTransfers(journey.transfers))
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            if (selectedStop != null) {
+                // Same delay treatment as the list, so a stop reads identically in both views.
+                InlineRealTimeText(time = selectedStop.time, scheduledTime = selectedStop.scheduledTime)
+            } else {
+                Text(
+                    text = buildString {
+                        append(journey.departureTime.format(timeFormatter))
+                        append(" – ")
+                        append(journey.arrivalTime.format(timeFormatter))
+                        append(" · ")
+                        append(formatDuration(journey.transitDurationSeconds))
+                        append(" · ")
+                        append(pluralizeTransfers(journey.transfers))
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             val transitLegs = remember(journey) { journey.legs.filter { it.isTransit } }
             if (transitLegs.isNotEmpty()) {
                 FlowRow(
@@ -241,7 +346,14 @@ private fun SummaryStat(label: String, value: String) {
 }
 
 @Composable
-private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOverride: String? = null) {
+private fun LegRow(
+    leg: JourneyLeg,
+    legIndex: Int,
+    fromNameOverride: String? = null,
+    toNameOverride: String? = null,
+    /** Null leaves the stop rows inert (nothing to show on a map). */
+    onStopClick: ((String) -> Unit)? = null,
+) {
     val legColor = if (leg.isTransit) parseRouteColor(leg.routeColor, leg.mode.color) else MaterialTheme.colorScheme.outline
 
     Row(
@@ -290,6 +402,7 @@ private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOver
                     scheduledTime = leg.scheduledStartTime,
                     name = fromNameOverride ?: leg.fromName,
                     track = leg.fromTrack,
+                    onClick = onStopClick?.let { { it(stopId(legIndex, from = true)) } },
                 )
                 Spacer(Modifier.height(4.dp))
             }
@@ -327,6 +440,7 @@ private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOver
                     scheduledTime = leg.scheduledEndTime,
                     name = toNameOverride ?: leg.toName,
                     track = leg.toTrack,
+                    onClick = onStopClick?.let { { it(stopId(legIndex, from = false)) } },
                 )
             }
         }
@@ -334,8 +448,25 @@ private fun LegRow(leg: JourneyLeg, fromNameOverride: String? = null, toNameOver
 }
 
 @Composable
-private fun StopRow(time: OffsetDateTime, scheduledTime: OffsetDateTime, name: String, track: String?) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+private fun StopRow(
+    time: OffsetDateTime,
+    scheduledTime: OffsetDateTime,
+    name: String,
+    track: String?,
+    onClick: (() -> Unit)? = null,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = if (onClick == null) {
+            Modifier
+        } else {
+            Modifier
+                .clip(MaterialTheme.shapes.small)
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp)
+        },
+    ) {
         InlineRealTimeText(time = time, scheduledTime = scheduledTime)
         Text(name, style = MaterialTheme.typography.bodyMedium)
         track?.let { TrackPill(it) }

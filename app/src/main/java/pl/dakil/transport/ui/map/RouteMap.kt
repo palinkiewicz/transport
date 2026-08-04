@@ -24,7 +24,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.serialization.json.JsonObject
@@ -36,15 +38,20 @@ import org.maplibre.compose.expressions.dsl.case
 import org.maplibre.compose.expressions.dsl.const
 import org.maplibre.compose.expressions.dsl.convertToColor
 import org.maplibre.compose.expressions.dsl.feature
+import org.maplibre.compose.expressions.dsl.format
 import org.maplibre.compose.expressions.dsl.interpolate
 import org.maplibre.compose.expressions.dsl.linear
+import org.maplibre.compose.expressions.dsl.offset
+import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.expressions.dsl.zoom
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
+import org.maplibre.compose.expressions.value.SymbolAnchor
 import org.maplibre.compose.layers.Anchor
 import org.maplibre.compose.layers.CircleLayer
 import org.maplibre.compose.layers.LineLayer
+import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.MapOptions
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.OrnamentOptions
@@ -53,6 +60,7 @@ import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.style.rememberStyleState
+import org.maplibre.compose.util.ClickResult
 import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Feature
 import org.maplibre.spatialk.geojson.FeatureCollection
@@ -69,6 +77,19 @@ data class RouteMapLine(
     val color: Color,
     /** Dotted rendering for non-vehicle stretches (walk/bike legs). */
     val dashed: Boolean = false,
+)
+
+/**
+ * A named stop drawn on a [RouteMap]. Passing these instead of letting the map derive bare
+ * dots from the line ends is what lets it label them and hand taps back by [id].
+ */
+data class RouteMapPoint(
+    /** Stable within one route; what [RouteMap]'s click callback and selection are keyed by. */
+    val id: String,
+    val point: GeoPoint,
+    val name: String,
+    /** Ends of the whole journey are drawn larger than the transfer points between legs. */
+    val terminus: Boolean,
 )
 
 /**
@@ -94,6 +115,12 @@ fun rememberJourneyRouteLines(journey: Journey): List<RouteMapLine> {
 
 private fun Color.toHexString(): String = String.format("#%06X", toArgb() and 0xFFFFFF)
 
+/** Tap slop around a stop dot — the dots are far smaller than a fingertip. */
+private val POINT_TAP_TARGET_RADIUS = 24.dp
+
+/** Zoom a selected stop is brought to, unless the camera is already closer. */
+private const val SELECTED_POINT_ZOOM = 15.0
+
 /**
  * A non-interactive-content map that draws [lines] over the app's patched base style and
  * auto-fits the camera to them. Reusable by any screen that needs to show a route (itinerary,
@@ -101,11 +128,19 @@ private fun Color.toHexString(): String = String.format("#%06X", toArgb() and 0x
  *
  * [bottomOverlay] is docked to the bottom edge above the attribution row, so panels passed
  * here lift the attribution instead of covering it (same pattern as the Map screen).
+ *
+ * [points] are the named stops to draw; when empty the map falls back to bare dots derived
+ * from the line ends. [selectedPointId] enlarges one of them and centres the camera on it,
+ * and [onPointClick] reports taps (null id = tapped empty map).
  */
 @Composable
 fun RouteMap(
     lines: List<RouteMapLine>,
     modifier: Modifier = Modifier,
+    points: List<RouteMapPoint> = emptyList(),
+    selectedPointId: String? = null,
+    showPointLabels: Boolean = true,
+    onPointClick: (String?) -> Unit = {},
     styleViewModel: MapStyleViewModel = hiltViewModel(),
     bottomOverlay: @Composable ColumnScope.() -> Unit = {},
 ) {
@@ -134,9 +169,25 @@ fun RouteMap(
         )
     }
 
+    // Selecting a stop — here or by tapping its row in the list view — brings it into view.
+    LaunchedEffect(selectedPointId) {
+        val selected = points.firstOrNull { it.id == selectedPointId } ?: return@LaunchedEffect
+        cameraState.animateTo(
+            CameraPosition(
+                target = Position(latitude = selected.point.lat, longitude = selected.point.lon),
+                zoom = maxOf(cameraState.position.zoom, SELECTED_POINT_ZOOM),
+            ),
+        )
+    }
+
     // The map content lambda below is composed once and never swapped, so it must read the
     // lines through a State object rather than capture the parameter value directly.
     val currentLines by rememberUpdatedState(lines)
+    val currentPoints by rememberUpdatedState(points)
+    val currentSelectedPointId by rememberUpdatedState(selectedPointId)
+    val currentShowLabels by rememberUpdatedState(showPointLabels)
+    // Same reason the callbacks object is remembered without keying on this: read, never captured.
+    val currentOnPointClick by rememberUpdatedState(onPointClick)
 
     Box(modifier = modifier) {
         MaplibreMap(
@@ -146,6 +197,38 @@ fun RouteMap(
             cameraState = cameraState,
             styleState = styleState,
             options = MapOptions(ornamentOptions = OrnamentOptions.AllDisabled),
+            onMapClick = { _, clickOffset ->
+                val projection = cameraState.projection
+                if (projection == null) {
+                    ClickResult.Pass
+                } else {
+                    val hitRect = DpRect(
+                        left = clickOffset.x - POINT_TAP_TARGET_RADIUS,
+                        top = clickOffset.y - POINT_TAP_TARGET_RADIUS,
+                        right = clickOffset.x + POINT_TAP_TARGET_RADIUS,
+                        bottom = clickOffset.y + POINT_TAP_TARGET_RADIUS,
+                    )
+                    val hitId = projection
+                        .queryRenderedFeatures(rect = hitRect, layerIds = setOf("route-map-points"))
+                        .minByOrNull { candidate ->
+                            val position = (candidate.geometry as? Point)?.coordinates
+                            val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
+                            if (candidateOffset != null) {
+                                val dx = (candidateOffset.x - clickOffset.x).value
+                                val dy = (candidateOffset.y - clickOffset.y).value
+                                dx * dx + dy * dy
+                            } else {
+                                Float.MAX_VALUE
+                            }
+                        }?.id?.content
+                    if (hitId == null && currentSelectedPointId == null) {
+                        ClickResult.Pass
+                    } else {
+                        currentOnPointClick(hitId)
+                        ClickResult.Consume
+                    }
+                }
+            },
         ) {
             fun lineFeatures(lines: List<RouteMapLine>) = FeatureCollection(
                 lines.map { line ->
@@ -170,19 +253,38 @@ fun RouteMap(
                     remember(currentLines) { lineFeatures(currentLines.filter { it.dashed }) },
                 ),
             )
-            // Dots at the endpoints of the whole route plus each junction between lines
-            // (boarding/alighting points).
-            val pointFeatures = remember(currentLines) {
-                val stops = buildList {
-                    currentLines.firstOrNull()?.let { add(it.points.first() to "terminus") }
-                    currentLines.dropLast(1).forEach { add(it.points.last() to "via") }
-                    currentLines.lastOrNull()?.let { add(it.points.last() to "terminus") }
+            // Named stops when the caller supplied them; otherwise bare dots derived from the
+            // endpoints of the whole route plus each junction between lines.
+            val pointFeatures = remember(currentLines, currentPoints, currentSelectedPointId) {
+                val stops = currentPoints.ifEmpty {
+                    buildList {
+                        currentLines.firstOrNull()?.let {
+                            add(RouteMapPoint("start", it.points.first(), "", terminus = true))
+                        }
+                        currentLines.dropLast(1).forEachIndexed { index, line ->
+                            add(RouteMapPoint("via-$index", line.points.last(), "", terminus = false))
+                        }
+                        currentLines.lastOrNull()?.let {
+                            add(RouteMapPoint("end", it.points.last(), "", terminus = true))
+                        }
+                    }
                 }
                 FeatureCollection(
-                    stops.map { (point, kind) ->
+                    stops.map { stop ->
                         Feature<Point, JsonObject?>(
-                            geometry = Point(Position(latitude = point.lat, longitude = point.lon)),
-                            properties = JsonObject(mapOf("kind" to JsonPrimitive(kind))),
+                            id = JsonPrimitive(stop.id),
+                            geometry = Point(
+                                Position(latitude = stop.point.lat, longitude = stop.point.lon),
+                            ),
+                            properties = JsonObject(
+                                mapOf(
+                                    "kind" to JsonPrimitive(if (stop.terminus) "terminus" else "via"),
+                                    "name" to JsonPrimitive(
+                                        stop.name.takeIf { currentShowLabels }.orEmpty(),
+                                    ),
+                                    "selected" to JsonPrimitive(stop.id == currentSelectedPointId),
+                                ),
+                            ),
                         )
                     },
                 )
@@ -227,7 +329,26 @@ fun RouteMap(
                     ),
                     color = const(Color.White),
                     strokeColor = const(Color(0xFF424242)),
-                    strokeWidth = const(1.5.dp),
+                    // The selected stop grows a heavier ring rather than changing color, so it
+                    // reads as the same marker being pointed at.
+                    strokeWidth = switch(
+                        input = feature["selected"].asString(),
+                        case("true", const(4.dp)),
+                        fallback = const(1.5.dp),
+                    ),
+                )
+                SymbolLayer(
+                    id = "route-map-point-labels",
+                    source = pointsSource,
+                    textField = format(span(feature["name"].asString())),
+                    // Must be a fontstack the style's glyph server actually serves (the library
+                    // default 404s there); Roboto also matches the basemap's typography.
+                    textFont = const(listOf("Roboto Regular")),
+                    textSize = const(0.75f.em),
+                    textOffset = offset(0f.em, 1.4f.em),
+                    textAnchor = const(SymbolAnchor.Top),
+                    // Fixed dark gray: the base map is light regardless of app theme.
+                    textColor = const(Color(0xFF424242)),
                 )
             }
         }
