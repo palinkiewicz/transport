@@ -175,31 +175,6 @@ private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewMod
                 "revision rewinds a marker mid-route; with it, the vehicle waits where it is " +
                 "until its schedule catches up.",
         )
-        LabeledSliderRow(
-            title = "Position smoothing",
-            value = motion.smoothingFactor,
-            onValueCommit = { value -> viewModel.updateMotion { it.copy(smoothingFactor = value) } },
-            valueRange = 0.05f..1f,
-            steps = 18,
-            valueLabel = { value ->
-                if (value >= 1f) "Off (snap)" else String.format(Locale.getDefault(), "%.2f", value)
-            },
-            supportingText = "Share of the remaining distance a marker covers each frame. " +
-                "Lower glides more; 1.00 jumps straight to the computed position.",
-        )
-        IntSliderRow(
-            title = "Snap beyond",
-            value = motion.smoothingSnapThresholdMeters,
-            onValueCommit = { value ->
-                viewModel.updateMotion { it.copy(smoothingSnapThresholdMeters = value) }
-            },
-            min = 100,
-            max = 2_000,
-            step = 100,
-            valueLabel = { "$it m" },
-            supportingText = "Corrections larger than this are applied at once instead of " +
-                "being eased, so a marker never glides across open country.",
-        )
         SteppedSliderRow(
             title = "Frame interval",
             values = VehicleMotionSettings.FRAME_INTERVAL_STEPS,

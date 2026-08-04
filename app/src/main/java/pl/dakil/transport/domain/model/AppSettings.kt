@@ -43,18 +43,6 @@ data class VehicleMotionSettings(
      */
     val monotonicProgress: Boolean = true,
 
-    /**
-     * Fraction of the remaining distance a marker covers each frame, easing it toward the
-     * position the timetable implies instead of snapping there. `1` disables easing.
-     */
-    val smoothingFactor: Float = 0.18f,
-
-    /**
-     * Beyond this distance a correction is applied instantly rather than eased — easing a
-     * kilometre-scale jump would draw a vehicle gliding across the map through open country.
-     */
-    val smoothingSnapThresholdMeters: Int = 500,
-
     /** Vehicles are not fetched below this zoom level. */
     val minZoom: Float = 9.0f,
 ) {
