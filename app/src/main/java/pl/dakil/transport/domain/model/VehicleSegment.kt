@@ -17,8 +17,12 @@ data class VehicleSegment(
     val tripId: String?,
     /** Line label to show next to the marker, e.g. "S1" or "Bus 175". */
     val label: String,
-    /** Destination of the trip, from the segment's arrival place. */
-    val headsign: String?,
+    /**
+     * The stop this segment ends at — the vehicle's *next* stop, not its destination.
+     * `/map/trips` carries no headsign; the trip's real destination only comes from the trip
+     * endpoint ([TripDetails.headsign]), fetched when a vehicle is selected.
+     */
+    val nextStopName: String?,
     val mode: TransportMode,
     /** GTFS `RRGGBB` route color (no leading `#`), when the feed provides one. */
     val routeColor: String?,

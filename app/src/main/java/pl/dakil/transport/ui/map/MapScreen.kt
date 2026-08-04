@@ -801,11 +801,21 @@ fun MapScreen(
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             ) {
                 displayedVehicle?.let { vehicle ->
+                    // Where the vehicle is actually going. `/map/trips` only knows the next
+                    // stop, so the destination comes from the trip details fetched on
+                    // selection; until they land there is nothing truthful to show.
+                    val destination = (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.headsign
+                    val favoriteLine = vehicle.favoriteLine(destination)
                     VehicleInfoPanel(
                         vehicle = vehicle,
+                        destination = destination,
                         detailsState = vehicleDetails,
-                        isFavorite = vehicle.favoriteLine?.let(favorites::containsLine),
-                        onToggleFavorite = { vehicle.favoriteLine?.let(viewModel::toggleFavoriteLine) },
+                        // Starring is held back until the destination is known: the favourite's
+                        // key is built from it, and a wrong key saves a duplicate line.
+                        isFavorite = favoriteLine
+                            ?.takeIf { vehicleDetails !is VehicleDetailsUiState.Loading }
+                            ?.let(favorites::containsLine),
+                        onToggleFavorite = { favoriteLine?.let(viewModel::toggleFavoriteLine) },
                         onClose = { viewModel.clearVehicleSelection() },
                         onOpenTrip = vehicle.tripId?.let { tripId ->
                             {
@@ -814,7 +824,7 @@ fun MapScreen(
                                     TripRoute(
                                         tripId = tripId,
                                         lineLabel = vehicle.label,
-                                        headsign = vehicle.headsign,
+                                        headsign = destination,
                                         modeName = vehicle.mode.name,
                                         routeColor = vehicle.routeColor,
                                     ),
@@ -866,6 +876,8 @@ private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
 @Composable
 private fun VehicleInfoPanel(
     vehicle: VehicleMarker,
+    /** The trip's destination, once its details have loaded; null until then. */
+    destination: String?,
     detailsState: VehicleDetailsUiState,
     /** Null hides the star entirely (no trip id to identify the line by). */
     isFavorite: Boolean?,
@@ -901,7 +913,7 @@ private fun VehicleInfoPanel(
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = vehicle.headsign?.let { "${vehicle.label} → $it" } ?: vehicle.label,
+                        text = destination?.let { "${vehicle.label} → $it" } ?: vehicle.label,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -910,6 +922,7 @@ private fun VehicleInfoPanel(
                     Text(
                         text = listOfNotNull(
                             vehicle.mode.label,
+                            vehicle.nextStopName?.let { "next $it" },
                             details?.agencyName ?: details?.routeLongName,
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,

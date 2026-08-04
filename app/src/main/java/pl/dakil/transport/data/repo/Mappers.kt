@@ -116,7 +116,7 @@ fun TripSegmentDto.toDomain(polylinePrecision: Int): VehicleSegment {
         tripKey = trips.firstOrNull()?.tripId ?: "$label/${to.name}",
         tripId = trips.firstOrNull()?.tripId,
         label = label,
-        headsign = to.name,
+        nextStopName = to.name,
         mode = TransportMode.fromApiValue(mode),
         routeColor = routeColor?.takeIf { it.isNotBlank() },
         realTime = realTime,
