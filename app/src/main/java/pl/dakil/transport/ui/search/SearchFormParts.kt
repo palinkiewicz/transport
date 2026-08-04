@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -21,7 +22,9 @@ import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialShapes
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -34,19 +37,42 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import kotlin.math.abs
+import kotlinx.coroutines.delay
 
 internal val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM")
 internal val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+/** How far [dateTime] may drift from the clock before it counts as a deliberately picked time. */
+private const val NOW_TOLERANCE_SECONDS = 60L
+
+/**
+ * Whether [dateTime] has drifted away from "now". Re-checked on a timer, not just on
+ * recomposition: the search tabs' ViewModels outlive the screen, so a form left open at its
+ * seeded time goes stale on its own with nothing to recompose it.
+ */
+@Composable
+internal fun isAwayFromNow(dateTime: OffsetDateTime): Boolean {
+    val away by produceState(initialValue = false, key1 = dateTime) {
+        while (true) {
+            value = abs(Duration.between(OffsetDateTime.now(), dateTime).seconds) > NOW_TOLERANCE_SECONDS
+            delay(NOW_TOLERANCE_SECONDS * 1_000 / 2)
+        }
+    }
+    return away
+}
 
 /** Display-time ISO timestamp for the nav routes that carry the searched-for moment. */
 internal fun OffsetDateTime.toRouteArg(): String = format(DateTimeFormatter.ISO_OFFSET_DATE_TIME)
@@ -76,6 +102,10 @@ internal fun SearchHeader(icon: ImageVector, title: String) {
 /**
  * Side-by-side date and time buttons that open their pickers. Dialog visibility is internal
  * state; the caller only sees the committed [onDateTimeChange].
+ *
+ * [onResetToNow] adds a reset button; pass null to hide it. The tab's ViewModel outlives the
+ * screen, so a time seeded at creation quietly goes stale — this is how the user gets back to
+ * "now" without opening both pickers.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -83,11 +113,16 @@ internal fun DateTimeRow(
     dateTime: OffsetDateTime,
     onDateTimeChange: (OffsetDateTime) -> Unit,
     modifier: Modifier = Modifier,
+    onResetToNow: (() -> Unit)? = null,
 ) {
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = modifier) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier,
+    ) {
         FilledTonalButton(
             onClick = { showDatePicker = true },
             shapes = ButtonDefaults.shapes(),
@@ -105,6 +140,11 @@ internal fun DateTimeRow(
             Icon(Icons.Default.Schedule, contentDescription = "Pick time")
             Spacer(Modifier.width(8.dp))
             Text(dateTime.format(timeFormatter))
+        }
+        if (onResetToNow != null) {
+            FilledTonalIconButton(onClick = onResetToNow, shapes = IconButtonDefaults.shapes()) {
+                Icon(Icons.Default.Restore, contentDescription = "Use current time")
+            }
         }
     }
 

@@ -109,7 +109,14 @@ fun ConnectionsSearchScreen(
                 label = { arriveBy -> if (arriveBy) "Arrive by" else "Depart at" },
             )
 
-            DateTimeRow(dateTime = uiState.dateTime, onDateTimeChange = viewModel::setDateTime)
+            // Only worth offering when there is something to reset, and only when leaving now
+            // is even the question — "arrive by" is always a time you picked.
+            val canResetToNow = !uiState.options.arriveBy && isAwayFromNow(uiState.dateTime)
+            DateTimeRow(
+                dateTime = uiState.dateTime,
+                onDateTimeChange = viewModel::setDateTime,
+                onResetToNow = viewModel::setDateTimeToNow.takeIf { canResetToNow },
+            )
 
             IntSliderRow(
                 title = "Max transfers",

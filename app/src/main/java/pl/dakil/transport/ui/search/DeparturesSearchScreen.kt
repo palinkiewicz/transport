@@ -88,7 +88,14 @@ fun DeparturesSearchScreen(
                 label = { arriveBy -> if (arriveBy) "Arrivals" else "Departures" },
             )
 
-            DateTimeRow(dateTime = uiState.dateTime, onDateTimeChange = viewModel::setDateTime)
+            // Same rule as the connections form: nothing to reset to when the board is showing
+            // arrivals up to a time the user chose.
+            val canResetToNow = !uiState.options.arriveBy && isAwayFromNow(uiState.dateTime)
+            DateTimeRow(
+                dateTime = uiState.dateTime,
+                onDateTimeChange = viewModel::setDateTime,
+                onResetToNow = viewModel::setDateTimeToNow.takeIf { canResetToNow },
+            )
 
             SearchButton(
                 onClick = {

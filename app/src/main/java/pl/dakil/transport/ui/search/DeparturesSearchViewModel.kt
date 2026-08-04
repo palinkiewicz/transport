@@ -61,4 +61,8 @@ class DeparturesSearchViewModel @Inject constructor(
     fun setDateTime(dateTime: OffsetDateTime) {
         this.dateTime.value = dateTime
     }
+
+    fun setDateTimeToNow() {
+        dateTime.value = OffsetDateTime.now()
+    }
 }
