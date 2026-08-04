@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,6 +21,8 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -30,6 +33,7 @@ import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LargeFlexibleTopAppBar
@@ -52,7 +56,9 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,6 +67,7 @@ import java.time.format.DateTimeFormatter
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
+import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.InlineRealTimeText
@@ -80,8 +87,72 @@ private data class ItineraryStop(
     val point: GeoPoint,
     val time: OffsetDateTime,
     val scheduledTime: OffsetDateTime,
+    val mode: TransportMode,
+    val routeColor: String?,
     val terminus: Boolean,
+    /** True for a boarding stop; false where the journey gets off. */
+    val boarding: Boolean,
 )
+
+/**
+ * One line of the map pane's condensed itinerary: a place the traveller has to act at, with
+ * the time they get there and the time they leave again. A same-stop transfer collapses into
+ * a single line carrying both; a transfer that walks between two stops stays two lines,
+ * because it really is two places.
+ */
+private data class ItineraryWaypoint(
+    /** Map point ids this line stands for — more than one when two stops were merged. */
+    val ids: List<String>,
+    val name: String,
+    val arrival: OffsetDateTime?,
+    val scheduledArrival: OffsetDateTime?,
+    val departure: OffsetDateTime?,
+    val scheduledDeparture: OffsetDateTime?,
+    val mode: TransportMode,
+    val routeColor: String?,
+)
+
+/**
+ * [stops] — which alternate board, alight, board, alight — folded into the pane's lines.
+ * Consecutive alight/board pairs at the same named stop become one line showing both times.
+ */
+private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
+    fun ItineraryStop.asWaypoint() = ItineraryWaypoint(
+        ids = listOf(id),
+        name = name,
+        arrival = time.takeIf { !boarding },
+        scheduledArrival = scheduledTime.takeIf { !boarding },
+        departure = time.takeIf { boarding },
+        scheduledDeparture = scheduledTime.takeIf { boarding },
+        mode = mode,
+        routeColor = routeColor,
+    )
+
+    val result = mutableListOf<ItineraryWaypoint>()
+    var index = 0
+    while (index < stops.size) {
+        val stop = stops[index]
+        val next = stops.getOrNull(index + 1)
+        if (!stop.boarding && next != null && next.boarding && next.name == stop.name) {
+            result += ItineraryWaypoint(
+                ids = listOf(stop.id, next.id),
+                name = stop.name,
+                arrival = stop.time,
+                scheduledArrival = stop.scheduledTime,
+                departure = next.time,
+                scheduledDeparture = next.scheduledTime,
+                // The mode you leave on is the one that matters at a transfer.
+                mode = next.mode,
+                routeColor = next.routeColor,
+            )
+            index += 2
+        } else {
+            result += stop.asWaypoint()
+            index++
+        }
+    }
+    return result
+}
 
 /**
  * The stops where the journey boards and alights, in order. Intermediate stops are left out on
@@ -101,7 +172,10 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 point = leg.path.first(),
                 time = leg.startTime,
                 scheduledTime = leg.scheduledStartTime,
+                mode = leg.mode,
+                routeColor = leg.routeColor,
                 terminus = order == 0,
+                boarding = true,
             ),
             ItineraryStop(
                 id = stopId(index, from = false),
@@ -109,7 +183,10 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 point = leg.path.last(),
                 time = leg.endTime,
                 scheduledTime = leg.scheduledEndTime,
+                mode = leg.mode,
+                routeColor = leg.routeColor,
                 terminus = order == transitIndices.lastIndex,
+                boarding = false,
             ),
         )
     }
@@ -234,7 +311,16 @@ private fun ItineraryMap(
 ) {
     val lines = rememberJourneyRouteLines(journey)
     val points = remember(stops) {
-        stops.map { RouteMapPoint(id = it.id, point = it.point, name = it.name, terminus = it.terminus) }
+        stops.map {
+            RouteMapPoint(
+                id = it.id,
+                point = it.point,
+                name = it.name,
+                mode = it.mode,
+                routeColor = it.routeColor,
+                terminus = it.terminus,
+            )
+        }
     }
     RouteMap(
         lines = lines,
@@ -244,19 +330,35 @@ private fun ItineraryMap(
         onPointClick = onStopClick,
         modifier = modifier.fillMaxSize(),
     ) {
-        ItineraryMapPane(journey, fromName, toName, stops.firstOrNull { it.id == selectedStopId })
+        ItineraryMapPane(
+            journey = journey,
+            fromName = fromName,
+            toName = toName,
+            stops = stops,
+            selectedStopId = selectedStopId,
+            onWaypointClick = onStopClick,
+        )
     }
 }
 
+/**
+ * The map's docked pane: the trip at a glance, the lines to ride, and the handful of places
+ * the traveller actually has to do something at — with the time they arrive and the time they
+ * leave again. Tapping a line focuses that stop on the map; selecting one on the map
+ * highlights it here.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ItineraryMapPane(
     journey: Journey,
     fromName: String,
     toName: String,
-    /** The tapped stop, if any: the pane answers about that stop instead of the whole trip. */
-    selectedStop: ItineraryStop?,
+    stops: List<ItineraryStop>,
+    selectedStopId: String?,
+    onWaypointClick: (String) -> Unit,
 ) {
+    val waypoints = remember(stops) { waypoints(stops) }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
@@ -265,29 +367,24 @@ private fun ItineraryMapPane(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = selectedStop?.name ?: "$fromName → $toName",
+                text = "$fromName → $toName",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))
-            if (selectedStop != null) {
-                // Same delay treatment as the list, so a stop reads identically in both views.
-                InlineRealTimeText(time = selectedStop.time, scheduledTime = selectedStop.scheduledTime)
-            } else {
-                Text(
-                    text = buildString {
-                        append(journey.departureTime.format(timeFormatter))
-                        append(" – ")
-                        append(journey.arrivalTime.format(timeFormatter))
-                        append(" · ")
-                        append(formatDuration(journey.transitDurationSeconds))
-                        append(" · ")
-                        append(pluralizeTransfers(journey.transfers))
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = buildString {
+                    append(journey.departureTime.format(timeFormatter))
+                    append(" – ")
+                    append(journey.arrivalTime.format(timeFormatter))
+                    append(" · ")
+                    append(formatDuration(journey.transitDurationSeconds))
+                    append(" · ")
+                    append(pluralizeTransfers(journey.transfers))
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             val transitLegs = remember(journey) { journey.legs.filter { it.isTransit } }
             if (transitLegs.isNotEmpty()) {
                 FlowRow(
@@ -300,7 +397,67 @@ private fun ItineraryMapPane(
                     }
                 }
             }
+            if (waypoints.isNotEmpty()) {
+                HorizontalDivider(Modifier.padding(top = 12.dp))
+                // Scrolls rather than growing: a long journey must not push the map off screen.
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 168.dp)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    waypoints.forEach { waypoint ->
+                        WaypointRow(
+                            waypoint = waypoint,
+                            selected = selectedStopId in waypoint.ids,
+                            onClick = { onWaypointClick(waypoint.ids.first()) },
+                        )
+                    }
+                }
+            }
         }
+    }
+}
+
+/** One pane line: `20:01 → 20:05  Wilanowska`, with each time keeping its delay treatment. */
+@Composable
+private fun WaypointRow(waypoint: ItineraryWaypoint, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .background(
+                if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(parseRouteColor(waypoint.routeColor, waypoint.mode.color)),
+        )
+        waypoint.arrival?.let { arrival ->
+            InlineRealTimeText(time = arrival, scheduledTime = waypoint.scheduledArrival ?: arrival)
+        }
+        if (waypoint.arrival != null && waypoint.departure != null) {
+            Text(
+                text = "→",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        waypoint.departure?.let { departure ->
+            InlineRealTimeText(time = departure, scheduledTime = waypoint.scheduledDeparture ?: departure)
+        }
+        Text(
+            text = waypoint.name,
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

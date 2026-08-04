@@ -137,59 +137,18 @@ import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.navigation.TripRoute
 
-/**
- * "#RRGGBB" hex string for the mode's marker color, as consumed by [convertToColor].
- * Deliberately brighter than [TransportMode.color]: the muted list-screen palette reads
- * washed-out against the light, low-chroma Google-Maps-like basemap.
- */
-private fun markerColorHex(mode: TransportMode): String = when (mode) {
-    TransportMode.TRAM -> "#F44336"
-    TransportMode.SUBWAY -> "#4285F4"
-    TransportMode.FERRY -> "#00BCD4"
-    TransportMode.AIRPLANE -> "#7E57C2"
-    TransportMode.BUS -> "#FB8C00"
-    TransportMode.COACH -> "#FFA000"
-    TransportMode.RAIL, TransportMode.LONG_DISTANCE, TransportMode.REGIONAL_RAIL -> "#4CAF50"
-    TransportMode.HIGHSPEED_RAIL -> "#AB47BC"
-    TransportMode.NIGHT_RAIL -> "#5C6BC0"
-    TransportMode.SUBURBAN -> "#26A69A"
-    TransportMode.FUNICULAR, TransportMode.AERIAL_LIFT -> "#8D6E63"
-    else -> "#78909C"
-}
+// The mode palette, glyph keys and stroke live in MapMarkers.kt — shared with the itinerary's
+// route map so a stop looks like the same object wherever the app draws one.
 
 private fun TransitLocation.markerColorHex(): String = markerColorHex(primaryMode ?: TransportMode.OTHER)
 
-/** [markerColorHex] as a Compose [Color], for UI elements echoing the map marker's look. */
-private fun markerColor(mode: TransportMode): Color =
-    Color(markerColorHex(mode).removePrefix("#").toLong(16) or 0xFF000000)
-
-private val GTFS_COLOR_REGEX = Regex("^[0-9a-fA-F]{6}$")
-
 /** Line color for drawing this route on the map, preferring the feed's GTFS route color. */
-private fun RouteShape.lineColorHex(): String =
-    routeColor?.takeIf { GTFS_COLOR_REGEX.matches(it) }?.let { "#$it" } ?: markerColorHex(mode)
-
-/**
- * Key of the marker glyph shown inside stop/vehicle circles; matched against the icon-image
- * switch cases. Several modes share one glyph (e.g. all rail variants), so this is coarser
- * than [TransportMode].
- */
-private fun markerIconKey(mode: TransportMode): String = when (mode) {
-    TransportMode.TRAM, TransportMode.FUNICULAR, TransportMode.AERIAL_LIFT -> "tram"
-    TransportMode.SUBWAY -> "subway"
-    TransportMode.FERRY -> "ferry"
-    TransportMode.AIRPLANE -> "airplane"
-    TransportMode.RAIL, TransportMode.HIGHSPEED_RAIL, TransportMode.LONG_DISTANCE,
-    TransportMode.NIGHT_RAIL, TransportMode.REGIONAL_RAIL, TransportMode.SUBURBAN,
-    -> "rail"
-    else -> "bus"
-}
+private fun RouteShape.lineColorHex(): String = routeMarkerColorHex(routeColor, mode)
 
 private fun TransitLocation.markerIconKey(): String = markerIconKey(primaryMode ?: TransportMode.OTHER)
 
 /** Marker fill for a vehicle: the feed's GTFS route color when valid, else the mode color. */
-private fun VehicleMarker.markerColorHex(): String =
-    routeColor?.takeIf { GTFS_COLOR_REGEX.matches(it) }?.let { "#$it" } ?: markerColorHex(mode)
+private fun VehicleMarker.markerColorHex(): String = routeMarkerColorHex(routeColor, mode)
 
 /**
  * Stroke distinguishing vehicles whose times a real-time feed corrected from ones running on
@@ -528,17 +487,7 @@ fun MapScreen(
             }
             val vehiclesSource = rememberGeoJsonSource(data = GeoJsonData.Features(vehicleFeatures))
             // Non-SDF glyphs tinted white up front: crisper than SDF rendering at this size.
-            val glyphSize = DpSize(13.dp, 13.dp)
-            val glyphTint = ColorFilter.tint(Color.White)
-            val markerIconImage = switch(
-                input = feature["icon"].asString(),
-                case("tram", image(rememberVectorPainter(Icons.Default.Tram), glyphSize, colorFilter = glyphTint)),
-                case("subway", image(rememberVectorPainter(Icons.Default.Subway), glyphSize, colorFilter = glyphTint)),
-                case("ferry", image(rememberVectorPainter(Icons.Default.DirectionsBoat), glyphSize, colorFilter = glyphTint)),
-                case("airplane", image(rememberVectorPainter(Icons.Default.Flight), glyphSize, colorFilter = glyphTint)),
-                case("rail", image(rememberVectorPainter(Icons.Default.Train), glyphSize, colorFilter = glyphTint)),
-                fallback = image(rememberVectorPainter(Icons.Default.DirectionsBus), glyphSize, colorFilter = glyphTint),
-            )
+            val markerIconImage = rememberMarkerIconImage()
             // Above street names and road shields so stops never hide behind them, but still
             // below place labels (village/town/city names), matching Google Maps. NB: the
             // anchor layer must exist in the style or MapLibre throws when adding these layers.
@@ -600,7 +549,7 @@ fun MapScreen(
                         16 to const(12.dp),
                     ),
                     color = feature["color"].convertToColor(),
-                    strokeColor = const(Color(0xFF9E9E9E)),
+                    strokeColor = const(MARKER_STROKE_COLOR),
                     strokeWidth = const(1.dp),
                 )
                 SymbolLayer(

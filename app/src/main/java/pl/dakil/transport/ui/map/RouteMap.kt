@@ -69,6 +69,7 @@ import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.components.parseRouteColor
 
 /** One colored polyline drawn on a [RouteMap], e.g. one journey leg. */
@@ -88,8 +89,12 @@ data class RouteMapPoint(
     val id: String,
     val point: GeoPoint,
     val name: String,
+    /** Drives the marker's fill and glyph, so it reads as the same pin the main map draws. */
+    val mode: TransportMode,
+    /** GTFS `RRGGBB` route color of the leg this stop belongs to, when the feed has one. */
+    val routeColor: String? = null,
     /** Ends of the whole journey are drawn larger than the transfer points between legs. */
-    val terminus: Boolean,
+    val terminus: Boolean = false,
 )
 
 /**
@@ -259,13 +264,13 @@ fun RouteMap(
                 val stops = currentPoints.ifEmpty {
                     buildList {
                         currentLines.firstOrNull()?.let {
-                            add(RouteMapPoint("start", it.points.first(), "", terminus = true))
+                            add(RouteMapPoint("start", it.points.first(), "", TransportMode.OTHER, terminus = true))
                         }
                         currentLines.dropLast(1).forEachIndexed { index, line ->
-                            add(RouteMapPoint("via-$index", line.points.last(), "", terminus = false))
+                            add(RouteMapPoint("via-$index", line.points.last(), "", TransportMode.OTHER))
                         }
                         currentLines.lastOrNull()?.let {
-                            add(RouteMapPoint("end", it.points.last(), "", terminus = true))
+                            add(RouteMapPoint("end", it.points.last(), "", TransportMode.OTHER, terminus = true))
                         }
                     }
                 }
@@ -282,6 +287,8 @@ fun RouteMap(
                                     "name" to JsonPrimitive(
                                         stop.name.takeIf { currentShowLabels }.orEmpty(),
                                     ),
+                                    "color" to JsonPrimitive(routeMarkerColorHex(stop.routeColor, stop.mode)),
+                                    "icon" to JsonPrimitive(markerIconKey(stop.mode)),
                                     "selected" to JsonPrimitive(stop.id == currentSelectedPointId),
                                 ),
                             ),
@@ -290,6 +297,7 @@ fun RouteMap(
                 )
             }
             val pointsSource = rememberGeoJsonSource(data = GeoJsonData.Features(pointFeatures))
+            val markerIconImage = rememberMarkerIconImage()
 
             val lineWidth = interpolate(
                 linear(),
@@ -322,20 +330,28 @@ fun RouteMap(
                 CircleLayer(
                     id = "route-map-points",
                     source = pointsSource,
+                    // Same pin the main map draws — mode/route colored with a thin gray ring —
+                    // just sized for a route overview rather than a zoom-dependent map.
                     radius = switch(
                         input = feature["kind"].asString(),
-                        case("terminus", const(5.dp)),
-                        fallback = const(3.5.dp),
+                        case("terminus", const(11.dp)),
+                        fallback = const(9.dp),
                     ),
-                    color = const(Color.White),
-                    strokeColor = const(Color(0xFF424242)),
+                    color = feature["color"].convertToColor(),
+                    strokeColor = const(MARKER_STROKE_COLOR),
                     // The selected stop grows a heavier ring rather than changing color, so it
                     // reads as the same marker being pointed at.
                     strokeWidth = switch(
                         input = feature["selected"].asString(),
-                        case("true", const(4.dp)),
-                        fallback = const(1.5.dp),
+                        case("true", const(3.dp)),
+                        fallback = const(1.dp),
                     ),
+                )
+                SymbolLayer(
+                    id = "route-map-point-icons",
+                    source = pointsSource,
+                    iconImage = markerIconImage,
+                    iconAllowOverlap = const(true),
                 )
                 SymbolLayer(
                     id = "route-map-point-labels",
