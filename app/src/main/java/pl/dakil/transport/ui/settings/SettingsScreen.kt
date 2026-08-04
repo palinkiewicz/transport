@@ -65,6 +65,7 @@ import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
+import pl.dakil.transport.ui.components.SingleChoiceToggleFlow
 import pl.dakil.transport.ui.components.SteppedSliderRow
 import pl.dakil.transport.ui.components.SwitchRow
 
@@ -174,7 +175,9 @@ private fun GeneralGroup(settings: AppSettings, viewModel: SettingsViewModel) {
     SettingsGroup(title = "General", icon = Icons.Default.Tune) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Opening screen", style = MaterialTheme.typography.titleSmall)
-            SingleChoiceConnectedRow(
+            // A wrapping flow, not a connected row: four tab names don't fit one row without
+            // being cut off mid-word.
+            SingleChoiceToggleFlow(
                 options = DefaultTab.entries,
                 selected = settings.defaultTab,
                 onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },

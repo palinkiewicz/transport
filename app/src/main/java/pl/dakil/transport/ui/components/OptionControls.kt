@@ -204,6 +204,42 @@ fun <T> SingleChoiceConnectedRow(
     }
 }
 
+/**
+ * A wrapping single-select flow of [ToggleButton]s. Unlike [SingleChoiceConnectedRow] the
+ * buttons size to their labels and wrap, so it suits options whose names are too long to share
+ * one row without being cut off.
+ */
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun <T> SingleChoiceToggleFlow(
+    options: List<T>,
+    selected: T,
+    onSelect: (T) -> Unit,
+    label: (T) -> String,
+    modifier: Modifier = Modifier,
+    icon: ((T) -> ImageVector)? = null,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = modifier,
+    ) {
+        options.forEach { option ->
+            ToggleButton(
+                checked = option == selected,
+                onCheckedChange = { if (it) onSelect(option) },
+                modifier = Modifier.semantics { role = Role.RadioButton },
+            ) {
+                icon?.let {
+                    Icon(it(option), contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(label(option))
+            }
+        }
+    }
+}
+
 /** A wrapping multi-select flow of checkable [ToggleButton]s with optional leading icons. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
