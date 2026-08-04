@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -29,7 +30,12 @@ import pl.dakil.transport.ui.settings.SettingsScreen
 import pl.dakil.transport.ui.trip.TripScreen
 
 @Composable
-fun AppNavHost() {
+fun AppNavHost(startDestinationViewModel: StartDestinationViewModel = hiltViewModel()) {
+    val startTab by startDestinationViewModel.startTab.collectAsStateWithLifecycle()
+    // One frame of nothing while the setting is read, rather than starting on the map and
+    // yanking the user to another tab a moment later.
+    val startRoute = startTab?.route() ?: return
+
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val showBottomBar = backStackEntry?.destination?.let(::isBottomBarDestination) ?: true
@@ -42,7 +48,7 @@ fun AppNavHost() {
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = MapRoute,
+            startDestination = startRoute,
             modifier = Modifier.padding(innerPadding),
         ) {
             composable<MapRoute> {
