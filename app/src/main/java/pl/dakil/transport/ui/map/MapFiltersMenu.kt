@@ -25,10 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
@@ -44,27 +40,30 @@ import pl.dakil.transport.ui.components.MultiChoiceToggleFlow
  * Power-user map layer filter: a compact button that expands into a dense panel with
  * per-category toggles for stops and vehicles, a vehicle data-source selector, and reset.
  * State changes are pushed through [onUpdate] as transforms of the current [filters].
+ *
+ * [expanded] is hoisted rather than local so the map screen's back handler can close the panel
+ * before it starts dismissing selections.
  */
 @Composable
 fun MapFiltersMenu(
     filters: MapFilters,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
     onUpdate: ((MapFilters) -> MapFilters) -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-
     AnimatedContent(targetState = expanded, modifier = modifier, label = "map-filters") { open ->
         if (open) {
             FiltersPanel(
                 filters = filters,
                 onUpdate = onUpdate,
                 onReset = onReset,
-                onClose = { expanded = false },
+                onClose = { onExpandedChange(false) },
             )
         } else {
             Surface(
-                onClick = { expanded = true },
+                onClick = { onExpandedChange(true) },
                 shape = CircleShape,
                 tonalElevation = 3.dp,
                 shadowElevation = 6.dp,

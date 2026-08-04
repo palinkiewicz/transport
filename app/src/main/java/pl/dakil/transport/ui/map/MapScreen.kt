@@ -2,6 +2,7 @@ package pl.dakil.transport.ui.map
 
 import android.Manifest
 import android.content.pm.PackageManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -58,6 +59,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -243,6 +245,18 @@ fun MapScreen(
     // Delegated on purpose: the map content lambda is composed once and never swapped, so the
     // layers below must read this through its State (a captured value would freeze at startup).
     val currentStopsMinZoom by viewModel.stopsMinZoom.collectAsStateWithLifecycle()
+
+    var filtersExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // Back peels the map's own layers off one at a time — filter panel, then whichever info
+    // panel is open — instead of leaving the app from under a full-screen selection.
+    BackHandler(enabled = filtersExpanded || selectedVehicle != null || selectedStop != null) {
+        when {
+            filtersExpanded -> filtersExpanded = false
+            selectedVehicle != null -> viewModel.clearVehicleSelection()
+            else -> viewModel.clearSelection()
+        }
+    }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -684,6 +698,8 @@ fun MapScreen(
             )
             MapFiltersMenu(
                 filters = filters,
+                expanded = filtersExpanded,
+                onExpandedChange = { filtersExpanded = it },
                 onUpdate = viewModel::updateFilters,
                 onReset = viewModel::resetFilters,
                 modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
