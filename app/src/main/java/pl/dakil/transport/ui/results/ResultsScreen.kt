@@ -41,10 +41,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
 import java.time.OffsetDateTime
+import java.time.format.DateTimeFormatter
+import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.ui.components.EmptyBox
@@ -68,6 +71,7 @@ fun ResultsScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
+    val timesMode by viewModel.connectionTimesMode.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -132,6 +136,7 @@ fun ResultsScreen(
                                 journey = state.result.journeys[index],
                                 fromName = viewModel.fromName,
                                 toName = viewModel.toName,
+                                timesMode = timesMode,
                                 onClick = { onJourneySelected(index) },
                             )
                         }
@@ -157,6 +162,7 @@ private fun JourneyCard(
     /** Searched origin/destination, shown when the journey has no transit stops to name. */
     fromName: String,
     toName: String,
+    timesMode: ConnectionTimesMode,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -169,20 +175,33 @@ private fun JourneyCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            val minutesUntilDeparture = Duration.between(OffsetDateTime.now(), journey.departureTime).toMinutes()
+            // Whether the walk to the first stop is part of the headline. Only true when there
+            // is a walk at all — otherwise "leave" and "depart" are the same moment.
+            val doorToDoor = timesMode.includesDoorToDoor && journey.startTime != journey.departureTime
+            val countdownFrom = if (doorToDoor) journey.startTime else journey.departureTime
+            val minutesUntilDeparture = Duration.between(OffsetDateTime.now(), countdownFrom).toMinutes()
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = departingLabel(minutesUntilDeparture),
+                    text = departingLabel(minutesUntilDeparture, leaving = doorToDoor),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.Bold,
                     color = if (minutesUntilDeparture < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = "${formatDuration(journey.transitDurationSeconds)} · ${transfersLabel(journey.transfers)}",
+                    text = buildString {
+                        val seconds = if (timesMode == ConnectionTimesMode.DOOR_TO_DOOR) {
+                            journey.duration.toLong()
+                        } else {
+                            journey.transitDurationSeconds
+                        }
+                        append(formatDuration(seconds))
+                        append(" · ")
+                        append(transfersLabel(journey.transfers))
+                    },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -211,16 +230,26 @@ private fun JourneyCard(
             // A journey done entirely on foot/bike/car has no stops to name: its ends are the
             // searched places themselves, which the API labels "START"/"END".
             val isDirect = journey.legs.none { it.isTransit }
-            StopTimeRow(
-                stopName = if (isDirect) fromName else journey.firstStopName,
-                time = journey.departureTime,
-                scheduledTime = journey.departureScheduledTime,
-            )
-            StopTimeRow(
-                stopName = if (isDirect) toName else journey.lastStopName,
-                time = journey.arrivalTime,
-                scheduledTime = journey.arrivalScheduledTime,
-            )
+            if (timesMode == ConnectionTimesMode.DOOR_TO_DOOR) {
+                // The overall times have no scheduled counterpart, so they are drawn plainly —
+                // any delay is already folded into them.
+                StopTimeRow(stopName = fromName, time = journey.startTime, scheduledTime = null)
+                StopTimeRow(stopName = toName, time = journey.endTime, scheduledTime = null)
+            } else {
+                if (timesMode == ConnectionTimesMode.BOTH && doorToDoor) {
+                    DoorToDoorRow(journey, fromName, toName)
+                }
+                StopTimeRow(
+                    stopName = if (isDirect) fromName else journey.firstStopName,
+                    time = journey.departureTime,
+                    scheduledTime = journey.departureScheduledTime,
+                )
+                StopTimeRow(
+                    stopName = if (isDirect) toName else journey.lastStopName,
+                    time = journey.arrivalTime,
+                    scheduledTime = journey.arrivalScheduledTime,
+                )
+            }
         }
     }
 }
@@ -274,8 +303,26 @@ private fun AccessLegDistance(leg: JourneyLeg) {
     }
 }
 
+/**
+ * The whole trip end to end, walk included — the line that answers "when do I leave and when
+ * am I there", above the stop times that answer "when does the vehicle go".
+ */
 @Composable
-private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: OffsetDateTime) {
+private fun DoorToDoorRow(journey: Journey, fromName: String, toName: String) {
+    Text(
+        text = "${journey.startTime.format(cardTimeFormatter)} → " +
+            "${journey.endTime.format(cardTimeFormatter)} · $fromName → $toName",
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth(),
+    )
+}
+
+/** [scheduledTime] null means there is no schedule to compare against; the time is drawn plainly. */
+@Composable
+private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: OffsetDateTime?) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -286,9 +333,15 @@ private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: O
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.weight(1f).padding(end = 8.dp),
         )
-        RealTimeText(time = time, scheduledTime = scheduledTime, realTime = true)
+        if (scheduledTime == null) {
+            Text(text = time.format(cardTimeFormatter), style = MaterialTheme.typography.bodyLarge)
+        } else {
+            RealTimeText(time = time, scheduledTime = scheduledTime, realTime = true)
+        }
     }
 }
+
+private val cardTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 private fun transfersLabel(transfers: Int): String = when (transfers) {
     0 -> "direct"
@@ -305,7 +358,8 @@ private fun formatDuration(seconds: Long): String {
 
 private const val MINUTES_PER_DAY = 24 * 60
 
-private fun departingLabel(minutesUntil: Long): String {
+/** [leaving] switches the wording to the door-to-door question: when to set off, not when the vehicle goes. */
+private fun departingLabel(minutesUntil: Long, leaving: Boolean): String {
     val minutes = if (minutesUntil < 0) -minutesUntil else minutesUntil
     // A day or more out, the hours and minutes are noise (and stale by the time it matters).
     val relative = when {
@@ -317,9 +371,9 @@ private fun departingLabel(minutesUntil: Long): String {
         else -> "${minutes / 60} h ${minutes % 60} min"
     }
     return when {
-        minutesUntil < 0 -> "Departed $relative ago"
-        minutesUntil == 0L -> "Departing now"
-        else -> "Departing in $relative"
+        minutesUntil < 0 -> if (leaving) "Left $relative ago" else "Departed $relative ago"
+        minutesUntil == 0L -> if (leaving) "Leave now" else "Departing now"
+        else -> if (leaving) "Leave in $relative" else "Departing in $relative"
     }
 }
 

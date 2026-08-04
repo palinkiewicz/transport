@@ -24,6 +24,7 @@ import pl.dakil.transport.data.repo.PlanRepository
 import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.PlanResult
 import pl.dakil.transport.domain.model.AppError
+import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.SearchOptions
@@ -100,6 +101,15 @@ class ResultsViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow<ResultsUiState>(ResultsUiState.Loading)
     val uiState: StateFlow<ResultsUiState> = _uiState
+
+    /**
+     * Which times the cards lead with. Live, unlike the refresh interval next to it: it only
+     * changes how the loaded results are drawn, so there is nothing to retime by honouring it
+     * straight away.
+     */
+    val connectionTimesMode: StateFlow<ConnectionTimesMode> = settingsRepository.settings
+        .map { it.connectionTimesMode }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ConnectionTimesMode.BOTH)
 
     /** Countdown to the next automatic reload; null once auto-refresh is off. */
     private val _secondsUntilRefresh = MutableStateFlow<Int?>(REFRESH_INTERVAL_SECONDS)
