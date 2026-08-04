@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +21,9 @@ import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.PlanRepository
+import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.PlanResult
+import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.SearchOptions
@@ -31,8 +34,12 @@ import pl.dakil.transport.ui.navigation.ResultsRoute
 sealed interface ResultsUiState {
     data object Loading : ResultsUiState
     data class Content(val result: PlanResult) : ResultsUiState
-    data class Error(val message: String) : ResultsUiState
+    data class Error(val error: AppError) : ResultsUiState
 }
+
+/** True only while actual connections are on screen — an empty result is not content to keep. */
+private val ResultsUiState.hasJourneys: Boolean
+    get() = this is ResultsUiState.Content && result.journeys.isNotEmpty()
 
 /** Fallback auto-refresh cadence, used until the stored setting has been read. */
 const val REFRESH_INTERVAL_SECONDS = 30
@@ -128,7 +135,10 @@ class ResultsViewModel @Inject constructor(
     }
 
     /** Reloads the current page now — the only way back to fresh data with auto-refresh off. */
-    fun refreshNow() = startRefreshLoop(showLoading = false)
+    fun refreshNow() =
+        // Retrying from the error or no-results screen swaps it for the spinner, so the tap
+        // visibly does something; with journeys on screen the reload stays silent as before.
+        startRefreshLoop(showLoading = !_uiState.value.hasJourneys)
 
     /** Loads the previous (earlier connections) page, if the API offered one. */
     fun showPrevious() {
@@ -148,8 +158,9 @@ class ResultsViewModel @Inject constructor(
         planRepository.plan(from, to, time, options, pageCursor, vias).fold(
             onSuccess = { result -> _uiState.value = ResultsUiState.Content(result) },
             onFailure = { error ->
-                if (_uiState.value !is ResultsUiState.Content) {
-                    _uiState.value = ResultsUiState.Error(error.message ?: "Something went wrong")
+                // runCatching also catches cancellation; a cancelled refresh is not a failure.
+                if (error !is CancellationException && !_uiState.value.hasJourneys) {
+                    _uiState.value = ResultsUiState.Error(error.toAppError())
                 }
             },
         )

@@ -47,6 +47,7 @@ import java.time.Duration
 import java.time.OffsetDateTime
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
+import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.formatDistance
@@ -95,10 +96,21 @@ fun ResultsScreen(
     ) { innerPadding ->
         when (val state = uiState) {
             is ResultsUiState.Loading -> LoadingBox(Modifier.padding(innerPadding))
-            is ResultsUiState.Error -> ErrorBox(state.message, Modifier.padding(innerPadding))
+            is ResultsUiState.Error -> ErrorBox(
+                error = state.error,
+                modifier = Modifier.padding(innerPadding),
+                onRetry = viewModel::refreshNow,
+            )
             is ResultsUiState.Content -> {
                 if (state.result.journeys.isEmpty()) {
-                    ErrorBox("No connections found", Modifier.padding(innerPadding))
+                    EmptyBox(
+                        title = "No connections found",
+                        description = "Nothing runs between these places at this time. Try another " +
+                            "departure time, or relax the advanced search options.",
+                        modifier = Modifier.padding(innerPadding),
+                        actionLabel = "Search again",
+                        onAction = viewModel::refreshNow,
+                    )
                 } else {
                     LazyColumn(
                         modifier = Modifier

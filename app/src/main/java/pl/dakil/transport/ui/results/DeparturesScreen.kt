@@ -43,6 +43,7 @@ import java.time.Duration
 import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import pl.dakil.transport.domain.model.Departure
+import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
@@ -87,11 +88,22 @@ fun DeparturesScreen(
     ) { innerPadding ->
         when (val state = uiState) {
             is DeparturesUiState.Loading -> LoadingBox(Modifier.padding(innerPadding))
-            is DeparturesUiState.Error -> ErrorBox(state.message, Modifier.padding(innerPadding))
+            is DeparturesUiState.Error -> ErrorBox(
+                error = state.error,
+                modifier = Modifier.padding(innerPadding),
+                onRetry = viewModel::refreshNow,
+            )
             is DeparturesUiState.Content -> {
                 val all = state.departures.departures
                 if (all.isEmpty()) {
-                    ErrorBox("No upcoming departures", Modifier.padding(innerPadding))
+                    EmptyBox(
+                        title = "No upcoming departures",
+                        description = "Nothing is scheduled from this stop for the time being. " +
+                            "Services may have finished for the day.",
+                        modifier = Modifier.padding(innerPadding),
+                        actionLabel = "Check again",
+                        onAction = viewModel::refreshNow,
+                    )
                 } else {
                     val lines = remember(all) {
                         all.map { it.lineLabel }

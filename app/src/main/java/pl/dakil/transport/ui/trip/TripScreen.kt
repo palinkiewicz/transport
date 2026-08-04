@@ -83,7 +83,11 @@ fun TripScreen(
     ) { innerPadding ->
         when (val state = uiState) {
             is TripUiState.Loading -> LoadingBox(Modifier.padding(innerPadding))
-            is TripUiState.Error -> ErrorBox(state.message, Modifier.padding(innerPadding))
+            is TripUiState.Error -> ErrorBox(
+                error = state.error,
+                modifier = Modifier.padding(innerPadding),
+                onRetry = viewModel::refreshNow,
+            )
             is TripUiState.Content -> {
                 val railColor = parseRouteColor(viewModel.routeColor, viewModel.mode.color)
                 LazyColumn(

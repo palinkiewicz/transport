@@ -58,7 +58,7 @@ import java.time.OffsetDateTime
 import java.time.format.DateTimeFormatter
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
-import pl.dakil.transport.ui.components.ErrorBox
+import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
@@ -105,7 +105,12 @@ fun ItineraryScreen(journey: Journey?, fromName: String, toName: String, onBack:
         },
     ) { innerPadding ->
         when {
-            journey == null -> ErrorBox("Itinerary not available", Modifier.padding(innerPadding))
+            journey == null -> EmptyBox(
+                title = "Itinerary not available",
+                description = "This connection is no longer part of the loaded results — go back " +
+                    "and pick one from the refreshed list.",
+                modifier = Modifier.padding(innerPadding),
+            )
             showMap -> ItineraryMap(
                 journey = journey,
                 fromName = fromName,

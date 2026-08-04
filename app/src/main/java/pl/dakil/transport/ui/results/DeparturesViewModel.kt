@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,7 +15,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SearchOptionsRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.TimetableRepository
+import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.domain.model.SearchOptions
 import pl.dakil.transport.domain.model.StopDepartures
@@ -23,8 +26,12 @@ import pl.dakil.transport.domain.model.TransitLocation
 sealed interface DeparturesUiState {
     data object Loading : DeparturesUiState
     data class Content(val departures: StopDepartures) : DeparturesUiState
-    data class Error(val message: String) : DeparturesUiState
+    data class Error(val error: AppError) : DeparturesUiState
 }
+
+/** True only while actual departures are on screen — an empty board is not content to keep. */
+private val DeparturesUiState.hasDepartures: Boolean
+    get() = this is DeparturesUiState.Content && departures.departures.isNotEmpty()
 
 data class DepartureGroup(
     val poleStopId: String?,
@@ -92,6 +99,9 @@ class DeparturesViewModel @Inject constructor(
 
     private fun startRefreshLoop() {
         refreshJob?.cancel()
+        // Retrying from the error or no-departures screen swaps it for the spinner, so the tap
+        // visibly does something; with departures on screen the reload stays silent as before.
+        if (!_uiState.value.hasDepartures) _uiState.value = DeparturesUiState.Loading
         refreshJob = viewModelScope.launch {
             if (!::options.isInitialized) options = searchOptionsRepository.options.first()
             val settings = settingsRepository.settings.first()
@@ -117,8 +127,9 @@ class DeparturesViewModel @Inject constructor(
         timetableRepository.departures(stop, time = time, options = options).fold(
             onSuccess = { result -> _uiState.value = DeparturesUiState.Content(result) },
             onFailure = { error ->
-                if (_uiState.value !is DeparturesUiState.Content) {
-                    _uiState.value = DeparturesUiState.Error(error.message ?: "Something went wrong")
+                // runCatching also catches cancellation; a cancelled refresh is not a failure.
+                if (error !is CancellationException && !_uiState.value.hasDepartures) {
+                    _uiState.value = DeparturesUiState.Error(error.toAppError())
                 }
             },
         )

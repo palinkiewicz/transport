@@ -40,6 +40,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.components.FavoriteButton
+import pl.dakil.transport.ui.components.InlineErrorRow
 import pl.dakil.transport.ui.components.LocationListItem
 import pl.dakil.transport.ui.navigation.PickerTarget
 
@@ -55,6 +56,7 @@ fun LocationPickerScreen(
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
+    val searchError by viewModel.searchError.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
 
     fun pick(location: TransitLocation) {
@@ -134,6 +136,14 @@ fun LocationPickerScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                )
+            }
+
+            searchError?.let { error ->
+                InlineErrorRow(
+                    error = error,
+                    onRetry = viewModel::retrySearch,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                 )
             }
 

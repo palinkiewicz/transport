@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +18,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.TimetableRepository
+import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.TransportMode
@@ -39,7 +42,7 @@ sealed interface TripUiState {
         val wheelchairAccessible: Boolean? = null,
         val bikesAllowed: Boolean? = null,
     ) : TripUiState
-    data class Error(val message: String) : TripUiState
+    data class Error(val error: AppError) : TripUiState
 }
 
 /** Collapses per-leg amenity flags into one value for the whole run (null when no leg reports). */
@@ -105,6 +108,8 @@ class TripViewModel @Inject constructor(
 
     private fun startRefreshLoop() {
         refreshJob?.cancel()
+        // Retrying from the error screen swaps it for the spinner, so the tap visibly does something.
+        if (_uiState.value is TripUiState.Error) _uiState.value = TripUiState.Loading
         refreshJob = viewModelScope.launch {
             val settings = settingsRepository.settings.first()
             while (true) {
@@ -136,8 +141,9 @@ class TripViewModel @Inject constructor(
                 )
             },
             onFailure = { error ->
-                if (_uiState.value !is TripUiState.Content) {
-                    _uiState.value = TripUiState.Error(error.message ?: "Something went wrong")
+                // runCatching also catches cancellation; a cancelled refresh is not a failure.
+                if (error !is CancellationException && _uiState.value !is TripUiState.Content) {
+                    _uiState.value = TripUiState.Error(error.toAppError())
                 }
             },
         )

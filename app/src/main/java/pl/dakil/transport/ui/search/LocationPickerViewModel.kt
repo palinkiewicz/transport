@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.Flow
@@ -20,7 +21,9 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.GeocodeRepository
+import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.PickerTarget
@@ -73,18 +76,40 @@ class LocationPickerViewModel @Inject constructor(
     val currentLocation: TransitLocation? =
         userPosition?.takeIf { !stopsOnly }?.let { TransitLocation.currentPosition(it.lat, it.lon) }
 
-    private val suggestions: Flow<List<TransitLocation>> = _query
-        .debounce(300)
-        .distinctUntilChanged()
-        .mapLatest { query ->
-            if (query.isBlank()) {
-                emptyList()
-            } else {
-                geocodeRepository.suggest(query, userPosition?.lat, userPosition?.lon, stopsOnly)
-                    .getOrDefault(emptyList())
+    /** Why the last suggestion lookup came back empty; null while search is healthy. */
+    private val _searchError = MutableStateFlow<AppError?>(null)
+    val searchError: StateFlow<AppError?> = _searchError
+
+    /** Bumped by [retrySearch] to re-run the current query after a failure. */
+    private val retryTicks = MutableStateFlow(0)
+
+    private val suggestions: Flow<List<TransitLocation>> =
+        combine(_query.debounce(300).distinctUntilChanged(), retryTicks) { query, _ -> query }
+            .mapLatest { query ->
+                if (query.isBlank()) {
+                    _searchError.value = null
+                    emptyList()
+                } else {
+                    geocodeRepository.suggest(query, userPosition?.lat, userPosition?.lon, stopsOnly).fold(
+                        onSuccess = { results ->
+                            _searchError.value = null
+                            results
+                        },
+                        onFailure = { error ->
+                            // mapLatest cancels the in-flight lookup on every keystroke, and
+                            // the repository's runCatching turns that into a failure — ignore it.
+                            if (error !is CancellationException) _searchError.value = error.toAppError()
+                            emptyList()
+                        },
+                    )
+                }
             }
-        }
-        .onStart { emit(emptyList()) }
+            .onStart { emit(emptyList()) }
+
+    /** Re-runs the current query after a failed lookup. */
+    fun retrySearch() {
+        retryTicks.value++
+    }
 
     /** Suggestions while typing; the favourite places when the query is blank. */
     val items: StateFlow<List<PickerItem>> =

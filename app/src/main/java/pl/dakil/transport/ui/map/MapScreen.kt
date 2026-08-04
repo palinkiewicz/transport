@@ -131,6 +131,7 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.navigation.TripRoute
 
@@ -929,7 +930,7 @@ private fun VehicleInfoPanel(
                         strokeWidth = 2.dp,
                     )
                     is VehicleDetailsUiState.Error -> Text(
-                        text = state.message,
+                        text = state.error.shortMessage,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -1039,9 +1040,15 @@ private fun StopInfoPanel(
                     }
                 }
                 is StopRoutesUiState.Error -> Text(
-                    text = routesState.message,
+                    text = "Lines couldn't be loaded — ${routesState.error.shortMessage.lowercase()}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
+                )
+                is StopRoutesUiState.Empty -> Text(
+                    text = "No lines known for this stop",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
                 )
                 else -> {}

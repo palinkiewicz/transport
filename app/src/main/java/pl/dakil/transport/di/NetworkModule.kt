@@ -4,6 +4,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 import kotlinx.serialization.json.Json
 import okhttp3.OkHttpClient
@@ -29,6 +30,11 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder()
+        // Explicit, so a stalled request fails as a timeout the UI can explain rather than
+        // hanging on whatever OkHttp's defaults happen to be. Plan requests are the slow ones.
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
         .addInterceptor(UserAgentInterceptor())
         .apply {
             if (BuildConfig.DEBUG) {

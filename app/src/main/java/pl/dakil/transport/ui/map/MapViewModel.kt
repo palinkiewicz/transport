@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
@@ -26,6 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.MapFiltersRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
@@ -34,6 +36,7 @@ import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.RoutesRepository
 import pl.dakil.transport.data.repo.StopsRepository
 import pl.dakil.transport.data.repo.VehiclesRepository
+import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Favorites
@@ -80,7 +83,7 @@ sealed interface VehicleDetailsUiState {
     data object Hidden : VehicleDetailsUiState
     data object Loading : VehicleDetailsUiState
     data class Shown(val details: TripDetails) : VehicleDetailsUiState
-    data class Error(val message: String) : VehicleDetailsUiState
+    data class Error(val error: AppError) : VehicleDetailsUiState
 }
 
 /** State of the routes overlay + line chips loaded for the currently selected stop. */
@@ -88,7 +91,10 @@ sealed interface StopRoutesUiState {
     data object Hidden : StopRoutesUiState
     data object Loading : StopRoutesUiState
     data class Shown(val routes: List<RouteShape>) : StopRoutesUiState
-    data class Error(val message: String) : StopRoutesUiState
+
+    /** The stop loaded fine, the feed just has no route shapes through it. */
+    data object Empty : StopRoutesUiState
+    data class Error(val error: AppError) : StopRoutesUiState
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -400,7 +406,9 @@ class MapViewModel @Inject constructor(
             routesRepository.tripDetails(tripId, vehicle.label).fold(
                 onSuccess = { _vehicleDetails.value = VehicleDetailsUiState.Shown(it) },
                 onFailure = { error ->
-                    _vehicleDetails.value = VehicleDetailsUiState.Error(error.message ?: "Something went wrong")
+                    if (error !is CancellationException) {
+                        _vehicleDetails.value = VehicleDetailsUiState.Error(error.toAppError())
+                    }
                 },
             )
         }
@@ -419,13 +427,15 @@ class MapViewModel @Inject constructor(
             routesRepository.routesThroughStop(stop).fold(
                 onSuccess = { routes ->
                     _stopRoutes.value = if (routes.isEmpty()) {
-                        StopRoutesUiState.Error("No route shapes available for this stop")
+                        StopRoutesUiState.Empty
                     } else {
                         StopRoutesUiState.Shown(routes)
                     }
                 },
                 onFailure = { error ->
-                    _stopRoutes.value = StopRoutesUiState.Error(error.message ?: "Something went wrong")
+                    if (error !is CancellationException) {
+                        _stopRoutes.value = StopRoutesUiState.Error(error.toAppError())
+                    }
                 },
             )
         }
