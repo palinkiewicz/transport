@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.trip
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -43,6 +44,7 @@ import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.refreshSubtitle
+import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.components.parseRouteColor
 
 /** Timetable of a single vehicle run: every stop on the route with live times. */
@@ -50,6 +52,7 @@ import pl.dakil.transport.ui.components.parseRouteColor
 @Composable
 fun TripScreen(
     onBack: () -> Unit,
+    onOpenDepartures: (DepartureBoardRoute) -> Unit,
     viewModel: TripViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -112,11 +115,25 @@ fun TripScreen(
                         }
                     }
                     items(state.stops.size) { index ->
+                        val stop = state.stops[index]
                         TripStopRow(
-                            stop = state.stops[index],
+                            stop = stop,
                             railColor = railColor,
                             isFirst = index == 0,
                             isLast = index == state.stops.lastIndex,
+                            // The trip's own stop id is the pole the vehicle calls at, so the
+                            // board opens with this direction's group already on top.
+                            onClick = {
+                                onOpenDepartures(
+                                    DepartureBoardRoute(
+                                        stopName = stop.place.name,
+                                        lat = stop.place.lat,
+                                        lon = stop.place.lon,
+                                        stopId = stop.place.stopId,
+                                        timeIso = null,
+                                    ),
+                                )
+                            },
                         )
                     }
                 }
@@ -131,11 +148,13 @@ private fun TripStopRow(
     railColor: androidx.compose.ui.graphics.Color,
     isFirst: Boolean,
     isLast: Boolean,
+    onClick: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(IntrinsicSize.Min)
+            .clickable(onClick = onClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

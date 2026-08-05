@@ -81,6 +81,7 @@ import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.map.RouteMap
 import pl.dakil.transport.ui.map.RouteMapPoint
 import pl.dakil.transport.ui.map.rememberJourneyRouteLines
+import pl.dakil.transport.ui.navigation.TripRoute
 
 /** A stop the itinerary names in both views, so a tap in one can point at it in the other. */
 private data class ItineraryStop(
@@ -204,6 +205,7 @@ fun ItineraryScreen(
     fromName: String,
     toName: String,
     onBack: () -> Unit,
+    onOpenTrip: (TripRoute) -> Unit,
     viewModel: ItineraryViewModel = hiltViewModel(),
 ) {
     var showMap by rememberSaveable { mutableStateOf(false) }
@@ -261,6 +263,7 @@ fun ItineraryScreen(
                 selectedStopId = selectedStopId,
                 showStopNames = showStopNames,
                 onStopClick = { selectedStopId = it },
+                onOpenTrip = onOpenTrip,
                 modifier = Modifier.padding(innerPadding),
             )
             else -> LazyColumn(
@@ -281,6 +284,7 @@ fun ItineraryScreen(
                         toNameOverride = if (index == journey.legs.lastIndex) toName else null,
                         // Tapping a stop in the list is a request to see where it is; only
                         // stops the map can actually point at are tappable.
+                        onOpenTrip = onOpenTrip,
                         onStopClick = if (!canShowMap) {
                             null
                         } else {
@@ -311,6 +315,7 @@ private fun ItineraryMap(
     selectedStopId: String?,
     showStopNames: Boolean,
     onStopClick: (String?) -> Unit,
+    onOpenTrip: (TripRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val lines = rememberJourneyRouteLines(journey)
@@ -341,6 +346,7 @@ private fun ItineraryMap(
             stops = stops,
             selectedStopId = selectedStopId,
             onWaypointClick = onStopClick,
+            onOpenTrip = onOpenTrip,
         )
     }
 }
@@ -360,6 +366,7 @@ private fun ItineraryMapPane(
     stops: List<ItineraryStop>,
     selectedStopId: String?,
     onWaypointClick: (String) -> Unit,
+    onOpenTrip: (TripRoute) -> Unit,
 ) {
     val timeFormatter = rememberTimeFormatter()
     val waypoints = remember(stops) { waypoints(stops) }
@@ -400,7 +407,7 @@ private fun ItineraryMapPane(
                     modifier = Modifier.padding(top = 12.dp),
                 ) {
                     transitLegs.forEach { leg ->
-                        ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
+                        LegModeChip(leg, onOpenTrip)
                     }
                 }
             }
@@ -522,6 +529,7 @@ private fun LegRow(
     legIndex: Int,
     fromNameOverride: String? = null,
     toNameOverride: String? = null,
+    onOpenTrip: (TripRoute) -> Unit,
     /** Null leaves the stop rows inert (nothing to show on a map). */
     onStopClick: ((String) -> Unit)? = null,
 ) {
@@ -578,7 +586,7 @@ private fun LegRow(
                 Spacer(Modifier.height(4.dp))
             }
             if (leg.isTransit) {
-                ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
+                LegModeChip(leg, onOpenTrip)
                 leg.headsign?.let {
                     Text(
                         text = stringResource(R.string.format_towards, it),
@@ -626,6 +634,34 @@ private fun LegRow(
             }
         }
     }
+}
+
+/**
+ * The leg's line badge. Transit legs carry a trip id, so the badge doubles as the way into the
+ * line's full timetable; legs the feed gives no trip id for stay inert rather than looking
+ * tappable and doing nothing.
+ */
+@Composable
+private fun LegModeChip(leg: JourneyLeg, onOpenTrip: (TripRoute) -> Unit) {
+    ModeChip(
+        mode = leg.mode,
+        label = leg.lineLabel,
+        routeColorHex = leg.routeColor,
+        clickLabel = stringResource(R.string.itinerary_open_trip),
+        onClick = leg.tripId?.let { tripId ->
+            {
+                onOpenTrip(
+                    TripRoute(
+                        tripId = tripId,
+                        lineLabel = leg.lineLabel,
+                        headsign = leg.headsign,
+                        modeName = leg.mode.name,
+                        routeColor = leg.routeColor,
+                    ),
+                )
+            }
+        },
+    )
 }
 
 @Composable

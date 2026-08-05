@@ -109,6 +109,7 @@ fun AppNavHost(startDestinationViewModel: StartDestinationViewModel = hiltViewMo
                         fromName = resultsViewModel.fromName,
                         toName = resultsViewModel.toName,
                         onBack = { navController.popBackStack() },
+                        onOpenTrip = { route -> navController.navigate(route) },
                     )
                 }
             }
@@ -119,7 +120,10 @@ fun AppNavHost(startDestinationViewModel: StartDestinationViewModel = hiltViewMo
                 )
             }
             composable<TripRoute> {
-                TripScreen(onBack = { navController.popBackStack() })
+                TripScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenDepartures = { route -> navController.navigate(route) },
+                )
             }
         }
     }

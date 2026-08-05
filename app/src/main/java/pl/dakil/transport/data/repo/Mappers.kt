@@ -60,8 +60,9 @@ private fun String.toOffsetDateTime(): OffsetDateTime =
 fun LegDto.toDomain(): JourneyLeg =
     JourneyLeg(
         mode = TransportMode.fromApiValue(mode),
-        fromName = from.name,
-        toName = to.name,
+        tripId = tripId,
+        fromPlace = from.toTransitLocation(),
+        toPlace = to.toTransitLocation(),
         fromTrack = from.track ?: from.scheduledTrack,
         toTrack = to.track ?: to.scheduledTrack,
         startTime = startTime.toOffsetDateTime(),
@@ -86,7 +87,7 @@ fun LegDto.toDomain(): JourneyLeg =
         bikesAllowed = bikesAllowed,
         intermediateStops = intermediateStops?.map { stop ->
             IntermediateStop(
-                name = stop.name,
+                place = stop.toTransitLocation(),
                 arrivalTime = (stop.arrival ?: stop.departure)?.toOffsetDateTime(),
                 scheduledArrivalTime = (stop.scheduledArrival ?: stop.scheduledDeparture)?.toOffsetDateTime(),
                 track = stop.track ?: stop.scheduledTrack,

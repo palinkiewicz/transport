@@ -40,16 +40,22 @@ data class Journey(
 
 /** A stop passed through (not boarded/alighted at) on a transit leg. */
 data class IntermediateStop(
-    val name: String,
+    /** The stop itself, so a row can open its departure board. */
+    val place: TransitLocation,
     val arrivalTime: OffsetDateTime? = null,
     val scheduledArrivalTime: OffsetDateTime? = null,
     val track: String? = null,
-)
+) {
+    val name: String get() = place.name
+}
 
 data class JourneyLeg(
     val mode: TransportMode,
-    val fromName: String,
-    val toName: String,
+    /** Identifies the vehicle run, for opening its full timetable; null on non-transit legs. */
+    val tripId: String? = null,
+    /** Where the leg starts and ends, kept as places (id + coordinates), not just names. */
+    val fromPlace: TransitLocation,
+    val toPlace: TransitLocation,
     val fromTrack: String? = null,
     val toTrack: String? = null,
     val startTime: OffsetDateTime,
@@ -73,6 +79,10 @@ data class JourneyLeg(
     /** Decoded leg geometry for drawing the leg on a map; empty when the API omits it. */
     val path: List<GeoPoint> = emptyList(),
 ) {
+    val fromName: String get() = fromPlace.name
+
+    val toName: String get() = toPlace.name
+
     val isTransit: Boolean get() = mode != TransportMode.WALK && mode != TransportMode.BIKE && mode != TransportMode.CAR
 
     /** Line badge text: short route name, falling back to the display name. */

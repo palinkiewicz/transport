@@ -15,6 +15,8 @@ data class EncodedPolylineDto(
 @Serializable
 data class LegDto(
     val mode: String,
+    /** Identifies the vehicle run this leg rides; absent on walk/bike/car legs. */
+    val tripId: String? = null,
     val from: PlaceDto,
     val to: PlaceDto,
     val duration: Int,

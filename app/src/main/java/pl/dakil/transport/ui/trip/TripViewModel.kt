@@ -23,16 +23,20 @@ import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.results.REFRESH_INTERVAL_SECONDS
 
 /** One row of a trip's timetable. */
 data class TripStop(
-    val name: String,
+    /** The stop itself — its id and coordinates are what open its departure board. */
+    val place: TransitLocation,
     val time: OffsetDateTime,
     val scheduledTime: OffsetDateTime,
     val track: String?,
-)
+) {
+    val name: String get() = place.name
+}
 
 sealed interface TripUiState {
     data object Loading : TripUiState
@@ -53,13 +57,13 @@ fun Journey.toTripStops(): List<TripStop> = buildList {
     val transitLegs = legs.filter { it.isTransit }
     transitLegs.forEachIndexed { index, leg ->
         if (index == 0) {
-            add(TripStop(leg.fromName, leg.startTime, leg.scheduledStartTime, leg.fromTrack))
+            add(TripStop(leg.fromPlace, leg.startTime, leg.scheduledStartTime, leg.fromTrack))
         }
         leg.intermediateStops.forEach { stop ->
             val arrival = stop.arrivalTime ?: return@forEach
-            add(TripStop(stop.name, arrival, stop.scheduledArrivalTime ?: arrival, stop.track))
+            add(TripStop(stop.place, arrival, stop.scheduledArrivalTime ?: arrival, stop.track))
         }
-        add(TripStop(leg.toName, leg.endTime, leg.scheduledEndTime, leg.toTrack))
+        add(TripStop(leg.toPlace, leg.endTime, leg.scheduledEndTime, leg.toTrack))
     }
 }
 
