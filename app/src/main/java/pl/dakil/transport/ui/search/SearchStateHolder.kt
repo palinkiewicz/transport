@@ -60,6 +60,13 @@ class SearchStateHolder @Inject constructor(
     /** A map-target pick, consumed by the Map screen. */
     val pendingMapLocation = MutableStateFlow<TransitLocation?>(null)
 
+    /**
+     * Raised when another app hands over a destination, and consumed by the nav host to open
+     * the connections form. Like [pendingMapLocation] it is a one-shot signal and is never
+     * persisted — a request that outlived the process would fire at the wrong moment.
+     */
+    val pendingRouteRequest = MutableStateFlow(false)
+
     init {
         scope.launch {
             if (settingsRepository.settings.first().rememberLastSearch) {
@@ -95,6 +102,15 @@ class SearchStateHolder @Inject constructor(
 
     fun setFinishHere(location: TransitLocation) {
         to.value = location
+    }
+
+    /**
+     * A destination handed over by another app. The start is left alone: whatever the user last
+     * searched from is a better guess than nothing, and the form makes it easy to change.
+     */
+    fun setExternalDestination(location: TransitLocation) {
+        to.value = location
+        pendingRouteRequest.value = true
     }
 
     fun clearBeginHere() {

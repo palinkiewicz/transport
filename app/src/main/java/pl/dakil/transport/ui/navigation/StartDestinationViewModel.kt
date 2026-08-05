@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.domain.model.DefaultTab
+import pl.dakil.transport.ui.search.SearchStateHolder
 
 /**
  * Resolves which tab the app opens on, once per process.
@@ -21,11 +22,19 @@ import pl.dakil.transport.domain.model.DefaultTab
 @HiltViewModel
 class StartDestinationViewModel @Inject constructor(
     settingsRepository: SettingsRepository,
+    private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
 
     /** Null until the stored setting has been read; the nav host waits rather than guess. */
     private val _startTab = MutableStateFlow<DefaultTab?>(null)
     val startTab: StateFlow<DefaultTab?> = _startTab
+
+    /** Raised when another app hands over a destination — see [SearchStateHolder]. */
+    val pendingRouteRequest: StateFlow<Boolean> = searchStateHolder.pendingRouteRequest
+
+    fun consumeRouteRequest() {
+        searchStateHolder.pendingRouteRequest.value = false
+    }
 
     init {
         viewModelScope.launch {

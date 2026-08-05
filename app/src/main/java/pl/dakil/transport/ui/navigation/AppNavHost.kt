@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
@@ -37,6 +38,18 @@ fun AppNavHost(startDestinationViewModel: StartDestinationViewModel = hiltViewMo
     val startRoute = startTab?.route() ?: return
 
     val navController = rememberNavController()
+
+    // A destination shared by another app: the search form is where it is acted on, so opening
+    // that tab is the whole handling. Waits for the nav host to exist, hence living here rather
+    // than in the activity that parsed the intent.
+    val pendingRouteRequest by startDestinationViewModel.pendingRouteRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingRouteRequest) {
+        if (pendingRouteRequest) {
+            startDestinationViewModel.consumeRouteRequest()
+            navController.navigateToTab(ConnectionsRoute)
+        }
+    }
+
     val backStackEntry by navController.currentBackStackEntryAsState()
     val showBottomBar = backStackEntry?.destination?.let(::isBottomBarDestination) ?: true
 
