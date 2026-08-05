@@ -43,8 +43,12 @@ data class TransitLocation(
         get() = modes.minByOrNull { MODE_PRIORITY.indexOf(it).let { i -> if (i == -1) Int.MAX_VALUE else i } }
 
     companion object {
-        fun currentPosition(lat: Double, lon: Double): TransitLocation =
-            TransitLocation(name = "Your location", lat = lat, lon = lon, stopId = null)
+        /**
+         * The user's own position as a pickable place. [name] is passed in rather than baked
+         * in because it is user-visible text, and this model has no access to resources.
+         */
+        fun currentPosition(lat: Double, lon: Double, name: String): TransitLocation =
+            TransitLocation(name = name, lat = lat, lon = lon, stopId = null)
 
         // Rarer/faster modes take priority so e.g. a rail+bus interchange reads as a rail stop.
         private val MODE_PRIORITY = listOf(

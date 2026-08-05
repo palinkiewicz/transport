@@ -24,10 +24,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
+import pl.dakil.transport.R
 
 /**
  * A surface card with a clickable header that expands/collapses its [content], in the app's
@@ -76,7 +78,9 @@ fun ExpandableSection(
                     headerActions()
                     Icon(
                         Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse" else "Expand",
+                        contentDescription = stringResource(
+                            if (expanded) R.string.action_collapse else R.string.action_expand,
+                        ),
                         modifier = Modifier.rotate(chevronRotation),
                     )
                 }

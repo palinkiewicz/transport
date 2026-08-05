@@ -17,7 +17,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.vector.ImageVector
+import pl.dakil.transport.R
 import androidx.compose.ui.unit.dp
 
 /** Small icon+label pill for one vehicle attribute (live status, wheelchair, bikes). */
@@ -59,9 +61,9 @@ fun AttributeChip(
 @Composable
 fun VehicleAmenityChips(wheelchairAccessible: Boolean?, bikesAllowed: Boolean?) {
     if (wheelchairAccessible == true) {
-        AttributeChip(Icons.Default.Accessible, "Wheelchair access")
+        AttributeChip(Icons.Default.Accessible, stringResource(R.string.attribute_wheelchair))
     }
     if (bikesAllowed == true) {
-        AttributeChip(Icons.Default.PedalBike, "Bikes allowed")
+        AttributeChip(Icons.Default.PedalBike, stringResource(R.string.attribute_bikes))
     }
 }

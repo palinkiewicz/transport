@@ -1,12 +1,14 @@
 package pl.dakil.transport.domain.model
 
+import androidx.annotation.StringRes
 import kotlinx.serialization.Serializable
+import pl.dakil.transport.R
 
 /** Data source of a vehicle position: live-tracked or computed from the schedule. */
 @Serializable
-enum class VehicleSource(val label: String) {
-    LIVE("Live"),
-    TIMETABLE("Timetable"),
+enum class VehicleSource(@param:StringRes val labelRes: Int) {
+    LIVE(R.string.vehicle_source_live),
+    TIMETABLE(R.string.vehicle_source_timetable),
 }
 
 /**

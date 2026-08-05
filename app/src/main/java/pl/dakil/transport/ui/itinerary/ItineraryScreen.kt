@@ -56,6 +56,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,22 +65,22 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.formatDistance
+import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.map.RouteMap
 import pl.dakil.transport.ui.map.RouteMapPoint
 import pl.dakil.transport.ui.map.rememberJourneyRouteLines
-
-private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /** A stop the itinerary names in both views, so a tap in one can point at it in the other. */
 private data class ItineraryStop(
@@ -220,20 +222,23 @@ fun ItineraryScreen(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("Itinerary") },
-                subtitle = { Text("$fromName → $toName") },
+                title = { Text(stringResource(R.string.itinerary_title)) },
+                subtitle = { Text(stringResource(R.string.format_route_arrow, fromName, toName)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
                     if (canShowMap) {
                         IconButton(onClick = { showMap = !showMap }) {
                             if (showMap) {
-                                Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Show as list")
+                                Icon(
+                                    Icons.AutoMirrored.Filled.List,
+                                    contentDescription = stringResource(R.string.itinerary_show_as_list),
+                                )
                             } else {
-                                Icon(Icons.Default.Map, contentDescription = "Show on map")
+                                Icon(Icons.Default.Map, contentDescription = stringResource(R.string.itinerary_show_on_map))
                             }
                         }
                     }
@@ -244,9 +249,8 @@ fun ItineraryScreen(
     ) { innerPadding ->
         when {
             journey == null -> EmptyBox(
-                title = "Itinerary not available",
-                description = "This connection is no longer part of the loaded results — go back " +
-                    "and pick one from the refreshed list.",
+                title = stringResource(R.string.itinerary_unavailable_title),
+                description = stringResource(R.string.itinerary_unavailable_body),
                 modifier = Modifier.padding(innerPadding),
             )
             showMap -> ItineraryMap(
@@ -357,6 +361,7 @@ private fun ItineraryMapPane(
     selectedStopId: String?,
     onWaypointClick: (String) -> Unit,
 ) {
+    val timeFormatter = rememberTimeFormatter()
     val waypoints = remember(stops) { waypoints(stops) }
 
     Surface(
@@ -367,21 +372,23 @@ private fun ItineraryMapPane(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "$fromName → $toName",
+                text = stringResource(R.string.format_route_arrow, fromName, toName),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                text = buildString {
-                    append(journey.departureTime.format(timeFormatter))
-                    append(" – ")
-                    append(journey.arrivalTime.format(timeFormatter))
-                    append(" · ")
-                    append(formatDuration(journey.transitDurationSeconds))
-                    append(" · ")
-                    append(pluralizeTransfers(journey.transfers))
-                },
+                text = stringResource(
+                    R.string.itinerary_map_summary,
+                    journey.departureTime.format(timeFormatter),
+                    journey.arrivalTime.format(timeFormatter),
+                    formatDuration(journey.transitDurationSeconds),
+                    pluralStringResource(
+                        R.plurals.plural_transfers,
+                        journey.transfers,
+                        journey.transfers,
+                    ),
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -461,11 +468,9 @@ private fun WaypointRow(waypoint: ItineraryWaypoint, selected: Boolean, onClick:
     }
 }
 
-private fun pluralizeTransfers(count: Int): String =
-    if (count == 1) "1 transfer" else "$count transfers"
-
 @Composable
 private fun JourneySummary(journey: Journey) {
+    val timeFormatter = rememberTimeFormatter()
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
         color = MaterialTheme.colorScheme.surfaceContainer,
@@ -477,10 +482,19 @@ private fun JourneySummary(journey: Journey) {
                 .padding(vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceEvenly,
         ) {
-            SummaryStat("Depart", journey.departureTime.format(timeFormatter))
-            SummaryStat("Duration", formatDuration(journey.transitDurationSeconds))
-            SummaryStat("Transfers", journey.transfers.toString())
-            SummaryStat("Arrive", journey.arrivalTime.format(timeFormatter))
+            SummaryStat(
+                stringResource(R.string.itinerary_stat_depart),
+                journey.departureTime.format(timeFormatter),
+            )
+            SummaryStat(
+                stringResource(R.string.itinerary_stat_duration),
+                formatDuration(journey.transitDurationSeconds),
+            )
+            SummaryStat(stringResource(R.string.itinerary_stat_transfers), journey.transfers.toString())
+            SummaryStat(
+                stringResource(R.string.itinerary_stat_arrive),
+                journey.arrivalTime.format(timeFormatter),
+            )
         }
     }
 }
@@ -566,7 +580,11 @@ private fun LegRow(
             if (leg.isTransit) {
                 ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                 leg.headsign?.let {
-                    Text("towards $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 4.dp))
+                    Text(
+                        text = stringResource(R.string.format_towards, it),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
                 }
                 if (leg.wheelchairAccessible == true || leg.bikesAllowed == true) {
                     Row(
@@ -582,9 +600,15 @@ private fun LegRow(
                 IntermediateStopsSection(leg, legColor)
             } else {
                 Text(
-                    text = buildString {
-                        append("${leg.mode.label} · ${leg.duration / 60} min")
-                        leg.distanceMeters?.let { append(" · ${formatDistance(it)}") }
+                    text = run {
+                        val mode = stringResource(leg.mode.labelRes)
+                        val duration = stringResource(R.string.format_minutes, leg.duration / 60)
+                        val distance = leg.distanceMeters?.let { formatDistance(it) }
+                        if (distance == null) {
+                            stringResource(R.string.itinerary_access_leg, mode, duration)
+                        } else {
+                            stringResource(R.string.itinerary_access_leg_distance, mode, duration, distance)
+                        }
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -637,7 +661,7 @@ private fun TrackPill(track: String) {
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Text(
-            text = "Pl. $track",
+            text = stringResource(R.string.format_track_short, track),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -648,7 +672,12 @@ private fun TrackPill(track: String) {
 /** "n stops · m min" row that expands into the list of intermediate stops with arrival times. */
 @Composable
 private fun IntermediateStopsSection(leg: JourneyLeg, legColor: androidx.compose.ui.graphics.Color) {
-    val rideLabel = "${leg.duration / 60} min ride"
+    val timeFormatter = rememberTimeFormatter()
+    val rideLabel = pluralStringResource(
+        R.plurals.itinerary_ride_duration,
+        leg.duration / 60,
+        leg.duration / 60,
+    )
     if (leg.intermediateStops.isEmpty()) {
         Text(
             text = rideLabel,
@@ -670,12 +699,26 @@ private fun IntermediateStopsSection(leg: JourneyLeg, legColor: androidx.compose
     ) {
         Icon(
             if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-            contentDescription = if (expanded) "Hide intermediate stops" else "Show intermediate stops",
+            contentDescription = stringResource(
+                if (expanded) {
+                    R.string.itinerary_hide_intermediate_stops
+                } else {
+                    R.string.itinerary_show_intermediate_stops
+                },
+            ),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(18.dp),
         )
         Text(
-            text = "${leg.intermediateStops.size} stops · $rideLabel",
+            text = stringResource(
+                R.string.itinerary_stops_and_ride,
+                pluralStringResource(
+                    R.plurals.plural_stops,
+                    leg.intermediateStops.size,
+                    leg.intermediateStops.size,
+                ),
+                rideLabel,
+            ),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -712,11 +755,4 @@ private fun IntermediateStopsSection(leg: JourneyLeg, legColor: androidx.compose
             }
         }
     }
-}
-
-private fun formatDuration(seconds: Long): String {
-    val totalMinutes = seconds / 60
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
-    return if (hours > 0) "$hours h $minutes min" else "$minutes min"
 }

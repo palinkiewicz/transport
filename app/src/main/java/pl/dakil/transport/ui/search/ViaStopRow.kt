@@ -29,13 +29,22 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.ViaPoint
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 
 /** Label for one of [ViaPoint.STAY_PRESETS_MINUTES]. */
-private fun stayLabel(minutes: Int): String = if (minutes == 0) "Pass" else "$minutes min"
+@Composable
+private fun stayLabel(minutes: Int): String =
+    if (minutes == 0) {
+        stringResource(R.string.via_stay_pass)
+    } else {
+        stringResource(R.string.format_minutes, minutes)
+    }
 
 /**
  * One intermediate stop on the route card: a numbered marker, the stop field, a remove button,
@@ -69,7 +78,7 @@ internal fun ViaStopRow(
                 }
             }
             LocationField(
-                label = "Stop along the way",
+                label = stringResource(R.string.via_field_label),
                 value = via.location.name,
                 onClick = onPick,
                 modifier = Modifier.weight(1f),
@@ -78,7 +87,7 @@ internal fun ViaStopRow(
                 onClick = onRemove,
                 shapes = IconButtonDefaults.shapes(),
             ) {
-                Icon(Icons.Default.Close, contentDescription = "Remove stop ${index + 1}")
+                Icon(Icons.Default.Close, contentDescription = stringResource(R.string.via_remove, index + 1))
             }
         }
 
@@ -87,7 +96,7 @@ internal fun ViaStopRow(
             modifier = Modifier.padding(start = 36.dp, end = 12.dp, bottom = 8.dp),
         ) {
             Text(
-                text = "Minimum stay",
+                text = stringResource(R.string.via_minimum_stay),
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -99,10 +108,13 @@ internal fun ViaStopRow(
             )
             Text(
                 text = if (via.isPassThrough) {
-                    "Only has to be passed through — staying on the same vehicle counts, " +
-                        "so no transfer is forced here."
+                    stringResource(R.string.via_pass_through_note)
                 } else {
-                    "Forces a stopover of at least ${via.minimumStayMinutes} minutes."
+                    pluralStringResource(
+                        R.plurals.via_stopover_note,
+                        via.minimumStayMinutes,
+                        via.minimumStayMinutes,
+                    )
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -125,7 +137,7 @@ internal fun AddViaRow(canAdd: Boolean, onAdd: () -> Unit) {
         TextButton(onClick = onAdd, modifier = Modifier.padding(start = 4.dp)) {
             Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
-            Text("Add stop along the way")
+            Text(stringResource(R.string.via_add))
         }
     }
     AnimatedVisibility(
@@ -134,7 +146,11 @@ internal fun AddViaRow(canAdd: Boolean, onAdd: () -> Unit) {
         exit = fadeOut() + shrinkVertically(),
     ) {
         Text(
-            text = "Up to ${ViaPoint.MAX_VIA_POINTS} stops along the way can be routed through.",
+            text = pluralStringResource(
+                R.plurals.via_limit_note,
+                ViaPoint.MAX_VIA_POINTS,
+                ViaPoint.MAX_VIA_POINTS,
+            ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, end = 12.dp, top = 4.dp, bottom = 8.dp),

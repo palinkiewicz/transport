@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.navigation
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DepartureBoard
 import androidx.compose.material.icons.filled.Map
@@ -13,23 +14,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
+import pl.dakil.transport.R
 
 private data class BottomBarDestination(
     val route: Any,
-    val label: String,
+    @param:StringRes val labelRes: Int,
     val icon: ImageVector,
 )
 
 private val bottomBarDestinations = listOf(
-    BottomBarDestination(MapRoute, "Map", Icons.Default.Map),
-    BottomBarDestination(ConnectionsRoute, "Connections", Icons.Default.Route),
-    BottomBarDestination(DeparturesRoute, "Departures", Icons.Default.DepartureBoard),
-    BottomBarDestination(FavouritesRoute, "Favourites", Icons.Default.Star),
-    BottomBarDestination(SettingsRoute, "Settings", Icons.Default.Settings),
+    BottomBarDestination(MapRoute, R.string.tab_map, Icons.Default.Map),
+    BottomBarDestination(ConnectionsRoute, R.string.tab_connections, Icons.Default.Route),
+    BottomBarDestination(DeparturesRoute, R.string.tab_departures, Icons.Default.DepartureBoard),
+    BottomBarDestination(FavouritesRoute, R.string.tab_favourites, Icons.Default.Star),
+    BottomBarDestination(SettingsRoute, R.string.tab_settings, Icons.Default.Settings),
 )
 
 /** True for the top-level destinations that show the bottom bar. */
@@ -54,8 +57,10 @@ fun TransportBottomBar(navController: NavHostController) {
                         restoreState = true
                     }
                 },
-                icon = { Icon(destination.icon, contentDescription = destination.label) },
-                label = { Text(destination.label) },
+                icon = {
+                    Icon(destination.icon, contentDescription = stringResource(destination.labelRes))
+                },
+                label = { Text(stringResource(destination.labelRes)) },
             )
         }
     }

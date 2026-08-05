@@ -1,5 +1,6 @@
 package pl.dakil.transport.ui.favourites
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -32,10 +33,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.ui.components.FavoriteButton
@@ -66,7 +69,7 @@ fun FavouritesScreen(
         contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("Favourites") },
+                title = { Text(stringResource(R.string.favourites_title)) },
                 scrollBehavior = scrollBehavior,
             )
         },
@@ -90,12 +93,11 @@ fun FavouritesScreen(
                     modifier = Modifier.size(48.dp),
                 )
                 Text(
-                    text = "Nothing starred yet",
+                    text = stringResource(R.string.favourites_empty_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = "Star places while searching, connections from their results, " +
-                        "and lines from a vehicle or trip — they will all gather here.",
+                    text = stringResource(R.string.favourites_empty_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -107,7 +109,7 @@ fun FavouritesScreen(
                     .fillMaxSize(),
             ) {
                 if (favorites.locations.isNotEmpty()) {
-                    sectionHeader("places-header", "Places")
+                    sectionHeader("places-header", R.string.favourites_section_places)
                     items(
                         count = favorites.locations.size,
                         key = { "loc:${favorites.locations[it].favoriteKey}" },
@@ -131,7 +133,7 @@ fun FavouritesScreen(
                 }
 
                 if (favorites.connections.isNotEmpty()) {
-                    sectionHeader("connections-header", "Connections")
+                    sectionHeader("connections-header", R.string.favourites_section_connections)
                     items(
                         count = favorites.connections.size,
                         key = { "conn:${favorites.connections[it].key}" },
@@ -147,7 +149,7 @@ fun FavouritesScreen(
                 }
 
                 if (favorites.lines.isNotEmpty()) {
-                    sectionHeader("lines-header", "Lines")
+                    sectionHeader("lines-header", R.string.favourites_section_lines)
                     items(
                         count = favorites.lines.size,
                         key = { "line:${favorites.lines[it].key}" },
@@ -166,10 +168,10 @@ fun FavouritesScreen(
     }
 }
 
-private fun LazyListScope.sectionHeader(key: String, title: String) {
+private fun LazyListScope.sectionHeader(key: String, @StringRes titleRes: Int) {
     item(key = key) {
         Text(
-            text = title,
+            text = stringResource(titleRes),
             style = MaterialTheme.typography.titleSmall,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
@@ -208,7 +210,11 @@ private fun ConnectionListItem(
     ListItem(
         headlineContent = {
             Text(
-                text = "${connection.from.name} → ${connection.to.name}",
+                text = stringResource(
+                    R.string.format_route_arrow,
+                    connection.from.name,
+                    connection.to.name,
+                ),
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -217,7 +223,8 @@ private fun ConnectionListItem(
             val fromCity = connection.from.city
             val toCity = connection.to.city
             val label = when {
-                fromCity != null && toCity != null && fromCity != toCity -> "$fromCity → $toCity"
+                fromCity != null && toCity != null && fromCity != toCity ->
+                    stringResource(R.string.format_route_arrow, fromCity, toCity)
                 else -> fromCity ?: toCity
             }
             label?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
@@ -245,12 +252,13 @@ private fun LineListItem(
     ListItem(
         headlineContent = {
             Text(
-                text = line.headsign?.let { "→ $it" } ?: line.mode.label,
+                text = line.headsign?.let { stringResource(R.string.format_headsign, it) }
+                    ?: stringResource(line.mode.labelRes),
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         },
-        supportingContent = { Text(line.mode.label) },
+        supportingContent = { Text(stringResource(line.mode.labelRes)) },
         leadingContent = {
             ModeChip(mode = line.mode, label = line.label, routeColorHex = line.routeColor)
         },

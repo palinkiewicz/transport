@@ -34,9 +34,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.dakil.transport.R
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.navigation.ResultsRoute
@@ -68,7 +70,7 @@ fun ConnectionsSearchScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SearchHeader(icon = Icons.Default.Route, title = "Where to?")
+            SearchHeader(icon = Icons.Default.Route, title = stringResource(R.string.connections_title))
 
             RouteCard(
                 uiState = uiState,
@@ -95,7 +97,7 @@ fun ConnectionsSearchScreen(
                         modifier = Modifier.size(20.dp),
                     )
                     Text(
-                        text = "Start and destination are the same place — pick a different destination.",
+                        text = stringResource(R.string.connections_same_endpoints),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.error,
                     )
@@ -106,7 +108,11 @@ fun ConnectionsSearchScreen(
                 options = listOf(false, true),
                 selected = uiState.options.arriveBy,
                 onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },
-                label = { arriveBy -> if (arriveBy) "Arrive by" else "Depart at" },
+                label = { arriveBy ->
+                    stringResource(
+                        if (arriveBy) R.string.connections_arrive_by else R.string.connections_depart_at,
+                    )
+                },
             )
 
             // Only worth offering when there is something to reset, and only when leaving now
@@ -119,7 +125,7 @@ fun ConnectionsSearchScreen(
             )
 
             IntSliderRow(
-                title = "Max transfers",
+                title = stringResource(R.string.connections_max_transfers),
                 value = uiState.options.maxTransfers,
                 onValueCommit = { transfers -> viewModel.updateOptions { it.copy(maxTransfers = transfers) } },
                 min = 0,
@@ -189,7 +195,7 @@ private fun RouteCard(
                         .size(20.dp),
                 )
                 LocationField(
-                    label = "Start",
+                    label = stringResource(R.string.connections_field_start),
                     value = uiState.from?.name,
                     onClick = onPickFrom,
                     modifier = Modifier.weight(1f),
@@ -214,7 +220,7 @@ private fun RouteCard(
                     onClick = onSwap,
                     shapes = IconButtonDefaults.shapes(),
                 ) {
-                    Icon(Icons.Default.SwapVert, contentDescription = "Swap start and destination")
+                    Icon(Icons.Default.SwapVert, contentDescription = stringResource(R.string.connections_swap))
                 }
             }
 
@@ -242,7 +248,7 @@ private fun RouteCard(
                         .size(20.dp),
                 )
                 LocationField(
-                    label = "Destination",
+                    label = stringResource(R.string.connections_field_destination),
                     value = uiState.to?.name,
                     onClick = onPickTo,
                     modifier = Modifier.weight(1f),

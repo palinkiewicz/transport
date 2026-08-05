@@ -1,3 +1,449 @@
 <resources>
     <string name="app_name">Transport</string>
+
+    <!-- Generic actions and labels reused across screens -->
+    <string name="action_back">Back</string>
+    <string name="action_close">Close</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_reset_all">Reset all</string>
+    <string name="action_ok">OK</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_try_again">Try again</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_search">Search</string>
+    <string name="action_select_all">All</string>
+    <string name="action_select_none">None</string>
+    <string name="action_expand">Expand</string>
+    <string name="action_collapse">Collapse</string>
+    <string name="badge_modified">Modified</string>
+    <string name="label_place">Place</string>
+
+    <!-- Value formatting. Keep the placeholders; reorder them freely. -->
+    <string name="format_distance_meters">%1$d m</string>
+    <string name="format_distance_kilometers">%1$.1f km</string>
+    <string name="format_minutes">%1$d min</string>
+    <string name="format_hours">%1$d h</string>
+    <string name="format_hours_minutes">%1$d h %2$d min</string>
+    <string name="format_seconds">%1$d s</string>
+    <string name="format_meters">%1$d m</string>
+    <string name="format_speed">%1$.1f m/s</string>
+    <string name="format_factor_two_decimals">%1$.2f×</string>
+    <string name="format_factor_one_decimal">%1$.1f×</string>
+    <string name="format_zoom_level">%1$.1f</string>
+    <!--
+      java.time patterns, not literal text. Translate the *order and style* to local
+      convention (e.g. "h:mm a" for 12-hour clocks, "EEE, MMM d" for month-first dates);
+      the letters themselves are pattern symbols and must stay as java.time defines them.
+    -->
+    <string name="format_time_pattern">HH:mm</string>
+    <string name="format_date_pattern">EEE, d MMM</string>
+
+    <!-- Redraw interval readouts: milliseconds shown as a frame rate, longer ones as seconds. -->
+    <string name="format_frame_interval_millis">%1$d ms · %2$d fps</string>
+    <string name="format_frame_interval_seconds">%1$d s</string>
+    <string name="format_frame_interval_seconds_decimal">%1$.1f s</string>
+    <!-- Separates the places of a route, e.g. "Central Station → Airport" -->
+    <string name="format_route_arrow">%1$s → %2$s</string>
+    <!-- A vehicle's destination, e.g. "→ Airport" -->
+    <string name="format_headsign">→ %1$s</string>
+    <string name="format_towards">towards %1$s</string>
+    <!-- Platform/track pill next to a stop time, kept short on purpose -->
+    <string name="format_track_short">Pl. %1$s</string>
+    <string name="format_platform">Platform %1$s</string>
+
+    <plurals name="plural_transfers">
+        <item quantity="one">%1$d transfer</item>
+        <item quantity="other">%1$d transfers</item>
+    </plurals>
+    <string name="transfers_direct">direct</string>
+    <plurals name="plural_stops">
+        <item quantity="one">%1$d stop</item>
+        <item quantity="other">%1$d stops</item>
+    </plurals>
+    <plurals name="plural_days">
+        <item quantity="one">%1$d day</item>
+        <item quantity="other">%1$d days</item>
+    </plurals>
+
+    <!-- Modes of transport -->
+    <string name="mode_walk">Walking</string>
+    <string name="mode_bike">Bike</string>
+    <string name="mode_car">Car</string>
+    <string name="mode_tram">Tram</string>
+    <string name="mode_subway">Subway</string>
+    <string name="mode_ferry">Ferry</string>
+    <string name="mode_airplane">Airplane</string>
+    <string name="mode_bus">Bus</string>
+    <string name="mode_coach">Coach</string>
+    <string name="mode_rail">Rail</string>
+    <string name="mode_highspeed_rail">High-speed rail</string>
+    <string name="mode_long_distance">Long-distance rail</string>
+    <string name="mode_night_rail">Night train</string>
+    <string name="mode_regional_rail">Regional rail</string>
+    <string name="mode_suburban">Suburban rail</string>
+    <string name="mode_funicular">Funicular</string>
+    <string name="mode_aerial_lift">Aerial lift</string>
+    <string name="mode_other">Transit</string>
+
+    <!-- Transit categories the user filters by -->
+    <string name="category_bus">Bus</string>
+    <string name="category_tram">Tram</string>
+    <string name="category_train">Train</string>
+    <string name="category_subway">Subway</string>
+    <string name="category_ferry">Ferry</string>
+    <string name="category_other">Other</string>
+
+    <!-- Bottom navigation bar -->
+    <string name="tab_map">Map</string>
+    <string name="tab_connections">Connections</string>
+    <string name="tab_departures">Departures</string>
+    <string name="tab_favourites">Favourites</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- Errors: one-line phrasing for inline spots with no room for a full screen -->
+    <string name="error_short_no_connection">No connection</string>
+    <string name="error_short_timeout">Took too long to respond</string>
+    <string name="error_short_not_found">Not available any more</string>
+    <string name="error_short_rate_limited">Too many requests — try again shortly</string>
+    <string name="error_short_bad_request">This request could not be handled</string>
+    <string name="error_short_server">The transit service is having trouble</string>
+    <string name="error_short_malformed">Unexpected response from the service</string>
+    <string name="error_short_unknown">Something went wrong</string>
+
+    <!-- Errors: full-screen explanations -->
+    <string name="error_title_no_connection">You\'re offline</string>
+    <string name="error_body_no_connection">We couldn\'t reach the transit service. Check your internet connection and try again.</string>
+    <string name="error_title_timeout">This is taking too long</string>
+    <string name="error_body_timeout">The transit service didn\'t answer in time. It may be busy — trying again usually helps.</string>
+    <string name="error_title_not_found">Not available</string>
+    <string name="error_body_not_found">This stop or trip isn\'t in the timetable any more. It may have been cancelled or removed from the schedule.</string>
+    <string name="error_title_rate_limited">Slow down a moment</string>
+    <string name="error_body_rate_limited">The transit service is limiting how often it can be asked. Wait a few seconds, then try again.</string>
+    <string name="error_title_bad_request">This search couldn\'t be run</string>
+    <string name="error_body_bad_request">The transit service rejected it (error %1$d). Try changing your stops, time, or advanced search options.</string>
+    <string name="error_title_server">The service is having trouble</string>
+    <string name="error_body_server">The transit service reported an error (%1$d). It\'s not something on your side — please try again in a moment.</string>
+    <string name="error_title_malformed">Unexpected response</string>
+    <string name="error_body_malformed">The transit service sent back something this app couldn\'t read. Trying again may help.</string>
+    <string name="error_title_unknown">Something went wrong</string>
+    <string name="error_body_unknown">The data couldn\'t be loaded. Please try again.</string>
+    <string name="error_details_show">Technical details</string>
+    <string name="error_details_hide">Hide technical details</string>
+
+    <!-- Favourites -->
+    <string name="favourites_title">Favourites</string>
+    <string name="favourites_empty_title">Nothing starred yet</string>
+    <string name="favourites_empty_body">Star places while searching, connections from their results, and lines from a vehicle or trip — they will all gather here.</string>
+    <string name="favourites_section_places">Places</string>
+    <string name="favourites_section_connections">Connections</string>
+    <string name="favourites_section_lines">Lines</string>
+    <string name="favourite_add">Add to favourites</string>
+    <string name="favourite_remove">Remove from favourites</string>
+
+    <!-- Auto-refreshing screens -->
+    <plurals name="refresh_subtitle_countdown">
+        <item quantity="one">%1$s · refreshes in %2$d sec</item>
+        <item quantity="other">%1$s · refreshes in %2$d sec</item>
+    </plurals>
+    <string name="refresh_subtitle_connections">Connections</string>
+    <string name="refresh_subtitle_departures">Live departures</string>
+    <string name="refresh_subtitle_trip">Trip timetable</string>
+
+    <!-- Vehicle attributes -->
+    <string name="attribute_wheelchair">Wheelchair access</string>
+    <string name="attribute_bikes">Bikes allowed</string>
+    <string name="attribute_live">Live</string>
+    <string name="attribute_scheduled">Scheduled</string>
+
+    <!-- Map screen -->
+    <string name="map_search_placeholder">Search stops &amp; places</string>
+    <string name="map_locate_me">Locate me</string>
+    <string name="map_attribution">Data: transitous.org</string>
+    <string name="map_action_timetable">Timetable</string>
+    <string name="map_action_trip_timetable">Trip timetable</string>
+    <string name="map_action_begin_here">Begin here</string>
+    <string name="map_action_finish_here">Finish here</string>
+    <string name="map_stop_lines_error">Lines couldn\'t be loaded — %1$s</string>
+    <string name="map_stop_lines_empty">No lines known for this stop</string>
+    <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
+    <string name="map_vehicle_next_stop">next %1$s</string>
+
+    <!-- Map filter menu -->
+    <string name="map_filters_open">Map filters</string>
+    <string name="map_filters_title">Map filters</string>
+    <string name="map_filters_close">Close filters</string>
+    <string name="map_filters_stops">Stops</string>
+    <string name="map_filters_vehicles">Vehicles</string>
+    <string name="map_filters_source_note">Positions are estimated from timetables; \"Live\" means real-time times.</string>
+    <string name="vehicle_source_live">Live</string>
+    <string name="vehicle_source_timetable">Timetable</string>
+
+    <!-- Location picker -->
+    <string name="picker_placeholder_from">Where from?</string>
+    <string name="picker_placeholder_to">Where to?</string>
+    <string name="picker_placeholder_via">Stop along the way</string>
+    <string name="picker_placeholder_stop">Which stop?</string>
+    <string name="picker_placeholder_map">Search stops &amp; places</string>
+    <string name="picker_stops_only_note">Only transit stops can be routed through.</string>
+    <string name="picker_current_location">Current location</string>
+    <string name="picker_favourites_header">Favourites</string>
+    <string name="location_your_location">Your location</string>
+
+    <!-- Connections search form -->
+    <string name="connections_title">Where to?</string>
+    <string name="connections_field_start">Start</string>
+    <string name="connections_field_destination">Destination</string>
+    <string name="connections_swap">Swap start and destination</string>
+    <string name="connections_same_endpoints">Start and destination are the same place — pick a different destination.</string>
+    <string name="connections_depart_at">Depart at</string>
+    <string name="connections_arrive_by">Arrive by</string>
+    <string name="connections_max_transfers">Max transfers</string>
+
+    <!-- Intermediate ("via") stops -->
+    <string name="via_field_label">Stop along the way</string>
+    <string name="via_remove">Remove stop %1$d</string>
+    <string name="via_minimum_stay">Minimum stay</string>
+    <string name="via_stay_pass">Pass</string>
+    <string name="via_pass_through_note">Only has to be passed through — staying on the same vehicle counts, so no transfer is forced here.</string>
+    <plurals name="via_stopover_note">
+        <item quantity="one">Forces a stopover of at least %1$d minute.</item>
+        <item quantity="other">Forces a stopover of at least %1$d minutes.</item>
+    </plurals>
+    <string name="via_add">Add stop along the way</string>
+    <plurals name="via_limit_note">
+        <item quantity="one">Up to %1$d stop along the way can be routed through.</item>
+        <item quantity="other">Up to %1$d stops along the way can be routed through.</item>
+    </plurals>
+
+    <!-- Departures search form -->
+    <string name="departures_title">Leaving from?</string>
+    <string name="departures_field_stop">Stop</string>
+    <string name="departures_mode_departures">Departures</string>
+    <string name="departures_mode_arrivals">Arrivals</string>
+
+    <!-- Date/time pickers shared by both search forms -->
+    <string name="datetime_pick_date">Pick date</string>
+    <string name="datetime_pick_time">Pick time</string>
+    <string name="datetime_use_now">Use current time</string>
+
+    <!-- Results list -->
+    <string name="results_empty_title">No connections found</string>
+    <string name="results_empty_body">Nothing runs between these places at this time. Try another departure time, or relax the advanced search options.</string>
+    <string name="results_empty_action">Search again</string>
+    <!-- Door-to-door line on a result card: "08:10 → 08:52 · Home → Office" -->
+    <string name="results_door_to_door_row">%1$s → %2$s · %3$s → %4$s</string>
+    <string name="results_show_previous">Show previous</string>
+    <string name="results_show_next">Show next</string>
+    <string name="results_departing_now">Departing now</string>
+    <string name="results_departing_in">Departing in %1$s</string>
+    <string name="results_departed_ago">Departed %1$s ago</string>
+    <string name="results_leave_now">Leave now</string>
+    <string name="results_leave_in">Leave in %1$s</string>
+    <string name="results_left_ago">Left %1$s ago</string>
+
+    <!-- Departures board -->
+    <string name="departures_empty_title">No upcoming departures</string>
+    <string name="departures_empty_body">Nothing is scheduled from this stop for the time being. Services may have finished for the day.</string>
+    <string name="departures_empty_action">Check again</string>
+    <string name="departures_group_default">Departures</string>
+    <string name="departures_group_towards">towards %1$s</string>
+    <string name="departures_cancelled">Cancelled</string>
+    <string name="departures_now">now</string>
+    <plurals name="departures_minutes_ago">
+        <item quantity="one">%1$d min ago</item>
+        <item quantity="other">%1$d min ago</item>
+    </plurals>
+
+    <!-- Itinerary -->
+    <string name="itinerary_title">Itinerary</string>
+    <string name="itinerary_show_as_list">Show as list</string>
+    <string name="itinerary_show_on_map">Show on map</string>
+    <string name="itinerary_unavailable_title">Itinerary not available</string>
+    <string name="itinerary_unavailable_body">This connection is no longer part of the loaded results — go back and pick one from the refreshed list.</string>
+    <!-- Map pane summary: "08:10 – 08:52 · 42 min · 1 transfer" -->
+    <string name="itinerary_map_summary">%1$s – %2$s · %3$s · %4$s</string>
+    <string name="itinerary_stat_depart">Depart</string>
+    <string name="itinerary_stat_duration">Duration</string>
+    <string name="itinerary_stat_transfers">Transfers</string>
+    <string name="itinerary_stat_arrive">Arrive</string>
+    <plurals name="itinerary_ride_duration">
+        <item quantity="one">%1$d min ride</item>
+        <item quantity="other">%1$d min ride</item>
+    </plurals>
+    <string name="itinerary_stops_and_ride">%1$s · %2$s</string>
+    <string name="itinerary_show_intermediate_stops">Show intermediate stops</string>
+    <string name="itinerary_hide_intermediate_stops">Hide intermediate stops</string>
+    <!-- Walk/bike/car leg summary, e.g. "Walking · 7 min · 550 m" -->
+    <string name="itinerary_access_leg">%1$s · %2$s</string>
+    <string name="itinerary_access_leg_distance">%1$s · %2$s · %3$s</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_group_general">General</string>
+    <string name="settings_opening_screen">Opening screen</string>
+    <string name="settings_opening_screen_note">Which tab opens when you launch the app.</string>
+    <string name="settings_remember_search">Remember last search</string>
+    <string name="settings_remember_search_note">Your last from, to and departure stop survive a restart. Off, the forms start empty every time.</string>
+    <string name="settings_remember_map">Remember map position</string>
+    <string name="settings_remember_map_note">Reopen the map where you left it instead of the default view.</string>
+
+    <string name="settings_group_search">Search &amp; results</string>
+    <string name="settings_connection_times">Connection times</string>
+    <string name="settings_connection_times_note">Stop times are when the vehicle moves; door to door includes the walk at each end, so the countdown tells you when to leave.</string>
+    <string name="settings_sort_by_distance">Sort suggestions by distance</string>
+    <string name="settings_sort_by_distance_note">Ranks place results by distance from your start point — or your position when no start is set — instead of the server\'s own ranking.</string>
+    <string name="connection_times_stops">Stops</string>
+    <string name="connection_times_door_to_door">Door to door</string>
+    <string name="connection_times_both">Both</string>
+
+    <string name="settings_group_map_detail">Map detail</string>
+    <string name="settings_stops_from_zoom">Stops from zoom</string>
+    <string name="settings_stops_from_zoom_note">Lower shows stops earlier when zooming out, at the cost of a denser map and larger responses.</string>
+    <string name="settings_vehicles_from_zoom">Vehicles from zoom</string>
+    <string name="settings_vehicles_from_zoom_note">Below this zoom no vehicles are fetched at all.</string>
+    <string name="settings_itinerary_stop_names">Itinerary stop names</string>
+    <string name="settings_itinerary_stop_names_note">Labels the stops where you board and alight on the itinerary map.</string>
+
+    <string name="settings_group_auto_refresh">Auto-refresh</string>
+    <string name="settings_refresh_while_open">Refresh while open</string>
+    <string name="settings_refresh_while_open_note">Off, the connections list, departures board and trip view load once and are reloaded only by their refresh button.</string>
+    <string name="settings_refresh_interval">Results &amp; departures</string>
+    <string name="settings_refresh_interval_note">How often those screens reload while open. Applies to searches started from now on.</string>
+
+    <string name="settings_group_vehicle_movement">Vehicle movement</string>
+    <string name="settings_not_gps_title">Vehicles are estimated, not tracked</string>
+    <string name="settings_not_gps_body">Transitous serves stop-to-stop timetables, never GPS positions. A vehicle\'s place between two stops is interpolated from its schedule, corrected by real-time delays where a feed provides them — so \"Live\" on the map means accurate times, not an observed position.</string>
+    <string name="settings_not_gps_show">Show explanation</string>
+    <string name="settings_not_gps_hide">Hide explanation</string>
+    <string name="settings_monotonic">Never move backwards</string>
+    <string name="settings_monotonic_note">Real-time feeds revise delays continuously. Without this, a revision rewinds a marker mid-route; with it, the vehicle waits where it is until its schedule catches up.</string>
+    <string name="settings_frame_interval">Frame interval</string>
+    <string name="settings_frame_interval_note">How often positions are redrawn. Costs CPU, never extra requests.</string>
+    <string name="settings_fetch_interval">Fetch interval</string>
+    <string name="settings_fetch_interval_note">How often new segments are fetched. Transitous is a shared community service — keep this as high as you can live with.</string>
+    <string name="settings_fetch_window">Fetch window</string>
+    <string name="settings_fetch_window_note">How far ahead each fetch looks. Wider keeps long runs between stops from dropping out mid-journey.</string>
+    <string name="settings_segment_retention">Keep missing trips</string>
+    <string name="settings_segment_retention_note">How long a trip absent from the latest fetch keeps moving on what is already known, instead of vanishing and popping back.</string>
+    <string name="settings_segment_retention_off">Off</string>
+    <string name="settings_group_expand">Expand %1$s</string>
+    <string name="settings_group_collapse">Collapse %1$s</string>
+
+    <!-- Advanced search options -->
+    <string name="advanced_options_title">Advanced options</string>
+    <string name="advanced_options_about">About %1$s options</string>
+
+    <string name="advanced_group_routing">Routing</string>
+    <string name="advanced_group_accessibility">Accessibility &amp; street</string>
+    <string name="advanced_group_street_legs">Direct &amp; first/last mile</string>
+    <string name="advanced_group_results">Results</string>
+    <string name="advanced_group_departures">Departures board</string>
+
+    <string name="advanced_transit_modes">Transit modes</string>
+    <string name="advanced_min_transfer_time">Min transfer time</string>
+    <string name="advanced_extra_transfer_buffer">Extra transfer buffer</string>
+    <string name="advanced_transfer_time_factor">Transfer time factor</string>
+    <string name="advanced_limit_travel_time">Limit travel time</string>
+    <string name="advanced_limit_travel_time_note">Too low a limit can hide otherwise optimal journeys</string>
+    <string name="advanced_max_travel_time">Max travel time</string>
+    <string name="advanced_routed_transfers">Routed transfers</string>
+    <string name="advanced_routed_transfers_note">Compute transfers on the street network instead of using precomputed ones</string>
+
+    <string name="advanced_custom_walking_speed">Custom walking speed</string>
+    <string name="advanced_walking_speed">Walking speed</string>
+    <string name="advanced_custom_cycling_speed">Custom cycling speed</string>
+    <string name="advanced_cycling_speed">Cycling speed</string>
+    <string name="advanced_avoid_inclines">Avoid inclines</string>
+    <string name="advanced_bike_carriage">Bike carriage</string>
+    <string name="advanced_bike_carriage_note">Only journeys that allow taking a bike along</string>
+    <string name="advanced_car_carriage">Car carriage</string>
+    <string name="advanced_car_carriage_note">Only journeys that allow taking a car along</string>
+
+    <string name="advanced_modes">Modes</string>
+    <string name="advanced_max_time">Max time</string>
+    <string name="advanced_rental_vehicles">Rental vehicles</string>
+    <string name="advanced_rental_propulsion">Rental propulsion</string>
+    <string name="advanced_rental_note">Nothing selected means every rental type is allowed.</string>
+    <string name="advanced_ignore_return_constraints">Ignore return constraints</string>
+    <string name="advanced_ignore_return_constraints_note">Allow leaving rental vehicles anywhere</string>
+
+    <string name="advanced_search_window">Search window</string>
+    <string name="advanced_min_itineraries">Min itineraries</string>
+    <string name="advanced_fastest_direct_factor">Fastest direct factor</string>
+    <string name="advanced_slow_direct">Slow direct connections</string>
+    <string name="advanced_slow_direct_note">Keep direct connections even when transit is faster</string>
+    <string name="advanced_passengers_luggage">Passengers &amp; luggage</string>
+    <string name="advanced_passengers_luggage_note">Experimental — used for on-demand transport and fares</string>
+    <string name="advanced_passengers">Passengers</string>
+    <string name="advanced_luggage">Luggage</string>
+
+    <string name="advanced_departures_results">Results</string>
+    <string name="advanced_departures_radius">Search radius</string>
+    <string name="advanced_departures_radius_note">Radius applies when searching around coordinates (a place without a stop id).</string>
+
+    <!-- Advanced options: the explanations behind each group's info button -->
+    <string name="info_transit_modes">Kinds of transit the journey may use. Deselecting a category excludes all its lines; with nothing selected no transit connections are computed.</string>
+    <string name="info_min_transfer_time">Minimum time reserved for every transfer between vehicles.</string>
+    <string name="info_extra_transfer_buffer">Additional safety margin added on top of each transfer\'s required time.</string>
+    <string name="info_transfer_time_factor">Multiplies the minimum required transfer times. Useful if you walk slower than the schedule assumes.</string>
+    <string name="info_limit_travel_time">Caps the total journey duration. Warning: a low cap can hide otherwise optimal journeys (e.g. ones with fewer transfers) and slow the search down.</string>
+    <string name="info_routed_transfers">Computes transfers on the street network instead of using precomputed ones — more precise, but slower.</string>
+
+    <string name="info_pedestrian_profile_title">On foot / Wheelchair</string>
+    <string name="info_pedestrian_profile">Accessibility profile used for transfers and the first/last mile. Wheelchair prefers step-free paths.</string>
+    <string name="info_walking_speed">Average walking speed used for street routing. Typical walking pace is about 1.2 m/s.</string>
+    <string name="info_cycling_speed">Average cycling speed used for bike routing. A relaxed pace is around 4 m/s.</string>
+    <string name="info_avoid_inclines">Prefers flatter routes even when they are longer. Low adds a small penalty for climbs, High a strong one.</string>
+    <string name="info_bike_carriage">Only returns journeys where a bike may be taken along on every transit leg.</string>
+    <string name="info_car_carriage">Only returns journeys where a car may be taken along (e.g. car trains and some ferries).</string>
+
+    <string name="info_direct">Connections from start to destination without using transit at all.</string>
+    <string name="info_first_mile">The street leg from the start to the first transit stop.</string>
+    <string name="info_last_mile">The street leg from the last transit stop to the destination.</string>
+    <string name="info_street_modes">Ways the selected leg may be travelled. At least one stays selected. Note: transit journeys slower than the fastest direct connection are not returned.</string>
+    <string name="info_max_time">Time cap for the selected leg. Trips whose leg exceeds it are not found.</string>
+    <string name="info_rental_title">Rental vehicles &amp; propulsion</string>
+    <string name="info_rental">Only applies when the Rental mode is selected. Restricts shared vehicles by type and drive; nothing selected allows every kind.</string>
+    <string name="info_ignore_return_constraints">Also considers rental vehicles that would normally have to be returned to a station, as if they could be left anywhere.</string>
+
+    <string name="info_search_window">How far past the chosen time (or before it, when arriving by) departures are scanned.</string>
+    <string name="info_min_itineraries">Minimum number of journeys to compute; the search window is extended until this many are found.</string>
+    <string name="info_fastest_direct_factor">Also returns transit journeys up to this factor slower than the fastest direct connection.</string>
+    <string name="info_slow_direct">Keeps direct connections in the results even when transit would be faster.</string>
+    <string name="info_passengers_luggage">Experimental. Passed to on-demand transport and fare calculation where supported.</string>
+
+    <string name="info_departures_modes">Kinds of transport shown on the board.</string>
+    <string name="info_departures_results">Number of departures or arrivals fetched per page.</string>
+    <string name="info_departures_radius">How far around the chosen coordinates stops are collected. Only applies when the picked place is not a stop itself.</string>
+
+    <!-- Search option enum values -->
+    <string name="pedestrian_profile_foot">On foot</string>
+    <string name="pedestrian_profile_wheelchair">Wheelchair</string>
+    <string name="elevation_costs_none">None</string>
+    <string name="elevation_costs_low">Low</string>
+    <string name="elevation_costs_high">High</string>
+    <string name="street_mode_walk">Walk</string>
+    <string name="street_mode_bike">Bike</string>
+    <string name="street_mode_car">Car</string>
+    <string name="street_mode_rental">Rental</string>
+    <string name="rental_form_bicycle">Bike</string>
+    <string name="rental_form_cargo_bicycle">Cargo bike</string>
+    <string name="rental_form_car">Car</string>
+    <string name="rental_form_moped">Moped</string>
+    <string name="rental_form_scooter_standing">Scooter</string>
+    <string name="rental_form_scooter_seated">Seated scooter</string>
+    <string name="rental_form_other">Other</string>
+    <string name="rental_propulsion_human">Human</string>
+    <string name="rental_propulsion_electric_assist">El. assist</string>
+    <string name="rental_propulsion_electric">Electric</string>
+    <string name="rental_propulsion_combustion">Petrol</string>
+    <string name="rental_propulsion_combustion_diesel">Diesel</string>
+    <string name="rental_propulsion_hybrid">Hybrid</string>
+    <string name="rental_propulsion_plug_in_hybrid">Plug-in hybrid</string>
+    <string name="rental_propulsion_hydrogen">Hydrogen</string>
+    <string name="leg_context_direct">Direct</string>
+    <string name="leg_context_first_mile">First mile</string>
+    <string name="leg_context_last_mile">Last mile</string>
 </resources>

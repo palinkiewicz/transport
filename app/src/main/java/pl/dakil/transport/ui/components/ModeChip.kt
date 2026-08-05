@@ -16,6 +16,7 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import pl.dakil.transport.domain.model.TransportMode
+import androidx.compose.ui.res.stringResource
 
 /** Parses a GTFS `RRGGBB` route color, falling back (e.g. to the mode color) when absent/invalid. */
 fun parseRouteColor(hex: String?, fallback: Color): Color {
@@ -41,7 +42,7 @@ fun ModeChip(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 imageVector = mode.icon,
-                contentDescription = mode.name,
+                contentDescription = stringResource(mode.labelRes),
                 tint = onColor,
                 modifier = Modifier.padding(end = 4.dp),
             )

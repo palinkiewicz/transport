@@ -29,8 +29,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.TransitFilterCategory
 import pl.dakil.transport.domain.model.VehicleSource
@@ -72,7 +74,7 @@ fun MapFiltersMenu(
                     badge = { if (!filters.isDefault) Badge() },
                     modifier = Modifier.padding(12.dp),
                 ) {
-                    Icon(Icons.Default.Tune, contentDescription = "Map filters")
+                    Icon(Icons.Default.Tune, contentDescription = stringResource(R.string.map_filters_open))
                 }
             }
         }
@@ -95,26 +97,26 @@ private fun FiltersPanel(
         Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 4.dp, bottom = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "Map filters",
+                    text = stringResource(R.string.map_filters_title),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
                 TextButton(onClick = onReset, enabled = !filters.isDefault) {
-                    Text("Reset")
+                    Text(stringResource(R.string.action_reset))
                 }
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close filters")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.map_filters_close))
                 }
             }
 
             FilterSection(
-                title = "Stops",
+                title = stringResource(R.string.map_filters_stops),
                 selected = filters.stopCategories,
                 onSelectedChange = { categories -> onUpdate { it.copy(stopCategories = categories) } },
             )
 
             FilterSection(
-                title = "Vehicles",
+                title = stringResource(R.string.map_filters_vehicles),
                 selected = filters.vehicleCategories,
                 onSelectedChange = { categories -> onUpdate { it.copy(vehicleCategories = categories) } },
                 modifier = Modifier.padding(top = 8.dp),
@@ -154,7 +156,7 @@ private fun FilterSection(
                     onSelectedChange(if (allSelected) emptySet() else TransitFilterCategory.entries.toSet())
                 },
             ) {
-                Text(if (allSelected) "None" else "All")
+                Text(stringResource(if (allSelected) R.string.action_select_none else R.string.action_select_all))
             }
         }
         extraContent?.let {
@@ -165,7 +167,7 @@ private fun FilterSection(
             options = TransitFilterCategory.entries,
             selected = selected,
             onSelectedChange = onSelectedChange,
-            label = { it.label },
+            label = { stringResource(it.labelRes) },
             icon = { it.icon },
         )
     }
@@ -198,14 +200,14 @@ private fun VehicleSourcesToggle(
                     .weight(1f)
                     .semantics { role = Role.Checkbox },
             ) {
-                Text(option.label)
+                Text(stringResource(option.labelRes))
             }
         }
     }
     // "Live" reads as GPS tracking, which the API does not offer — it distinguishes vehicles
     // whose *times* a real-time feed corrected from ones running on the plain timetable.
     Text(
-        text = "Positions are estimated from timetables; \"Live\" means real-time times.",
+        text = stringResource(R.string.map_filters_source_note),
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 6.dp),

@@ -15,9 +15,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
-
-private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 /**
  * Color signalling how a real-time timestamp deviates from schedule:
@@ -38,6 +35,7 @@ fun RealTimeText(
     realTime: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val timeFormatter = rememberTimeFormatter()
     val deviationColor = if (realTime) timeDeviationColor(time, scheduledTime) else null
     Column(modifier = modifier) {
         Text(
@@ -67,6 +65,7 @@ fun InlineRealTimeText(
     modifier: Modifier = Modifier,
     style: TextStyle = MaterialTheme.typography.titleSmall,
 ) {
+    val timeFormatter = rememberTimeFormatter()
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.CenterVertically,

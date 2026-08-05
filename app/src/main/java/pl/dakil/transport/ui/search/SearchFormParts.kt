@@ -43,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import java.time.Duration
 import java.time.Instant
@@ -51,9 +52,9 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 import kotlinx.coroutines.delay
-
-internal val dateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("EEE, d MMM")
-internal val timeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+import pl.dakil.transport.R
+import pl.dakil.transport.ui.components.rememberDateFormatter
+import pl.dakil.transport.ui.components.rememberTimeFormatter
 
 /** How far [dateTime] may drift from the clock before it counts as a deliberately picked time. */
 private const val NOW_TOLERANCE_SECONDS = 60L
@@ -115,6 +116,8 @@ internal fun DateTimeRow(
     modifier: Modifier = Modifier,
     onResetToNow: (() -> Unit)? = null,
 ) {
+    val dateFormatter = rememberDateFormatter()
+    val timeFormatter = rememberTimeFormatter()
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
 
@@ -128,7 +131,7 @@ internal fun DateTimeRow(
             shapes = ButtonDefaults.shapes(),
             modifier = Modifier.weight(1f),
         ) {
-            Icon(Icons.Default.DateRange, contentDescription = "Pick date")
+            Icon(Icons.Default.DateRange, contentDescription = stringResource(R.string.datetime_pick_date))
             Spacer(Modifier.width(8.dp))
             Text(dateTime.format(dateFormatter))
         }
@@ -137,13 +140,13 @@ internal fun DateTimeRow(
             shapes = ButtonDefaults.shapes(),
             modifier = Modifier.weight(1f),
         ) {
-            Icon(Icons.Default.Schedule, contentDescription = "Pick time")
+            Icon(Icons.Default.Schedule, contentDescription = stringResource(R.string.datetime_pick_time))
             Spacer(Modifier.width(8.dp))
             Text(dateTime.format(timeFormatter))
         }
         if (onResetToNow != null) {
             FilledTonalIconButton(onClick = onResetToNow, shapes = IconButtonDefaults.shapes()) {
-                Icon(Icons.Default.Restore, contentDescription = "Use current time")
+                Icon(Icons.Default.Restore, contentDescription = stringResource(R.string.datetime_use_now))
             }
         }
     }
@@ -167,10 +170,10 @@ internal fun DateTimeRow(
                         )
                     }
                     showDatePicker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+                TextButton(onClick = { showDatePicker = false }) { Text(stringResource(R.string.action_cancel)) }
             },
         ) {
             DatePicker(state = datePickerState)
@@ -190,10 +193,10 @@ internal fun DateTimeRow(
                         dateTime.withHour(timePickerState.hour).withMinute(timePickerState.minute),
                     )
                     showTimePicker = false
-                }) { Text("OK") }
+                }) { Text(stringResource(R.string.action_ok)) }
             },
             dismissButton = {
-                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+                TextButton(onClick = { showTimePicker = false }) { Text(stringResource(R.string.action_cancel)) }
             },
             text = { TimePicker(state = timePickerState) },
         )
@@ -223,6 +226,9 @@ internal fun SearchButton(
             modifier = Modifier.size(ButtonDefaults.iconSizeFor(ButtonDefaults.LargeContainerHeight)),
         )
         Spacer(Modifier.width(ButtonDefaults.iconSpacingFor(ButtonDefaults.LargeContainerHeight)))
-        Text("Search", style = ButtonDefaults.textStyleFor(ButtonDefaults.LargeContainerHeight))
+        Text(
+            text = stringResource(R.string.action_search),
+            style = ButtonDefaults.textStyleFor(ButtonDefaults.LargeContainerHeight),
+        )
     }
 }

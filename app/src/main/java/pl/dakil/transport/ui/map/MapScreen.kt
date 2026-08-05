@@ -71,6 +71,7 @@ import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -124,6 +125,7 @@ import org.maplibre.spatialk.geojson.FeatureCollection
 import org.maplibre.spatialk.geojson.LineString
 import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
@@ -702,7 +704,7 @@ fun MapScreen(
                         .align(Alignment.BottomEnd)
                         .padding(16.dp),
                 ) {
-                    Icon(Icons.Default.MyLocation, contentDescription = "Locate me")
+                    Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
                 }
             }
 
@@ -815,7 +817,7 @@ private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp),
             )
             Text(
-                text = "Search stops & places",
+                text = stringResource(R.string.map_search_placeholder),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -861,14 +863,15 @@ private fun VehicleInfoPanel(
                 ) {
                     Icon(
                         imageVector = vehicle.mode.icon,
-                        contentDescription = vehicle.mode.label,
+                        contentDescription = stringResource(vehicle.mode.labelRes),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = destination?.let { "${vehicle.label} → $it" } ?: vehicle.label,
+                        text = destination?.let { stringResource(R.string.format_route_arrow, vehicle.label, it) }
+                            ?: vehicle.label,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -876,8 +879,8 @@ private fun VehicleInfoPanel(
                     val details = (detailsState as? VehicleDetailsUiState.Shown)?.details
                     Text(
                         text = listOfNotNull(
-                            vehicle.mode.label,
-                            vehicle.nextStopName?.let { "next $it" },
+                            stringResource(vehicle.mode.labelRes),
+                            vehicle.nextStopName?.let { stringResource(R.string.map_vehicle_next_stop, it) },
                             details?.agencyName ?: details?.routeLongName,
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
@@ -890,7 +893,7 @@ private fun VehicleInfoPanel(
                     FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
                 }
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
                 }
             }
 
@@ -900,9 +903,13 @@ private fun VehicleInfoPanel(
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
             ) {
                 if (vehicle.realTime) {
-                    AttributeChip(Icons.Default.Sensors, "Live", Color(0xFF2E7D32))
+                    AttributeChip(
+                        Icons.Default.Sensors,
+                        stringResource(R.string.attribute_live),
+                        Color(0xFF2E7D32),
+                    )
                 } else {
-                    AttributeChip(Icons.Default.Schedule, "Scheduled")
+                    AttributeChip(Icons.Default.Schedule, stringResource(R.string.attribute_scheduled))
                 }
                 when (val state = detailsState) {
                     is VehicleDetailsUiState.Shown -> VehicleAmenityChips(
@@ -927,7 +934,11 @@ private fun VehicleInfoPanel(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 4.dp, end = 8.dp),
                 ) {
-                    PanelActionButton("Trip timetable", Icons.Default.Schedule, onOpenTrip)
+                    PanelActionButton(
+                        stringResource(R.string.map_action_trip_timetable),
+                        Icons.Default.Schedule,
+                        onOpenTrip,
+                    )
                 }
             }
         }
@@ -973,7 +984,7 @@ private fun StopInfoPanel(
                 ) {
                     Icon(
                         imageVector = if (isPoint) Icons.Default.Place else mode.icon,
-                        contentDescription = if (isPoint) "Place" else mode.label,
+                        contentDescription = stringResource(if (isPoint) R.string.label_place else mode.labelRes),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
@@ -988,7 +999,7 @@ private fun StopInfoPanel(
                     val subtitle = if (isPoint) {
                         stop.areaLabel ?: formatCoordinates(stop.lat, stop.lon)
                     } else {
-                        stop.primaryMode?.label
+                        stop.primaryMode?.let { stringResource(it.labelRes) }
                     }
                     subtitle?.let {
                         Text(
@@ -1002,7 +1013,7 @@ private fun StopInfoPanel(
                 }
                 FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Close")
+                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
                 }
             }
             // Line chips + route overlay load automatically on selection (real stops only);
@@ -1024,13 +1035,16 @@ private fun StopInfoPanel(
                     }
                 }
                 is StopRoutesUiState.Error -> Text(
-                    text = "Lines couldn't be loaded — ${routesState.error.shortMessage.lowercase()}",
+                    text = stringResource(
+                        R.string.map_stop_lines_error,
+                        routesState.error.shortMessage.lowercase(),
+                    ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
                 )
                 is StopRoutesUiState.Empty -> Text(
-                    text = "No lines known for this stop",
+                    text = stringResource(R.string.map_stop_lines_empty),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
@@ -1042,10 +1056,14 @@ private fun StopInfoPanel(
                 modifier = Modifier.padding(top = 4.dp, end = 8.dp),
             ) {
                 if (!isPoint) {
-                    PanelActionButton("Timetable", Icons.Default.Schedule, onOpenTimetable)
+                    PanelActionButton(
+                        stringResource(R.string.map_action_timetable),
+                        Icons.Default.Schedule,
+                        onOpenTimetable,
+                    )
                 }
-                PanelActionButton("Begin here", Icons.Default.NearMe, onBeginHere)
-                PanelActionButton("Finish here", Icons.Default.Flag, onFinishHere)
+                PanelActionButton(stringResource(R.string.map_action_begin_here), Icons.Default.NearMe, onBeginHere)
+                PanelActionButton(stringResource(R.string.map_action_finish_here), Icons.Default.Flag, onFinishHere)
             }
         }
     }

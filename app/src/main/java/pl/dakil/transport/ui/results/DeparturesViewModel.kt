@@ -33,9 +33,16 @@ sealed interface DeparturesUiState {
 private val DeparturesUiState.hasDepartures: Boolean
     get() = this is DeparturesUiState.Content && departures.departures.isNotEmpty()
 
+/**
+ * One direction pole's departures. The header is kept as its *parts* rather than a finished
+ * sentence: the screen composes and translates it, so no user-facing text is built here.
+ */
 data class DepartureGroup(
     val poleStopId: String?,
-    val header: String,
+    /** Up to three distinct destinations served from this pole; empty when none are known. */
+    val headsigns: List<String>,
+    /** Platform/track, when the feed names one. */
+    val track: String?,
     val departures: List<Departure>,
 )
 
@@ -46,15 +53,10 @@ fun List<Departure>.groupedByPole(clickedPoleStopId: String?): List<DepartureGro
         .sortedBy { key -> if (key == clickedPoleStopId) 0 else 1 }
         .map { key ->
             val group = byPole.getValue(key)
-            val headsigns = group.mapNotNull { it.headsign }.distinct().take(3)
-            val track = group.firstNotNullOfOrNull { it.track }
-            val headerParts = buildList {
-                if (headsigns.isNotEmpty()) add("towards " + headsigns.joinToString(" / "))
-                if (track != null) add("Platform $track")
-            }
             DepartureGroup(
                 poleStopId = key,
-                header = headerParts.joinToString(" · ").ifEmpty { "Departures" },
+                headsigns = group.mapNotNull { it.headsign }.distinct().take(3),
+                track = group.firstNotNullOfOrNull { it.track },
                 departures = group,
             )
         }

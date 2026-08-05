@@ -13,9 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 
@@ -60,7 +62,7 @@ fun LocationListItem(
             val mode = if (location.stopId != null) location.primaryMode ?: TransportMode.OTHER else null
             Icon(
                 imageVector = mode?.icon ?: Icons.Default.Place,
-                contentDescription = mode?.label ?: "Place",
+                contentDescription = stringResource(mode?.labelRes ?: R.string.label_place),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },

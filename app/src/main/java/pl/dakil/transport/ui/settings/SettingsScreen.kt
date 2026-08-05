@@ -52,12 +52,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.DefaultTab
@@ -87,12 +88,12 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text("Settings") },
+                title = { Text(stringResource(R.string.settings_title)) },
                 actions = {
                     TextButton(
                         enabled = !settings.isDefault,
                         onClick = viewModel::resetAll,
-                    ) { Text("Reset all") }
+                    ) { Text(stringResource(R.string.action_reset_all)) }
                 },
                 scrollBehavior = scrollBehavior,
             )
@@ -144,13 +145,15 @@ private fun NotGpsNotice(modifier: Modifier = Modifier) {
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    text = "Vehicles are estimated, not tracked",
+                    text = stringResource(R.string.settings_not_gps_title),
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.weight(1f),
                 )
                 Icon(
                     Icons.Default.ExpandMore,
-                    contentDescription = if (expanded) "Hide explanation" else "Show explanation",
+                    contentDescription = stringResource(
+                        if (expanded) R.string.settings_not_gps_hide else R.string.settings_not_gps_show,
+                    ),
                     modifier = Modifier
                         .size(20.dp)
                         .rotate(chevronRotation),
@@ -158,10 +161,7 @@ private fun NotGpsNotice(modifier: Modifier = Modifier) {
             }
             AnimatedVisibility(visible = expanded) {
                 Text(
-                    text = "Transitous serves stop-to-stop timetables, never GPS positions. A " +
-                        "vehicle's place between two stops is interpolated from its schedule, " +
-                        "corrected by real-time delays where a feed provides them — so \"Live\" " +
-                        "on the map means accurate times, not an observed position.",
+                    text = stringResource(R.string.settings_not_gps_body),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(top = 8.dp, end = 20.dp),
                 )
@@ -172,63 +172,60 @@ private fun NotGpsNotice(modifier: Modifier = Modifier) {
 
 @Composable
 private fun GeneralGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = "General", icon = Icons.Default.Tune) {
+    SettingsGroup(title = stringResource(R.string.settings_group_general), icon = Icons.Default.Tune) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Opening screen", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_opening_screen), style = MaterialTheme.typography.titleSmall)
             // A wrapping flow, not a connected row: four tab names don't fit one row without
             // being cut off mid-word.
             SingleChoiceToggleFlow(
                 options = DefaultTab.entries,
                 selected = settings.defaultTab,
                 onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },
-                label = { it.label },
+                label = { stringResource(it.labelRes) },
             )
             Text(
-                text = "Which tab opens when you launch the app.",
+                text = stringResource(R.string.settings_opening_screen_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         SwitchRow(
-            title = "Remember last search",
+            title = stringResource(R.string.settings_remember_search),
             checked = settings.rememberLastSearch,
             onCheckedChange = { on -> viewModel.update { it.copy(rememberLastSearch = on) } },
-            supportingText = "Your last from, to and departure stop survive a restart. Off, the " +
-                "forms start empty every time.",
+            supportingText = stringResource(R.string.settings_remember_search_note),
         )
         SwitchRow(
-            title = "Remember map position",
+            title = stringResource(R.string.settings_remember_map),
             checked = settings.rememberMapCamera,
             onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },
-            supportingText = "Reopen the map where you left it instead of the default view.",
+            supportingText = stringResource(R.string.settings_remember_map_note),
         )
     }
 }
 
 @Composable
 private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = "Search & results", icon = Icons.Default.Search) {
+    SettingsGroup(title = stringResource(R.string.settings_group_search), icon = Icons.Default.Search) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Connection times", style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_connection_times), style = MaterialTheme.typography.titleSmall)
             SingleChoiceConnectedRow(
                 options = ConnectionTimesMode.entries,
                 selected = settings.connectionTimesMode,
                 onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },
-                label = { it.label },
+                label = { stringResource(it.labelRes) },
             )
             Text(
-                text = "Stop times are when the vehicle moves; door to door includes the walk at " +
-                    "each end, so the countdown tells you when to leave.",
+                text = stringResource(R.string.settings_connection_times_note),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         SwitchRow(
-            title = "Sort suggestions by distance",
+            title = stringResource(R.string.settings_sort_by_distance),
             checked = settings.sortSuggestionsByDistance,
             onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
-            supportingText = "Ranks place results by distance from your start point — or your " +
-                "position when no start is set — instead of the server's own ranking.",
+            supportingText = stringResource(R.string.settings_sort_by_distance_note),
         )
     }
 }
@@ -237,7 +234,7 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
 private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewModel) {
     val motion = settings.vehicleMotion
     SettingsGroup(
-        title = "Vehicle movement",
+        title = stringResource(R.string.settings_group_vehicle_movement),
         icon = Icons.Default.DirectionsBus,
         onReset = viewModel::resetMotion.takeIf { !motion.isDefault },
         // The deepest tuning in the app: visible, named, and one tap from open — but not
@@ -246,46 +243,42 @@ private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewMod
     ) {
         NotGpsNotice()
         SwitchRow(
-            title = "Never move backwards",
+            title = stringResource(R.string.settings_monotonic),
             checked = motion.monotonicProgress,
             onCheckedChange = { on -> viewModel.updateMotion { it.copy(monotonicProgress = on) } },
-            supportingText = "Real-time feeds revise delays continuously. Without this, a " +
-                "revision rewinds a marker mid-route; with it, the vehicle waits where it is " +
-                "until its schedule catches up.",
+            supportingText = stringResource(R.string.settings_monotonic_note),
         )
         SteppedSliderRow(
-            title = "Frame interval",
+            title = stringResource(R.string.settings_frame_interval),
             values = VehicleMotionSettings.FRAME_INTERVAL_STEPS,
             value = motion.frameIntervalMillis,
             onValueCommit = { value -> viewModel.updateMotion { it.copy(frameIntervalMillis = value) } },
             distance = { a, b -> abs(a - b).toFloat() },
             valueLabel = ::frameIntervalLabel,
-            supportingText = "How often positions are redrawn. Costs CPU, never extra requests.",
+            supportingText = stringResource(R.string.settings_frame_interval_note),
         )
         IntSliderRow(
-            title = "Fetch interval",
+            title = stringResource(R.string.settings_fetch_interval),
             value = motion.refreshIntervalSeconds,
             onValueCommit = { value -> viewModel.updateMotion { it.copy(refreshIntervalSeconds = value) } },
             min = 10,
             max = 120,
             step = 5,
-            valueLabel = { "$it s" },
-            supportingText = "How often new segments are fetched. Transitous is a shared " +
-                "community service — keep this as high as you can live with.",
+            valueLabel = { stringResource(R.string.format_seconds, it) },
+            supportingText = stringResource(R.string.settings_fetch_interval_note),
         )
         IntSliderRow(
-            title = "Fetch window",
+            title = stringResource(R.string.settings_fetch_window),
             value = motion.fetchWindowSeconds,
             onValueCommit = { value -> viewModel.updateMotion { it.copy(fetchWindowSeconds = value) } },
             min = 60,
             max = 600,
             step = 30,
-            valueLabel = { "$it s" },
-            supportingText = "How far ahead each fetch looks. Wider keeps long runs between " +
-                "stops from dropping out mid-journey.",
+            valueLabel = { stringResource(R.string.format_seconds, it) },
+            supportingText = stringResource(R.string.settings_fetch_window_note),
         )
         IntSliderRow(
-            title = "Keep missing trips",
+            title = stringResource(R.string.settings_segment_retention),
             value = motion.segmentRetentionSeconds,
             onValueCommit = { value ->
                 viewModel.updateMotion { it.copy(segmentRetentionSeconds = value) }
@@ -293,41 +286,49 @@ private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewMod
             min = 0,
             max = 600,
             step = 30,
-            valueLabel = { seconds -> if (seconds == 0) "Off" else "$seconds s" },
-            supportingText = "How long a trip absent from the latest fetch keeps moving on what " +
-                "is already known, instead of vanishing and popping back.",
+            valueLabel = { seconds ->
+                if (seconds == 0) {
+                    stringResource(R.string.settings_segment_retention_off)
+                } else {
+                    stringResource(R.string.format_seconds, seconds)
+                }
+            },
+            supportingText = stringResource(R.string.settings_segment_retention_note),
         )
     }
 }
 
 /** Formats a redraw interval: sub-second values read as frame rates, longer ones as seconds. */
+@Composable
 private fun frameIntervalLabel(millis: Int): String = when {
-    millis < 1_000 -> "$millis ms · ${(1_000f / millis).roundToInt()} fps"
-    millis % 1_000 == 0 -> "${millis / 1_000} s"
-    else -> String.format(Locale.getDefault(), "%.1f s", millis / 1_000f)
+    millis < 1_000 -> stringResource(
+        R.string.format_frame_interval_millis,
+        millis,
+        (1_000f / millis).roundToInt(),
+    )
+    millis % 1_000 == 0 -> stringResource(R.string.format_frame_interval_seconds, millis / 1_000)
+    else -> stringResource(R.string.format_frame_interval_seconds_decimal, millis / 1_000f)
 }
 
 @Composable
 private fun DataRefreshGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = "Auto-refresh", icon = Icons.Default.Refresh) {
+    SettingsGroup(title = stringResource(R.string.settings_group_auto_refresh), icon = Icons.Default.Refresh) {
         SwitchRow(
-            title = "Refresh while open",
+            title = stringResource(R.string.settings_refresh_while_open),
             checked = settings.autoRefreshEnabled,
             onCheckedChange = { on -> viewModel.update { it.copy(autoRefreshEnabled = on) } },
-            supportingText = "Off, the connections list, departures board and trip view load " +
-                "once and are reloaded only by their refresh button.",
+            supportingText = stringResource(R.string.settings_refresh_while_open_note),
         )
         if (settings.autoRefreshEnabled) {
             IntSliderRow(
-                title = "Results & departures",
+                title = stringResource(R.string.settings_refresh_interval),
                 value = settings.resultsRefreshSeconds,
                 onValueCommit = { value -> viewModel.update { it.copy(resultsRefreshSeconds = value) } },
                 min = 10,
                 max = 300,
                 step = 10,
-                valueLabel = { "$it s" },
-                supportingText = "How often those screens reload while open. Applies to searches " +
-                    "started from now on.",
+                valueLabel = { stringResource(R.string.format_seconds, it) },
+                supportingText = stringResource(R.string.settings_refresh_interval_note),
             )
         }
     }
@@ -335,31 +336,30 @@ private fun DataRefreshGroup(settings: AppSettings, viewModel: SettingsViewModel
 
 @Composable
 private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = "Map detail", icon = Icons.Default.Layers) {
+    SettingsGroup(title = stringResource(R.string.settings_group_map_detail), icon = Icons.Default.Layers) {
         LabeledSliderRow(
-            title = "Stops from zoom",
+            title = stringResource(R.string.settings_stops_from_zoom),
             value = settings.stopsMinZoom,
             onValueCommit = { value -> viewModel.update { it.copy(stopsMinZoom = value) } },
             valueRange = 8f..18f,
             steps = 19,
-            valueLabel = { String.format(Locale.getDefault(), "%.1f", it) },
-            supportingText = "Lower shows stops earlier when zooming out, at the cost of a " +
-                "denser map and larger responses.",
+            valueLabel = { stringResource(R.string.format_zoom_level, it) },
+            supportingText = stringResource(R.string.settings_stops_from_zoom_note),
         )
         LabeledSliderRow(
-            title = "Vehicles from zoom",
+            title = stringResource(R.string.settings_vehicles_from_zoom),
             value = settings.vehicleMotion.minZoom,
             onValueCommit = { value -> viewModel.updateMotion { it.copy(minZoom = value) } },
             valueRange = 5f..16f,
             steps = 21,
-            valueLabel = { String.format(Locale.getDefault(), "%.1f", it) },
-            supportingText = "Below this zoom no vehicles are fetched at all.",
+            valueLabel = { stringResource(R.string.format_zoom_level, it) },
+            supportingText = stringResource(R.string.settings_vehicles_from_zoom_note),
         )
         SwitchRow(
-            title = "Itinerary stop names",
+            title = stringResource(R.string.settings_itinerary_stop_names),
             checked = settings.showItineraryStopNames,
             onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
-            supportingText = "Labels the stops where you board and alight on the itinerary map.",
+            supportingText = stringResource(R.string.settings_itinerary_stop_names_note),
         )
     }
 }
@@ -435,12 +435,15 @@ private fun SettingsGroup(
                     modifier = Modifier.weight(1f),
                 )
                 if (onReset != null && expanded) {
-                    OutlinedButton(onClick = onReset) { Text("Reset") }
+                    OutlinedButton(onClick = onReset) { Text(stringResource(R.string.action_reset)) }
                 }
                 if (collapsible) {
                     Icon(
                         Icons.Default.ExpandMore,
-                        contentDescription = if (expanded) "Collapse $title" else "Expand $title",
+                        contentDescription = stringResource(
+                            if (expanded) R.string.settings_group_collapse else R.string.settings_group_expand,
+                            title,
+                        ),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .padding(start = 4.dp)

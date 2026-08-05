@@ -1,9 +1,11 @@
 package pl.dakil.transport.ui.search
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -20,6 +22,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import pl.dakil.transport.R
 import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
@@ -46,6 +49,7 @@ data class PickerItem(
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class LocationPickerViewModel @Inject constructor(
+    @param:ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val geocodeRepository: GeocodeRepository,
     locationService: LocationService,
@@ -88,7 +92,9 @@ class LocationPickerViewModel @Inject constructor(
      * withheld when only stops are offerable — a raw fix is a coordinate, never a stop.
      */
     val currentLocation: TransitLocation? =
-        userPosition?.takeIf { !stopsOnly }?.let { TransitLocation.currentPosition(it.lat, it.lon) }
+        userPosition?.takeIf { !stopsOnly }?.let {
+            TransitLocation.currentPosition(it.lat, it.lon, context.getString(R.string.location_your_location))
+        }
 
     /** Why the last suggestion lookup came back empty; null while search is healthy. */
     private val _searchError = MutableStateFlow<AppError?>(null)

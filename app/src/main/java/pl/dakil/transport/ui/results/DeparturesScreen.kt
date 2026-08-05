@@ -34,6 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -41,18 +43,17 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.timeDeviationColor
 import pl.dakil.transport.ui.navigation.TripRoute
-
-private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -73,10 +74,10 @@ fun DeparturesScreen(
         topBar = {
             LargeFlexibleTopAppBar(
                 title = { Text(viewModel.stopName) },
-                subtitle = { Text(refreshSubtitle("Live departures", secondsUntilRefresh)) },
+                subtitle = { Text(refreshSubtitle(R.string.refresh_subtitle_departures, secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -97,11 +98,10 @@ fun DeparturesScreen(
                 val all = state.departures.departures
                 if (all.isEmpty()) {
                     EmptyBox(
-                        title = "No upcoming departures",
-                        description = "Nothing is scheduled from this stop for the time being. " +
-                            "Services may have finished for the day.",
+                        title = stringResource(R.string.departures_empty_title),
+                        description = stringResource(R.string.departures_empty_body),
                         modifier = Modifier.padding(innerPadding),
-                        actionLabel = "Check again",
+                        actionLabel = stringResource(R.string.departures_empty_action),
                         onAction = viewModel::refreshNow,
                     )
                 } else {
@@ -131,7 +131,7 @@ fun DeparturesScreen(
                         ) {
                             groups.forEach { group ->
                                 item(key = "header-${group.poleStopId}") {
-                                    DepartureGroupHeader(group.header)
+                                    DepartureGroupHeader(group)
                                 }
                                 items(group.departures.size, key = { "${group.poleStopId}-$it" }) { index ->
                                     val departure = group.departures[index]
@@ -213,12 +213,17 @@ private fun DepartureRow(departure: Departure, onClick: (() -> Unit)?) {
 /** Trailing countdown: big relative time on top, absolute (plus struck scheduled when delayed) below. */
 @Composable
 private fun DepartureCountdown(departure: Departure) {
+    val timeFormatter = rememberTimeFormatter()
     val cancelled = departure.cancelled || departure.tripCancelled
     val minutesUntil = Duration.between(OffsetDateTime.now(), departure.time).toMinutes()
     val delayed = departure.time != departure.scheduledTime
     Column(horizontalAlignment = Alignment.End) {
         Text(
-            text = if (cancelled) "Cancelled" else countdownLabel(minutesUntil, departure.time),
+            text = if (cancelled) {
+                stringResource(R.string.departures_cancelled)
+            } else {
+                countdownLabel(minutesUntil, departure.time)
+            },
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             color = when {
@@ -246,15 +251,31 @@ private fun DepartureCountdown(departure: Departure) {
     }
 }
 
+@Composable
 private fun countdownLabel(minutesUntil: Long, time: OffsetDateTime): String = when {
-    minutesUntil < 0 -> "${-minutesUntil} min ago"
-    minutesUntil == 0L -> "now"
-    minutesUntil < 60 -> "$minutesUntil min"
-    else -> time.format(timeFormatter)
+    minutesUntil < 0 -> pluralStringResource(
+        R.plurals.departures_minutes_ago,
+        (-minutesUntil).toInt(),
+        (-minutesUntil).toInt(),
+    )
+    minutesUntil == 0L -> stringResource(R.string.departures_now)
+    minutesUntil < 60 -> stringResource(R.string.format_minutes, minutesUntil.toInt())
+    else -> time.format(rememberTimeFormatter())
 }
 
+/**
+ * Header naming the direction a pole serves. Built here rather than in the ViewModel so its
+ * wording stays translatable; the feed's own destination and platform names pass through.
+ */
 @Composable
-private fun DepartureGroupHeader(text: String) {
+private fun DepartureGroupHeader(group: DepartureGroup) {
+    val parts = buildList {
+        if (group.headsigns.isNotEmpty()) {
+            add(stringResource(R.string.departures_group_towards, group.headsigns.joinToString(" / ")))
+        }
+        group.track?.let { add(stringResource(R.string.format_platform, it)) }
+    }
+    val text = parts.joinToString(" · ").ifEmpty { stringResource(R.string.departures_group_default) }
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,

@@ -1,5 +1,6 @@
 package pl.dakil.transport.domain.model
 
+import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Commute
 import androidx.compose.material.icons.filled.DirectionsBoat
@@ -7,6 +8,7 @@ import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
+import pl.dakil.transport.R
 
 /**
  * User-facing transit category grouping the fine-grained [TransportMode]s, used wherever the
@@ -14,14 +16,15 @@ import androidx.compose.material.icons.filled.Tram
  * Street modes (walk/bike/car) deliberately have no category — they aren't transit.
  */
 enum class TransitFilterCategory(
-    val label: String,
+    /** Translated display name; read with `stringResource(category.labelRes)`. */
+    @param:StringRes val labelRes: Int,
     val icon: androidx.compose.ui.graphics.vector.ImageVector,
     val modes: Set<TransportMode>,
 ) {
-    BUS("Bus", Icons.Default.DirectionsBus, setOf(TransportMode.BUS, TransportMode.COACH)),
-    TRAM("Tram", Icons.Default.Tram, setOf(TransportMode.TRAM)),
+    BUS(R.string.category_bus, Icons.Default.DirectionsBus, setOf(TransportMode.BUS, TransportMode.COACH)),
+    TRAM(R.string.category_tram, Icons.Default.Tram, setOf(TransportMode.TRAM)),
     TRAIN(
-        "Train",
+        R.string.category_train,
         Icons.Default.Train,
         setOf(
             TransportMode.RAIL,
@@ -32,10 +35,10 @@ enum class TransitFilterCategory(
             TransportMode.SUBURBAN,
         ),
     ),
-    SUBWAY("Subway", Icons.Default.Subway, setOf(TransportMode.SUBWAY)),
-    FERRY("Ferry", Icons.Default.DirectionsBoat, setOf(TransportMode.FERRY)),
+    SUBWAY(R.string.category_subway, Icons.Default.Subway, setOf(TransportMode.SUBWAY)),
+    FERRY(R.string.category_ferry, Icons.Default.DirectionsBoat, setOf(TransportMode.FERRY)),
     OTHER(
-        "Other",
+        R.string.category_other,
         Icons.Default.Commute,
         setOf(
             TransportMode.AIRPLANE,

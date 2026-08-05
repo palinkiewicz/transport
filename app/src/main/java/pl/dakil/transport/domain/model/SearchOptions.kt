@@ -1,61 +1,69 @@
 package pl.dakil.transport.domain.model
 
+import androidx.annotation.StringRes
 import kotlinx.serialization.Serializable
+import pl.dakil.transport.R
 
-/** MOTIS pedestrian accessibility profile for transfers and first/last mile. */
+/**
+ * MOTIS pedestrian accessibility profile for transfers and first/last mile.
+ *
+ * Every enum here carries a `labelRes` rather than a literal: the option panels read it with
+ * `stringResource(it.labelRes)`. Only the enum *names* are serialized, so the ids are free to
+ * change without breaking stored options.
+ */
 @Serializable
-enum class PedestrianProfile(val label: String) {
-    FOOT("On foot"),
-    WHEELCHAIR("Wheelchair"),
+enum class PedestrianProfile(@param:StringRes val labelRes: Int) {
+    FOOT(R.string.pedestrian_profile_foot),
+    WHEELCHAIR(R.string.pedestrian_profile_wheelchair),
 }
 
 /** Elevation cost profile for street routing: penalize inclines in favor of flatter paths. */
 @Serializable
-enum class ElevationCosts(val label: String) {
-    NONE("None"),
-    LOW("Low"),
-    HIGH("High"),
+enum class ElevationCosts(@param:StringRes val labelRes: Int) {
+    NONE(R.string.elevation_costs_none),
+    LOW(R.string.elevation_costs_low),
+    HIGH(R.string.elevation_costs_high),
 }
 
 /** Non-transit modes usable for direct connections and the first/last mile. API mode names. */
 @Serializable
-enum class StreetMode(val label: String) {
-    WALK("Walk"),
-    BIKE("Bike"),
-    CAR("Car"),
-    RENTAL("Rental"),
+enum class StreetMode(@param:StringRes val labelRes: Int) {
+    WALK(R.string.street_mode_walk),
+    BIKE(R.string.street_mode_bike),
+    CAR(R.string.street_mode_car),
+    RENTAL(R.string.street_mode_rental),
 }
 
 /** GBFS rental vehicle form factors. API enum names. */
 @Serializable
-enum class RentalFormFactor(val label: String) {
-    BICYCLE("Bike"),
-    CARGO_BICYCLE("Cargo bike"),
-    CAR("Car"),
-    MOPED("Moped"),
-    SCOOTER_STANDING("Scooter"),
-    SCOOTER_SEATED("Seated scooter"),
-    OTHER("Other"),
+enum class RentalFormFactor(@param:StringRes val labelRes: Int) {
+    BICYCLE(R.string.rental_form_bicycle),
+    CARGO_BICYCLE(R.string.rental_form_cargo_bicycle),
+    CAR(R.string.rental_form_car),
+    MOPED(R.string.rental_form_moped),
+    SCOOTER_STANDING(R.string.rental_form_scooter_standing),
+    SCOOTER_SEATED(R.string.rental_form_scooter_seated),
+    OTHER(R.string.rental_form_other),
 }
 
 /** GBFS rental vehicle propulsion types. API enum names. */
 @Serializable
-enum class RentalPropulsionType(val label: String) {
-    HUMAN("Human"),
-    ELECTRIC_ASSIST("El. assist"),
-    ELECTRIC("Electric"),
-    COMBUSTION("Petrol"),
-    COMBUSTION_DIESEL("Diesel"),
-    HYBRID("Hybrid"),
-    PLUG_IN_HYBRID("Plug-in hybrid"),
-    HYDROGEN_FUEL_CELL("Hydrogen"),
+enum class RentalPropulsionType(@param:StringRes val labelRes: Int) {
+    HUMAN(R.string.rental_propulsion_human),
+    ELECTRIC_ASSIST(R.string.rental_propulsion_electric_assist),
+    ELECTRIC(R.string.rental_propulsion_electric),
+    COMBUSTION(R.string.rental_propulsion_combustion),
+    COMBUSTION_DIESEL(R.string.rental_propulsion_combustion_diesel),
+    HYBRID(R.string.rental_propulsion_hybrid),
+    PLUG_IN_HYBRID(R.string.rental_propulsion_plug_in_hybrid),
+    HYDROGEN_FUEL_CELL(R.string.rental_propulsion_hydrogen),
 }
 
 /** Which street leg of a journey a [StreetLegOptions] instance configures. */
-enum class LegContext(val label: String) {
-    DIRECT("Direct"),
-    PRE_TRANSIT("First mile"),
-    POST_TRANSIT("Last mile"),
+enum class LegContext(@param:StringRes val labelRes: Int) {
+    DIRECT(R.string.leg_context_direct),
+    PRE_TRANSIT(R.string.leg_context_first_mile),
+    POST_TRANSIT(R.string.leg_context_last_mile),
 }
 
 /**

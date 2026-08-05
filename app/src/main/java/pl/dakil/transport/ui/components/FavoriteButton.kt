@@ -17,6 +17,8 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import pl.dakil.transport.R
 
 /**
  * The app's single control for starring/unstarring anything (locations, connections, lines):
@@ -43,7 +45,9 @@ fun FavoriteButton(
         ) { starred ->
             Icon(
                 imageVector = if (starred) Icons.Filled.Star else Icons.Filled.StarBorder,
-                contentDescription = if (starred) "Remove from favourites" else "Add to favourites",
+                contentDescription = stringResource(
+                    if (starred) R.string.favourite_remove else R.string.favourite_add,
+                ),
                 tint = if (starred) MaterialTheme.colorScheme.primary else LocalContentColor.current,
             )
         }

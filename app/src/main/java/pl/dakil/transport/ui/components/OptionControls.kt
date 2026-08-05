@@ -43,7 +43,7 @@ fun LabeledSliderRow(
     onValueCommit: (Float) -> Unit,
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
-    valueLabel: (Float) -> String,
+    valueLabel: @Composable (Float) -> String,
     modifier: Modifier = Modifier,
     supportingText: String? = null,
 ) {
@@ -88,7 +88,7 @@ fun IntSliderRow(
     max: Int,
     modifier: Modifier = Modifier,
     step: Int = 1,
-    valueLabel: (Int) -> String = { it.toString() },
+    valueLabel: @Composable (Int) -> String = { it.toString() },
     supportingText: String? = null,
 ) {
     LabeledSliderRow(
@@ -114,7 +114,7 @@ fun <T> SteppedSliderRow(
     values: List<T>,
     value: T,
     onValueCommit: (T) -> Unit,
-    valueLabel: (T) -> String,
+    valueLabel: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     supportingText: String? = null,
     distance: (T, T) -> Float = { a, b -> if (a == b) 0f else 1f },
@@ -173,7 +173,7 @@ fun <T> SingleChoiceConnectedRow(
     options: List<T>,
     selected: T,
     onSelect: (T) -> Unit,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     icon: ((T) -> ImageVector)? = null,
 ) {
@@ -215,7 +215,7 @@ fun <T> SingleChoiceToggleFlow(
     options: List<T>,
     selected: T,
     onSelect: (T) -> Unit,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     icon: ((T) -> ImageVector)? = null,
 ) {
@@ -247,7 +247,7 @@ fun <T> MultiChoiceToggleFlow(
     options: List<T>,
     selected: Set<T>,
     onSelectedChange: (Set<T>) -> Unit,
-    label: (T) -> String,
+    label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
     icon: ((T) -> ImageVector)? = null,
 ) {

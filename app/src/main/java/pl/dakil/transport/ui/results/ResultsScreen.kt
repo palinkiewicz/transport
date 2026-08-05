@@ -40,13 +40,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
 import java.time.OffsetDateTime
-import java.time.format.DateTimeFormatter
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.JourneyLeg
@@ -54,12 +56,14 @@ import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.formatDistance
+import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.components.rememberTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -84,10 +88,10 @@ fun ResultsScreen(
                     val stops = listOf(viewModel.fromName) + viewModel.viaNames + viewModel.toName
                     Text(stops.joinToString(" → "))
                 },
-                subtitle = { Text(refreshSubtitle("Connections", secondsUntilRefresh)) },
+                subtitle = { Text(refreshSubtitle(R.string.refresh_subtitle_connections, secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -108,11 +112,10 @@ fun ResultsScreen(
             is ResultsUiState.Content -> {
                 if (state.result.journeys.isEmpty()) {
                     EmptyBox(
-                        title = "No connections found",
-                        description = "Nothing runs between these places at this time. Try another " +
-                            "departure time, or relax the advanced search options.",
+                        title = stringResource(R.string.results_empty_title),
+                        description = stringResource(R.string.results_empty_body),
                         modifier = Modifier.padding(innerPadding),
-                        actionLabel = "Search again",
+                        actionLabel = stringResource(R.string.results_empty_action),
                         onAction = viewModel::refreshNow,
                     )
                 } else {
@@ -125,7 +128,7 @@ fun ResultsScreen(
                     ) {
                         item(key = "show-previous") {
                             PageButton(
-                                label = "Show previous",
+                                label = stringResource(R.string.results_show_previous),
                                 icon = Icons.Default.KeyboardArrowUp,
                                 enabled = state.result.previousPageCursor != null,
                                 onClick = viewModel::showPrevious,
@@ -142,7 +145,7 @@ fun ResultsScreen(
                         }
                         item(key = "show-next") {
                             PageButton(
-                                label = "Show next",
+                                label = stringResource(R.string.results_show_next),
                                 icon = Icons.Default.KeyboardArrowDown,
                                 enabled = state.result.nextPageCursor != null,
                                 onClick = viewModel::showNext,
@@ -196,15 +199,13 @@ private fun JourneyCard(
                     color = if (minutesUntilDeparture < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )
                 Text(
-                    text = buildString {
+                    text = run {
                         val seconds = if (timesMode == ConnectionTimesMode.DOOR_TO_DOOR) {
                             journey.duration.toLong()
                         } else {
                             journey.transitDurationSeconds
                         }
-                        append(formatDuration(seconds))
-                        append(" · ")
-                        append(transfersLabel(journey.transfers))
+                        "${formatDuration(seconds)} · ${transfersLabel(journey.transfers)}"
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -224,7 +225,10 @@ private fun JourneyCard(
                     ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
                 }
                 if (journey.legs.none { it.isTransit }) {
-                    ModeChip(mode = journey.legs.first().mode, label = journey.legs.first().mode.label)
+                    ModeChip(
+                        mode = journey.legs.first().mode,
+                        label = stringResource(journey.legs.first().mode.labelRes),
+                    )
                 }
                 journey.lastMileLeg?.let { AccessLegDistance(it) }
             }
@@ -293,7 +297,7 @@ private fun AccessLegDistance(leg: JourneyLeg) {
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Icon(
             leg.mode.icon,
-            contentDescription = leg.mode.label,
+            contentDescription = stringResource(leg.mode.labelRes),
             modifier = Modifier.size(16.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -313,9 +317,15 @@ private fun AccessLegDistance(leg: JourneyLeg) {
  */
 @Composable
 private fun DoorToDoorRow(journey: Journey, fromName: String, toName: String) {
+    val cardTimeFormatter = rememberTimeFormatter()
     Text(
-        text = "${journey.startTime.format(cardTimeFormatter)} → " +
-            "${journey.endTime.format(cardTimeFormatter)} · $fromName → $toName",
+        text = stringResource(
+            R.string.results_door_to_door_row,
+            journey.startTime.format(cardTimeFormatter),
+            journey.endTime.format(cardTimeFormatter),
+            fromName,
+            toName,
+        ),
         style = MaterialTheme.typography.labelMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
@@ -327,6 +337,7 @@ private fun DoorToDoorRow(journey: Journey, fromName: String, toName: String) {
 /** [scheduledTime] null means there is no schedule to compare against; the time is drawn plainly. */
 @Composable
 private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: OffsetDateTime?) {
+    val cardTimeFormatter = rememberTimeFormatter()
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -345,39 +356,45 @@ private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: O
     }
 }
 
-private val cardTimeFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-private fun transfersLabel(transfers: Int): String = when (transfers) {
-    0 -> "direct"
-    1 -> "1 transfer"
-    else -> "$transfers transfers"
-}
-
-private fun formatDuration(seconds: Long): String {
-    val totalMinutes = seconds / 60
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
-    return if (hours > 0) "$hours h $minutes min" else "$minutes min"
-}
+@Composable
+private fun transfersLabel(transfers: Int): String =
+    if (transfers == 0) {
+        stringResource(R.string.transfers_direct)
+    } else {
+        pluralStringResource(R.plurals.plural_transfers, transfers, transfers)
+    }
 
 private const val MINUTES_PER_DAY = 24 * 60
 
 /** [leaving] switches the wording to the door-to-door question: when to set off, not when the vehicle goes. */
+@Composable
 private fun departingLabel(minutesUntil: Long, leaving: Boolean): String {
     val minutes = if (minutesUntil < 0) -minutesUntil else minutesUntil
     // A day or more out, the hours and minutes are noise (and stale by the time it matters).
     val relative = when {
         minutes >= MINUTES_PER_DAY -> {
-            val days = minutes / MINUTES_PER_DAY
-            "$days ${if (days == 1L) "day" else "days"}"
+            val days = (minutes / MINUTES_PER_DAY).toInt()
+            pluralStringResource(R.plurals.plural_days, days, days)
         }
-        minutes < 60 -> "$minutes min"
-        else -> "${minutes / 60} h ${minutes % 60} min"
+        minutes < 60 -> stringResource(R.string.format_minutes, minutes.toInt())
+        else -> stringResource(
+            R.string.format_hours_minutes,
+            (minutes / 60).toInt(),
+            (minutes % 60).toInt(),
+        )
     }
     return when {
-        minutesUntil < 0 -> if (leaving) "Left $relative ago" else "Departed $relative ago"
-        minutesUntil == 0L -> if (leaving) "Leave now" else "Departing now"
-        else -> if (leaving) "Leave in $relative" else "Departing in $relative"
+        minutesUntil < 0 -> stringResource(
+            if (leaving) R.string.results_left_ago else R.string.results_departed_ago,
+            relative,
+        )
+        minutesUntil == 0L -> stringResource(
+            if (leaving) R.string.results_leave_now else R.string.results_departing_now,
+        )
+        else -> stringResource(
+            if (leaving) R.string.results_leave_in else R.string.results_departing_in,
+            relative,
+        )
     }
 }
 

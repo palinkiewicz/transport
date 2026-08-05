@@ -35,9 +35,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.InlineErrorRow
@@ -82,7 +84,7 @@ fun LocationPickerScreen(
                     .padding(start = 4.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
             ) {
                 IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                 }
                 Surface(
                     shape = CircleShape,
@@ -94,20 +96,22 @@ fun LocationPickerScreen(
                         onValueChange = viewModel::onQueryChange,
                         placeholder = {
                             Text(
-                                when (viewModel.target) {
-                                    PickerTarget.FROM -> "Where from?"
-                                    PickerTarget.TO -> "Where to?"
-                                    PickerTarget.VIA -> "Stop along the way"
-                                    PickerTarget.STOP -> "Which stop?"
-                                    PickerTarget.MAP -> "Search stops & places"
-                                },
+                                stringResource(
+                                    when (viewModel.target) {
+                                        PickerTarget.FROM -> R.string.picker_placeholder_from
+                                        PickerTarget.TO -> R.string.picker_placeholder_to
+                                        PickerTarget.VIA -> R.string.picker_placeholder_via
+                                        PickerTarget.STOP -> R.string.picker_placeholder_stop
+                                        PickerTarget.MAP -> R.string.picker_placeholder_map
+                                    },
+                                ),
                             )
                         },
                         singleLine = true,
                         trailingIcon = if (query.isNotEmpty()) {
                             {
                                 IconButton(onClick = { viewModel.onQueryChange("") }) {
-                                    Icon(Icons.Default.Close, contentDescription = "Clear")
+                                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_clear))
                                 }
                             }
                         } else {
@@ -132,7 +136,7 @@ fun LocationPickerScreen(
             // Explains the otherwise puzzling absence of addresses and the current location.
             if (viewModel.stopsOnly) {
                 Text(
-                    text = "Only transit stops can be routed through.",
+                    text = stringResource(R.string.picker_stops_only_note),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
@@ -171,7 +175,7 @@ private fun LocationPickerList(
             currentLocation?.let { current ->
                 item(key = "current-location") {
                     ListItem(
-                        headlineContent = { Text("Current location") },
+                        headlineContent = { Text(stringResource(R.string.picker_current_location)) },
                         leadingContent = {
                             Icon(
                                 Icons.Default.MyLocation,
@@ -189,7 +193,7 @@ private fun LocationPickerList(
             if (items.isNotEmpty()) {
                 item(key = "favourites-header") {
                     Text(
-                        text = "Favourites",
+                        text = stringResource(R.string.picker_favourites_header),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier

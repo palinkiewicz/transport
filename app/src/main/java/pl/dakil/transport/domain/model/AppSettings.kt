@@ -1,6 +1,8 @@
 package pl.dakil.transport.domain.model
 
+import androidx.annotation.StringRes
 import kotlinx.serialization.Serializable
+import pl.dakil.transport.R
 
 /**
  * How the map turns the API's schedule data into moving vehicle markers.
@@ -65,11 +67,11 @@ data class VehicleMotionSettings(
 
 /** Which bottom-bar tab the app opens on. */
 @Serializable
-enum class DefaultTab(val label: String) {
-    MAP("Map"),
-    CONNECTIONS("Connections"),
-    DEPARTURES("Departures"),
-    FAVOURITES("Favourites"),
+enum class DefaultTab(@param:StringRes val labelRes: Int) {
+    MAP(R.string.tab_map),
+    CONNECTIONS(R.string.tab_connections),
+    DEPARTURES(R.string.tab_departures),
+    FAVOURITES(R.string.tab_favourites),
 }
 
 /**
@@ -78,10 +80,10 @@ enum class DefaultTab(val label: String) {
  * leave home" rather than "when does the bus go".
  */
 @Serializable
-enum class ConnectionTimesMode(val label: String) {
-    STOP_TIMES("Stops"),
-    DOOR_TO_DOOR("Door to door"),
-    BOTH("Both"),
+enum class ConnectionTimesMode(@param:StringRes val labelRes: Int) {
+    STOP_TIMES(R.string.connection_times_stops),
+    DOOR_TO_DOOR(R.string.connection_times_door_to_door),
+    BOTH(R.string.connection_times_both),
     ;
 
     /** Whether the walk at each end is part of the headline times (and the countdown). */

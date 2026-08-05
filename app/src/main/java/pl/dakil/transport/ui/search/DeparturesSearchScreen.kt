@@ -23,9 +23,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.dakil.transport.R
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 
@@ -52,7 +54,10 @@ fun DeparturesSearchScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            SearchHeader(icon = Icons.Default.DepartureBoard, title = "Leaving from?")
+            SearchHeader(
+                icon = Icons.Default.DepartureBoard,
+                title = stringResource(R.string.departures_title),
+            )
 
             Surface(
                 shape = MaterialTheme.shapes.extraLarge,
@@ -72,7 +77,7 @@ fun DeparturesSearchScreen(
                             .size(20.dp),
                     )
                     LocationField(
-                        label = "Stop",
+                        label = stringResource(R.string.departures_field_stop),
                         value = uiState.stop?.name,
                         onClick = onPickStop,
                         modifier = Modifier.weight(1f),
@@ -85,7 +90,11 @@ fun DeparturesSearchScreen(
                 options = listOf(false, true),
                 selected = uiState.options.arriveBy,
                 onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },
-                label = { arriveBy -> if (arriveBy) "Arrivals" else "Departures" },
+                label = { arriveBy ->
+                    stringResource(
+                        if (arriveBy) R.string.departures_mode_arrivals else R.string.departures_mode_departures,
+                    )
+                },
             )
 
             // Same rule as the connections form: nothing to reset to when the board is showing

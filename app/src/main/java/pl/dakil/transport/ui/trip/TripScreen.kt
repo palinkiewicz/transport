@@ -29,10 +29,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import pl.dakil.transport.R
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.InlineRealTimeText
@@ -67,10 +69,10 @@ fun TripScreen(
                         }
                     }
                 },
-                subtitle = { Text(refreshSubtitle("Trip timetable", secondsUntilRefresh)) },
+                subtitle = { Text(refreshSubtitle(R.string.refresh_subtitle_trip, secondsUntilRefresh)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 actions = {
@@ -184,7 +186,7 @@ private fun TrackPill(track: String) {
         color = MaterialTheme.colorScheme.secondaryContainer,
     ) {
         Text(
-            text = "Pl. $track",
+            text = stringResource(R.string.format_track_short, track),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),

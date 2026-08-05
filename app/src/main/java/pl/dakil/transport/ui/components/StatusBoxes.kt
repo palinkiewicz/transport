@@ -39,8 +39,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.AppError
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -108,13 +110,20 @@ fun StatusBox(
                 modifier = Modifier.padding(top = 20.dp),
             ) {
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(text = actionLabel ?: "Try again", modifier = Modifier.padding(start = 8.dp))
+                Text(
+                    text = actionLabel ?: stringResource(R.string.action_try_again),
+                    modifier = Modifier.padding(start = 8.dp),
+                )
             }
         }
         if (details != null) {
             var expanded by remember(details) { mutableStateOf(false) }
             TextButton(onClick = { expanded = !expanded }, modifier = Modifier.padding(top = 4.dp)) {
-                Text(if (expanded) "Hide technical details" else "Technical details")
+                Text(
+                    stringResource(
+                        if (expanded) R.string.error_details_hide else R.string.error_details_show,
+                    ),
+                )
             }
             AnimatedVisibility(visible = expanded) {
                 Text(
@@ -188,7 +197,7 @@ fun InlineErrorRow(
             modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         ) {
             Icon(
-                error.presentation().icon,
+                error.icon,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
             )
@@ -198,7 +207,7 @@ fun InlineErrorRow(
                 modifier = Modifier.weight(1f),
             )
             if (onRetry != null && error.isRetryable) {
-                TextButton(onClick = onRetry) { Text("Retry") }
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
             }
         }
     }
@@ -209,63 +218,72 @@ data class ErrorCopy(val icon: ImageVector, val title: String, val description: 
 
 /** One-line phrasing for inline spots (map panels) that have no room for a full screen. */
 val AppError.shortMessage: String
+    @Composable get() = stringResource(
+        when (this) {
+            is AppError.NoConnection -> R.string.error_short_no_connection
+            is AppError.Timeout -> R.string.error_short_timeout
+            is AppError.NotFound -> R.string.error_short_not_found
+            is AppError.RateLimited -> R.string.error_short_rate_limited
+            is AppError.BadRequest -> R.string.error_short_bad_request
+            is AppError.ServerError -> R.string.error_short_server
+            is AppError.MalformedResponse -> R.string.error_short_malformed
+            is AppError.Unknown -> R.string.error_short_unknown
+        },
+    )
+
+/** The icon each error case is shown with — the only part of [presentation] that isn't text. */
+val AppError.icon: ImageVector
     get() = when (this) {
-        is AppError.NoConnection -> "No connection"
-        is AppError.Timeout -> "Took too long to respond"
-        is AppError.NotFound -> "Not available any more"
-        is AppError.RateLimited -> "Too many requests — try again shortly"
-        is AppError.BadRequest -> "This request could not be handled"
-        is AppError.ServerError -> "The transit service is having trouble"
-        is AppError.MalformedResponse -> "Unexpected response from the service"
-        is AppError.Unknown -> "Something went wrong"
+        is AppError.NoConnection -> Icons.Default.SignalWifiOff
+        is AppError.Timeout -> Icons.Default.HourglassEmpty
+        is AppError.NotFound -> Icons.Default.SearchOff
+        is AppError.RateLimited -> Icons.Default.Speed
+        is AppError.BadRequest -> Icons.Default.ReportProblem
+        is AppError.ServerError -> Icons.Default.CloudOff
+        is AppError.MalformedResponse -> Icons.Default.Warning
+        is AppError.Unknown -> Icons.Default.SentimentDissatisfied
     }
 
+@Composable
 fun AppError.presentation(): ErrorCopy = when (this) {
     is AppError.NoConnection -> ErrorCopy(
-        icon = Icons.Default.SignalWifiOff,
-        title = "You're offline",
-        description = "We couldn't reach the transit service. Check your internet connection " +
-            "and try again.",
+        icon = icon,
+        title = stringResource(R.string.error_title_no_connection),
+        description = stringResource(R.string.error_body_no_connection),
     )
     is AppError.Timeout -> ErrorCopy(
-        icon = Icons.Default.HourglassEmpty,
-        title = "This is taking too long",
-        description = "The transit service didn't answer in time. It may be busy — trying " +
-            "again usually helps.",
+        icon = icon,
+        title = stringResource(R.string.error_title_timeout),
+        description = stringResource(R.string.error_body_timeout),
     )
     is AppError.NotFound -> ErrorCopy(
-        icon = Icons.Default.SearchOff,
-        title = "Not available",
-        description = "This stop or trip isn't in the timetable any more. It may have been " +
-            "cancelled or removed from the schedule.",
+        icon = icon,
+        title = stringResource(R.string.error_title_not_found),
+        description = stringResource(R.string.error_body_not_found),
     )
     is AppError.RateLimited -> ErrorCopy(
-        icon = Icons.Default.Speed,
-        title = "Slow down a moment",
-        description = "The transit service is limiting how often it can be asked. Wait a few " +
-            "seconds, then try again.",
+        icon = icon,
+        title = stringResource(R.string.error_title_rate_limited),
+        description = stringResource(R.string.error_body_rate_limited),
     )
     is AppError.BadRequest -> ErrorCopy(
-        icon = Icons.Default.ReportProblem,
-        title = "This search couldn't be run",
-        description = "The transit service rejected it (error $code). Try changing your stops, " +
-            "time, or advanced search options.",
+        icon = icon,
+        title = stringResource(R.string.error_title_bad_request),
+        description = stringResource(R.string.error_body_bad_request, code),
     )
     is AppError.ServerError -> ErrorCopy(
-        icon = Icons.Default.CloudOff,
-        title = "The service is having trouble",
-        description = "The transit service reported an error ($code). It's not something on " +
-            "your side — please try again in a moment.",
+        icon = icon,
+        title = stringResource(R.string.error_title_server),
+        description = stringResource(R.string.error_body_server, code),
     )
     is AppError.MalformedResponse -> ErrorCopy(
-        icon = Icons.Default.Warning,
-        title = "Unexpected response",
-        description = "The transit service sent back something this app couldn't read. Trying " +
-            "again may help.",
+        icon = icon,
+        title = stringResource(R.string.error_title_malformed),
+        description = stringResource(R.string.error_body_malformed),
     )
     is AppError.Unknown -> ErrorCopy(
-        icon = Icons.Default.SentimentDissatisfied,
-        title = "Something went wrong",
-        description = "The data couldn't be loaded. Please try again.",
+        icon = icon,
+        title = stringResource(R.string.error_title_unknown),
+        description = stringResource(R.string.error_body_unknown),
     )
 }

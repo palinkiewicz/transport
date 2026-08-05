@@ -10,29 +10,36 @@ import androidx.compose.material.icons.filled.PedalBike
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
+import androidx.annotation.StringRes
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import pl.dakil.transport.R
 
 /** Domain-level mode of transport, mapped from the MOTIS `Mode` enum (see openapi.yaml). */
-enum class TransportMode(val icon: ImageVector, val color: Color, val label: String) {
-    WALK(Icons.AutoMirrored.Filled.DirectionsWalk, Color(0xFF6B7280), "Walking"),
-    BIKE(Icons.Default.PedalBike, Color(0xFF16A34A), "Bike"),
-    CAR(Icons.Default.DirectionsCar, Color(0xFF6B7280), "Car"),
-    TRAM(Icons.Default.Tram, Color(0xFFDC2626), "Tram"),
-    SUBWAY(Icons.Default.Subway, Color(0xFF2563EB), "Subway"),
-    FERRY(Icons.Default.DirectionsBoat, Color(0xFF0891B2), "Ferry"),
-    AIRPLANE(Icons.Default.Flight, Color(0xFF7C3AED), "Airplane"),
-    BUS(Icons.Default.DirectionsBus, Color(0xFFEA580C), "Bus"),
-    COACH(Icons.Default.DirectionsBus, Color(0xFFB45309), "Coach"),
-    RAIL(Icons.Default.Train, Color(0xFF15803D), "Rail"),
-    HIGHSPEED_RAIL(Icons.Default.Train, Color(0xFF9333EA), "High-speed rail"),
-    LONG_DISTANCE(Icons.Default.Train, Color(0xFF15803D), "Long-distance rail"),
-    NIGHT_RAIL(Icons.Default.Train, Color(0xFF1E3A8A), "Night train"),
-    REGIONAL_RAIL(Icons.Default.Train, Color(0xFF15803D), "Regional rail"),
-    SUBURBAN(Icons.Default.Train, Color(0xFF0D9488), "Suburban rail"),
-    FUNICULAR(Icons.Default.Tram, Color(0xFF854D0E), "Funicular"),
-    AERIAL_LIFT(Icons.Default.Tram, Color(0xFF854D0E), "Aerial lift"),
-    OTHER(Icons.Default.DirectionsBus, Color(0xFF6B7280), "Transit");
+enum class TransportMode(
+    val icon: ImageVector,
+    val color: Color,
+    /** Translated display name; read with `stringResource(mode.labelRes)`. */
+    @param:StringRes val labelRes: Int,
+) {
+    WALK(Icons.AutoMirrored.Filled.DirectionsWalk, Color(0xFF6B7280), R.string.mode_walk),
+    BIKE(Icons.Default.PedalBike, Color(0xFF16A34A), R.string.mode_bike),
+    CAR(Icons.Default.DirectionsCar, Color(0xFF6B7280), R.string.mode_car),
+    TRAM(Icons.Default.Tram, Color(0xFFDC2626), R.string.mode_tram),
+    SUBWAY(Icons.Default.Subway, Color(0xFF2563EB), R.string.mode_subway),
+    FERRY(Icons.Default.DirectionsBoat, Color(0xFF0891B2), R.string.mode_ferry),
+    AIRPLANE(Icons.Default.Flight, Color(0xFF7C3AED), R.string.mode_airplane),
+    BUS(Icons.Default.DirectionsBus, Color(0xFFEA580C), R.string.mode_bus),
+    COACH(Icons.Default.DirectionsBus, Color(0xFFB45309), R.string.mode_coach),
+    RAIL(Icons.Default.Train, Color(0xFF15803D), R.string.mode_rail),
+    HIGHSPEED_RAIL(Icons.Default.Train, Color(0xFF9333EA), R.string.mode_highspeed_rail),
+    LONG_DISTANCE(Icons.Default.Train, Color(0xFF15803D), R.string.mode_long_distance),
+    NIGHT_RAIL(Icons.Default.Train, Color(0xFF1E3A8A), R.string.mode_night_rail),
+    REGIONAL_RAIL(Icons.Default.Train, Color(0xFF15803D), R.string.mode_regional_rail),
+    SUBURBAN(Icons.Default.Train, Color(0xFF0D9488), R.string.mode_suburban),
+    FUNICULAR(Icons.Default.Tram, Color(0xFF854D0E), R.string.mode_funicular),
+    AERIAL_LIFT(Icons.Default.Tram, Color(0xFF854D0E), R.string.mode_aerial_lift),
+    OTHER(Icons.Default.DirectionsBus, Color(0xFF6B7280), R.string.mode_other);
 
     companion object {
         fun fromApiValue(value: String?): TransportMode =

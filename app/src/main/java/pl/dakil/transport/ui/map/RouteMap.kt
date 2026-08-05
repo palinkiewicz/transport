@@ -71,6 +71,8 @@ import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.components.parseRouteColor
+import androidx.compose.ui.res.stringResource
+import pl.dakil.transport.R
 
 /** One colored polyline drawn on a [RouteMap], e.g. one journey leg. */
 data class RouteMapLine(
@@ -402,7 +404,7 @@ fun RouteMap(
 fun TransitousAttributionLabel(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     Text(
-        text = "Data: transitous.org",
+        text = stringResource(R.string.map_attribution),
         style = MaterialTheme.typography.labelSmall,
         color = MaterialTheme.colorScheme.onSurface,
         modifier = modifier
