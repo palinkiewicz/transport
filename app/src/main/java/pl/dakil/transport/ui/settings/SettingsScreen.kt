@@ -363,6 +363,12 @@ private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) 
             supportingText = stringResource(R.string.settings_vehicles_from_zoom_note),
         )
         SwitchRow(
+            title = stringResource(R.string.settings_focus_vehicle),
+            checked = settings.focusSelectedVehicle,
+            onCheckedChange = { on -> viewModel.update { it.copy(focusSelectedVehicle = on) } },
+            supportingText = stringResource(R.string.settings_focus_vehicle_note),
+        )
+        SwitchRow(
             title = stringResource(R.string.settings_itinerary_stop_names),
             checked = settings.showItineraryStopNames,
             onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },

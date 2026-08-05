@@ -230,6 +230,35 @@ class MapViewModel @Inject constructor(
 
     fun resetFilters() = updateFilters { MapFilters.DEFAULT }
 
+    // The selected vehicle's trip segments, snapshotted at selection time so the selection
+    // survives the viewport-gated fetch dropping the trip (zooming out, panning away) — the
+    // same persistence the selected stop gets by being held as plain state below.
+    private val selectedVehicleSegments = MutableStateFlow<List<VehicleSegment>?>(null)
+
+    private val _vehicleDetails = MutableStateFlow<VehicleDetailsUiState>(VehicleDetailsUiState.Hidden)
+    val vehicleDetails: StateFlow<VehicleDetailsUiState> = _vehicleDetails
+
+    /** Whether selecting a vehicle narrows the map to that run alone. */
+    private val focusSelectedVehicle: StateFlow<Boolean> = settings
+        .map { it.focusSelectedVehicle }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings.DEFAULT.focusSelectedVehicle)
+
+    /**
+     * Stops of the run being followed, empty whenever the map is not following one. The trip's
+     * stop list only arrives with its details, so this stays empty (and the viewport's stops
+     * stay drawn) while they load or if they fail — blanking the map in between would read as
+     * a glitch rather than as focus.
+     */
+    private val focusedTripStops: StateFlow<List<TransitLocation>> =
+        combine(selectedVehicleSegments, vehicleDetails, focusSelectedVehicle) { selected, details, focus ->
+            if (!focus || selected == null) {
+                emptyList()
+            } else {
+                (details as? VehicleDetailsUiState.Shown)?.details?.stops.orEmpty()
+            }
+        }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private val allStops: StateFlow<List<TransitLocation>> =
         combine(viewport.filterNotNull(), settings.map { it.stopsMinZoom }.distinctUntilChanged()) { vp, minZoom ->
             vp to minZoom
@@ -244,9 +273,22 @@ class MapViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * What the map draws: the viewport's stops normally, but only the followed trip's own stops
+     * while a vehicle is selected (see [focusedTripStops]). The trip's stops deliberately skip
+     * [MapFilters.matchesStop] — they belong to the run the user is following, so a filter that
+     * hides their mode would empty the very route being watched.
+     */
     val stops: StateFlow<List<TransitLocation>> =
-        combine(allStops, filters) { stops, filters -> stops.filter(filters::matchesStop) }
+        combine(allStops, filters, focusedTripStops) { stops, filters, tripStops ->
+            tripStops.ifEmpty { stops.filter(filters::matchesStop) }
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** True while [stops] is showing a followed trip's stops rather than the viewport's. */
+    val stopsFocusedOnTrip: StateFlow<Boolean> = focusedTripStops
+        .map { it.isNotEmpty() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     /**
      * Every trip currently being drawn, keyed by trip, with when its segments last arrived from
@@ -320,8 +362,22 @@ class MapViewModel @Inject constructor(
     private val motionTracker = VehicleMotionTracker()
 
     val vehicles: StateFlow<List<VehicleMarker>> =
-        combine(vehicleSegments, filters, motionSettings) { segments, filters, motion ->
-            segments.filter(filters::matchesVehicle) to motion
+        combine(
+            vehicleSegments,
+            filters,
+            motionSettings,
+            selectedVehicleSegments,
+            focusSelectedVehicle,
+        ) { segments, filters, motion, selected, focus ->
+            val tripKey = selected?.firstOrNull()?.tripKey
+            val visible = if (focus && tripKey != null) {
+                // Only the followed run. Falls back to the selection snapshot once the viewport
+                // fetches stop covering the trip, so the marker being followed never blinks out.
+                segments.filter { it.tripKey == tripKey }.ifEmpty { selected }
+            } else {
+                segments.filter(filters::matchesVehicle)
+            }
+            visible to motion
         }
             .flatMapLatest { (segments, motion) ->
                 if (segments.isEmpty()) {
@@ -340,11 +396,6 @@ class MapViewModel @Inject constructor(
 
     private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
     val selectedStop: StateFlow<TransitLocation?> = _selectedStop
-
-    // The selected vehicle's trip segments, snapshotted at selection time so the selection
-    // survives the viewport-gated fetch dropping the trip (zooming out, panning away) — the
-    // same persistence the selected stop gets by being held as plain state above.
-    private val selectedVehicleSegments = MutableStateFlow<List<VehicleSegment>?>(null)
 
     /**
      * Marker of the selected vehicle, tracking its live position independently of the
@@ -380,9 +431,6 @@ class MapViewModel @Inject constructor(
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    private val _vehicleDetails = MutableStateFlow<VehicleDetailsUiState>(VehicleDetailsUiState.Hidden)
-    val vehicleDetails: StateFlow<VehicleDetailsUiState> = _vehicleDetails
-
     private var vehicleDetailsJob: Job? = null
 
     private val _stopRoutes = MutableStateFlow<StopRoutesUiState>(StopRoutesUiState.Hidden)
@@ -398,13 +446,17 @@ class MapViewModel @Inject constructor(
     }
 
     fun selectStop(stop: TransitLocation) {
-        clearVehicleSelection()
+        // Tapping a stop of the run being followed is part of following it, so the vehicle
+        // stays selected and the map keeps its focus; the stop's own lines are left unloaded
+        // because drawing every line through it would bury the route being watched.
+        val belongsToFocusedTrip = focusedTripStops.value.any { it.favoriteKey == stop.favoriteKey }
+        if (!belongsToFocusedTrip) clearVehicleSelection()
         pointNameJob?.cancel()
         if (_selectedStop.value == stop) return
         _selectedStop.value = stop
         // Lines through a bare point are only "whatever passes nearby" — misleading enough
         // that the panel doesn't offer them (nor a timetable) for anything but a real stop.
-        if (stop.stopId != null) loadRoutes(stop) else hideRoutes()
+        if (stop.stopId != null && !belongsToFocusedTrip) loadRoutes(stop) else hideRoutes()
     }
 
     /**
@@ -423,10 +475,19 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    fun clearSelection() {
+    /**
+     * Closes the stop panel only. A vehicle being followed stays selected, so dismissing the
+     * stop a user tapped along its route hands them back the vehicle panel rather than
+     * dropping the whole trip.
+     */
+    fun clearStopSelection() {
         pointNameJob?.cancel()
         _selectedStop.value = null
         hideRoutes()
+    }
+
+    fun clearSelection() {
+        clearStopSelection()
         clearVehicleSelection()
     }
 

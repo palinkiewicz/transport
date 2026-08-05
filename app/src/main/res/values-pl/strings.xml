@@ -345,6 +345,8 @@
     <string name="settings_stops_from_zoom_note">Niższa wartość pokazuje przystanki przy mniejszym zbliżeniu mapy, kosztem większego zagęszczenia ikon i większych odpowiedzi z serwera.</string>
     <string name="settings_vehicles_from_zoom">Pojazdy od poziomu przybliżenia</string>
     <string name="settings_vehicles_from_zoom_note">Poniżej tego poziomu przybliżenia pojazdy nie będą w ogóle pobierane.</string>
+    <string name="settings_focus_vehicle">Skupienie na wybranym pojeździe</string>
+    <string name="settings_focus_vehicle_note">Po wybraniu pojazdu mapa pokazuje tylko przystanki na jego trasie i ukrywa pozostałe pojazdy.</string>
     <string name="settings_itinerary_stop_names">Nazwy przystanków w planie podróży</string>
     <string name="settings_itinerary_stop_names_note">Wyświetla etykiety przystanków początkowych i docelowych na mapie trasy.</string>
 

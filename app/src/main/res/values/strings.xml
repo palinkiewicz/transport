@@ -329,6 +329,8 @@
     <string name="settings_stops_from_zoom_note">Lower shows stops earlier when zooming out, at the cost of a denser map and larger responses.</string>
     <string name="settings_vehicles_from_zoom">Vehicles from zoom</string>
     <string name="settings_vehicles_from_zoom_note">Below this zoom no vehicles are fetched at all.</string>
+    <string name="settings_focus_vehicle">Focus on the selected vehicle</string>
+    <string name="settings_focus_vehicle_note">Selecting a vehicle shows only the stops on its route and hides the other vehicles.</string>
     <string name="settings_itinerary_stop_names">Itinerary stop names</string>
     <string name="settings_itinerary_stop_names_note">Labels the stops where you board and alight on the itinerary map.</string>
 

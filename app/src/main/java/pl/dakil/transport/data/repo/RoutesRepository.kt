@@ -72,6 +72,7 @@ class RoutesRepository @Inject constructor(
             ?: itinerary.legs.firstOrNull()
         val segments = itinerary.shapeSegments()
         TripDetails(
+            stops = itinerary.tripStops(),
             headsign = leg?.headsign,
             agencyName = leg?.agencyName,
             routeLongName = leg?.routeLongName,
@@ -107,6 +108,21 @@ class RoutesRepository @Inject constructor(
             segments = segments,
         )
     }
+
+    /**
+     * Every stop the run calls at, in order. Interlined runs come back as several legs sharing
+     * the stop they join at, so the list is deduplicated as it is built.
+     */
+    private fun ItineraryDto.tripStops(): List<TransitLocation> = legs
+        .flatMap { leg ->
+            buildList {
+                add(leg.from)
+                leg.intermediateStops?.let(::addAll)
+                add(leg.to)
+            }
+        }
+        .map { it.toTransitLocation() }
+        .distinctBy { it.favoriteKey }
 
     private fun ItineraryDto.shapeSegments(): List<List<GeoPoint>> = legs
         .mapNotNull { leg ->

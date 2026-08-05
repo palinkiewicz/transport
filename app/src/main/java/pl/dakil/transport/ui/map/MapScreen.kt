@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -207,7 +208,15 @@ fun MapScreen(
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     // Delegated on purpose: the map content lambda is composed once and never swapped, so the
     // layers below must read this through its State (a captured value would freeze at startup).
+    val stopsFocusedOnTrip by viewModel.stopsFocusedOnTrip.collectAsStateWithLifecycle()
+    // Following a run means its stops are the point of the view, so they ignore the
+    // stops-from-zoom floor the way the selection halo already does.
     val currentStopsMinZoom by viewModel.stopsMinZoom.collectAsStateWithLifecycle()
+    // Derived state, not a plain value: the layers below read this from inside the map content
+    // lambda, which captures values once — only a State read stays live.
+    val effectiveStopsMinZoom by remember {
+        derivedStateOf { if (stopsFocusedOnTrip) 0f else currentStopsMinZoom }
+    }
     val routeFrom by viewModel.routeFrom.collectAsStateWithLifecycle()
     val routeTo by viewModel.routeTo.collectAsStateWithLifecycle()
     val routeDraftVisible by viewModel.routeDraftVisible.collectAsStateWithLifecycle()
@@ -240,8 +249,9 @@ fun MapScreen(
     ) {
         when {
             filtersExpanded -> filtersExpanded = false
+            // Stop first, then the vehicle: with both open the stop panel is on top.
+            selectedStop != null -> viewModel.clearStopSelection()
             selectedVehicle != null -> viewModel.clearVehicleSelection()
-            selectedStop != null -> viewModel.clearSelection()
             // Abandoning the draft leaves the picks in the search form; only the bar goes away.
             else -> viewModel.hideRouteDraft()
         }
@@ -569,7 +579,7 @@ fun MapScreen(
                 CircleLayer(
                     id = "transport-stops",
                     source = stopsSource,
-                    minZoom = currentStopsMinZoom,
+                    minZoom = effectiveStopsMinZoom,
                     // Small dots while zoomed out, growing into icon-bearing pins by z16.
                     radius = interpolate(
                         linear(),
@@ -585,7 +595,7 @@ fun MapScreen(
                 SymbolLayer(
                     id = "transport-stop-icons",
                     source = stopsSource,
-                    minZoom = detailZoom(currentStopsMinZoom, STOP_ICONS_MIN_ZOOM),
+                    minZoom = detailZoom(effectiveStopsMinZoom, STOP_ICONS_MIN_ZOOM),
                     iconImage = markerIconImage,
                     // Scale the glyph together with the circle it sits on.
                     iconSize = interpolate(
@@ -599,7 +609,7 @@ fun MapScreen(
                 SymbolLayer(
                     id = "transport-stop-labels",
                     source = stopsSource,
-                    minZoom = detailZoom(currentStopsMinZoom, STOP_LABELS_MIN_ZOOM),
+                    minZoom = detailZoom(effectiveStopsMinZoom, STOP_LABELS_MIN_ZOOM),
                     textField = format(span(feature["name"].asString())),
                     // Must be a fontstack the style's glyph server actually serves (the library
                     // default 404s there); Roboto also matches the basemap's typography.
@@ -773,7 +783,7 @@ fun MapScreen(
                         routesState = stopRoutes,
                         isFavorite = favorites.containsLocation(stop),
                         onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
-                        onClose = { viewModel.clearSelection() },
+                        onClose = { viewModel.clearStopSelection() },
                         onOpenTimetable = {
                             viewModel.clearSelection()
                             onOpenTimetable(
@@ -792,11 +802,13 @@ fun MapScreen(
                 }
             }
 
-            // Same animate-out pattern for the vehicle panel.
+            // Same animate-out pattern for the vehicle panel. It gives way to the stop panel
+            // rather than stacking with it: tapping a stop of the followed run keeps the
+            // vehicle selected, so the two can now be open at once.
             var displayedVehicle by remember { mutableStateOf<VehicleMarker?>(null) }
             selectedVehicle?.let { displayedVehicle = it }
             AnimatedVisibility(
-                visible = selectedVehicle != null,
+                visible = selectedVehicle != null && selectedStop == null,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             ) {

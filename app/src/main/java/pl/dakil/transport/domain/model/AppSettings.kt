@@ -132,6 +132,12 @@ data class AppSettings(
     val showItineraryStopNames: Boolean = true,
 
     /**
+     * Whether selecting a vehicle narrows the map to that run alone: only its stops, and no
+     * other vehicles. Off, the map keeps showing everything in the viewport around it.
+     */
+    val focusSelectedVehicle: Boolean = true,
+
+    /**
      * Whether "Begin here"/"Finish here" keep the user on the map while the other end of the
      * route is still missing, instead of jumping to the Connections form after the first pick.
      */
