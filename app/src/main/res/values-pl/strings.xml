@@ -275,6 +275,7 @@
     <!-- Departures board -->
     <string name="departures_empty_title">Brak nadchodzących odjazdów</string>
     <string name="departures_empty_body">W najbliższym czasie z tego przystanku nic nie odjeżdża. Kursy mogły się już zakończyć na dziś.</string>
+    <string name="departures_empty_body_area">W najbliższym czasie z przystanków w pobliżu tego miejsca nic nie odjeżdża. Kursy mogły się już zakończyć na dziś.</string>
     <string name="departures_empty_action">Sprawdź ponownie</string>
     <string name="departures_group_default">Odjazdy</string>
     <string name="departures_group_towards">kierunek: %1$s</string>

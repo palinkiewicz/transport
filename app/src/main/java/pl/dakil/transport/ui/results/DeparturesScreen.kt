@@ -99,7 +99,13 @@ fun DeparturesScreen(
                 if (all.isEmpty()) {
                     EmptyBox(
                         title = stringResource(R.string.departures_empty_title),
-                        description = stringResource(R.string.departures_empty_body),
+                        description = stringResource(
+                            if (viewModel.clickedPoleStopId == null) {
+                                R.string.departures_empty_body_area
+                            } else {
+                                R.string.departures_empty_body
+                            },
+                        ),
                         modifier = Modifier.padding(innerPadding),
                         actionLabel = stringResource(R.string.departures_empty_action),
                         onAction = viewModel::refreshNow,
@@ -125,15 +131,21 @@ fun DeparturesScreen(
                             )
                         }
                         val groups = filtered.groupedByPole(viewModel.clickedPoleStopId)
+                        // Which stop a departure leaves from is only worth naming when the
+                        // board spans more than one — an around-a-point search, or a station
+                        // whose poles the feed names individually.
+                        val showStopNames = remember(groups) {
+                            viewModel.clickedPoleStopId == null || groups.distinctBy { it.stopName }.size > 1
+                        }
                         LazyColumn(
                             modifier = Modifier.fillMaxWidth(),
                             contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
                             groups.forEach { group ->
-                                item(key = "header-${group.poleStopId}") {
-                                    DepartureGroupHeader(group)
+                                item(key = "header-${group.key}") {
+                                    DepartureGroupHeader(group, showStopName = showStopNames)
                                 }
-                                items(group.departures.size, key = { "${group.poleStopId}-$it" }) { index ->
+                                items(group.departures.size, key = { "${group.key}-$it" }) { index ->
                                     val departure = group.departures[index]
                                     DepartureRow(
                                         departure = departure,
@@ -268,7 +280,7 @@ private fun countdownLabel(minutesUntil: Long, time: OffsetDateTime): String = w
  * wording stays translatable; the feed's own destination and platform names pass through.
  */
 @Composable
-private fun DepartureGroupHeader(group: DepartureGroup) {
+private fun DepartureGroupHeader(group: DepartureGroup, showStopName: Boolean) {
     val parts = buildList {
         if (group.headsigns.isNotEmpty()) {
             add(stringResource(R.string.departures_group_towards, group.headsigns.joinToString(" / ")))
@@ -283,11 +295,21 @@ private fun DepartureGroupHeader(group: DepartureGroup) {
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-        )
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            // The stop leads when it is in question — a board around a point, or a station
+            // whose poles the feed names separately — because it is what tells the poles apart.
+            if (showStopName) {
+                Text(
+                    text = group.stopName,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }

@@ -39,22 +39,33 @@ private val DeparturesUiState.hasDepartures: Boolean
  */
 data class DepartureGroup(
     val poleStopId: String?,
+    /** The pole's own stop name — several different ones show up in an around-a-point search. */
+    val stopName: String,
     /** Up to three distinct destinations served from this pole; empty when none are known. */
     val headsigns: List<String>,
     /** Platform/track, when the feed names one. */
     val track: String?,
     val departures: List<Departure>,
-)
+) {
+    /** Stable list key — [poleStopId] alone repeats across groups when a feed omits it. */
+    val key: String get() = poleStopId ?: stopName
+}
 
-/** Groups same-named-stop departures by direction pole, with [clickedPoleStopId]'s group first. */
+/**
+ * Groups same-named-stop departures by direction pole, with [clickedPoleStopId]'s group first.
+ *
+ * Falls back to the stop's name as the key when a feed omits the pole id: a search around a
+ * point covers several stops, and grouping them all under `null` would merge unrelated poles.
+ */
 fun List<Departure>.groupedByPole(clickedPoleStopId: String?): List<DepartureGroup> {
-    val byPole = groupBy { it.poleStopId }
+    val byPole = groupBy { it.poleStopId ?: it.stopName }
     return byPole.keys
         .sortedBy { key -> if (key == clickedPoleStopId) 0 else 1 }
         .map { key ->
             val group = byPole.getValue(key)
             DepartureGroup(
-                poleStopId = key,
+                poleStopId = group.first().poleStopId,
+                stopName = group.first().stopName,
                 headsigns = group.mapNotNull { it.headsign }.distinct().take(3),
                 track = group.firstNotNullOfOrNull { it.track },
                 departures = group,

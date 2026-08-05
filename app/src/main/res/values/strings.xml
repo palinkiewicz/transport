@@ -263,6 +263,7 @@
     <!-- Departures board -->
     <string name="departures_empty_title">No upcoming departures</string>
     <string name="departures_empty_body">Nothing is scheduled from this stop for the time being. Services may have finished for the day.</string>
+    <string name="departures_empty_body_area">Nothing is scheduled from the stops around this place for the time being. Services may have finished for the day.</string>
     <string name="departures_empty_action">Check again</string>
     <string name="departures_group_default">Departures</string>
     <string name="departures_group_towards">towards %1$s</string>
