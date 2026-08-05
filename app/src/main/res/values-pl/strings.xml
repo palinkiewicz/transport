@@ -190,6 +190,11 @@
     <string name="map_action_trip_timetable">Rozkład kursu</string>
     <string name="map_action_begin_here">Rozpocznij tutaj</string>
     <string name="map_action_finish_here">Zakończ tutaj</string>
+    <string name="map_route_draft_from_hint">Wybierz początek</string>
+    <string name="map_route_draft_to_hint">Wybierz cel</string>
+    <string name="map_route_draft_clear_from">Wyczyść początek</string>
+    <string name="map_route_draft_clear_to">Wyczyść cel</string>
+    <string name="map_route_draft_search">Szukaj</string>
     <string name="map_stop_lines_error">Nie udało się wczytać linii — %1$s</string>
     <string name="map_stop_lines_empty">Brak znanych linii dla tego przystanku</string>
     <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
@@ -321,6 +326,8 @@
     <string name="settings_remember_search">Zapamiętaj ostatnie wyszukiwanie</string>
     <string name="settings_remember_search_note">Ostatnie miejsce początkowe, docelowe i przystanek pozostają zapamiętane po ponownym uruchomieniu. Gdy opcja jest wyłączona, formularze są zawsze puste.</string>
     <string name="settings_remember_map">Zapamiętaj pozycję mapy</string>
+    <string name="settings_stay_on_map">Wyznaczanie trasy na mapie</string>
+    <string name="settings_stay_on_map_note">Po użyciu „Zacznij tutaj” lub „Zakończ tutaj” pozostaje na mapie, aby wybrać drugi koniec trasy. Wyłączone — od razu otwiera formularz połączeń.</string>
     <string name="settings_remember_map_note">Otwiera mapę w ostatnio przeglądanym miejscu zamiast widoku domyślnego.</string>
 
     <string name="settings_group_search">Wyszukiwanie i wyniki</string>

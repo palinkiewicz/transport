@@ -195,6 +195,12 @@ private fun GeneralGroup(settings: AppSettings, viewModel: SettingsViewModel) {
             supportingText = stringResource(R.string.settings_remember_search_note),
         )
         SwitchRow(
+            title = stringResource(R.string.settings_stay_on_map),
+            checked = settings.stayOnMapWhenPickingRoute,
+            onCheckedChange = { on -> viewModel.update { it.copy(stayOnMapWhenPickingRoute = on) } },
+            supportingText = stringResource(R.string.settings_stay_on_map_note),
+        )
+        SwitchRow(
             title = stringResource(R.string.settings_remember_map),
             checked = settings.rememberMapCamera,
             onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },

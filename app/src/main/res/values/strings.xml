@@ -182,6 +182,11 @@
     <string name="map_action_trip_timetable">Trip timetable</string>
     <string name="map_action_begin_here">Begin here</string>
     <string name="map_action_finish_here">Finish here</string>
+    <string name="map_route_draft_from_hint">Pick a start</string>
+    <string name="map_route_draft_to_hint">Pick a destination</string>
+    <string name="map_route_draft_clear_from">Clear start</string>
+    <string name="map_route_draft_clear_to">Clear destination</string>
+    <string name="map_route_draft_search">Search</string>
     <string name="map_stop_lines_error">Lines couldn\'t be loaded — %1$s</string>
     <string name="map_stop_lines_empty">No lines known for this stop</string>
     <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
@@ -305,6 +310,8 @@
     <string name="settings_remember_search">Remember last search</string>
     <string name="settings_remember_search_note">Your last from, to and departure stop survive a restart. Off, the forms start empty every time.</string>
     <string name="settings_remember_map">Remember map position</string>
+    <string name="settings_stay_on_map">Build routes on the map</string>
+    <string name="settings_stay_on_map_note">After "Begin here" or "Finish here", stay on the map to pick the other end. Off, the connections form opens right away.</string>
     <string name="settings_remember_map_note">Reopen the map where you left it instead of the default view.</string>
 
     <string name="settings_group_search">Search &amp; results</string>

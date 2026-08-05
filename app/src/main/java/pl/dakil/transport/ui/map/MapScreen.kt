@@ -69,7 +69,9 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.DpRect
@@ -206,16 +208,42 @@ fun MapScreen(
     // Delegated on purpose: the map content lambda is composed once and never swapped, so the
     // layers below must read this through its State (a captured value would freeze at startup).
     val currentStopsMinZoom by viewModel.stopsMinZoom.collectAsStateWithLifecycle()
+    val routeFrom by viewModel.routeFrom.collectAsStateWithLifecycle()
+    val routeTo by viewModel.routeTo.collectAsStateWithLifecycle()
+    val routeDraftVisible by viewModel.routeDraftVisible.collectAsStateWithLifecycle()
+    val stayOnMapWhenPickingRoute by viewModel.stayOnMapWhenPickingRoute.collectAsStateWithLifecycle()
 
     var filtersExpanded by rememberSaveable { mutableStateOf(false) }
 
+    /** Measured height of the route draft bar, so the compass can sit clear of it. */
+    var routeDraftHeight by remember { mutableStateOf(0.dp) }
+
+    /**
+     * Filling one end of the route from the map. Staying put is the point of the draft bar —
+     * the user is already looking at the other end — so the search form only opens once the
+     * route is complete (or when the setting turns the whole behaviour off).
+     */
+    fun pickRouteEndpoint(isStart: Boolean, stop: TransitLocation) {
+        viewModel.clearSelection()
+        if (isStart) viewModel.beginHere(stop) else viewModel.finishHere(stop)
+        val otherEnd = if (isStart) routeTo else routeFrom
+        if (!stayOnMapWhenPickingRoute || otherEnd != null) {
+            viewModel.hideRouteDraft()
+            onNavigateToConnections()
+        }
+    }
+
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
     // panel is open — instead of leaving the app from under a full-screen selection.
-    BackHandler(enabled = filtersExpanded || selectedVehicle != null || selectedStop != null) {
+    BackHandler(
+        enabled = filtersExpanded || selectedVehicle != null || selectedStop != null || routeDraftVisible,
+    ) {
         when {
             filtersExpanded -> filtersExpanded = false
             selectedVehicle != null -> viewModel.clearVehicleSelection()
-            else -> viewModel.clearSelection()
+            selectedStop != null -> viewModel.clearSelection()
+            // Abandoning the draft leaves the picks in the search form; only the bar goes away.
+            else -> viewModel.hideRouteDraft()
         }
     }
 
@@ -637,8 +665,10 @@ fun MapScreen(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.statusBars)
-                // Below the search bar (8dp gap + its 56dp height + 16dp spacing).
-                .padding(top = 80.dp, end = 16.dp),
+                // Below the search bar (8dp gap + its 56dp height + 16dp spacing), and below
+                // the route draft bar too — measured rather than assumed, so the compass rides
+                // the bar's expand/collapse animation instead of jumping once it settles.
+                .padding(top = 80.dp + routeDraftHeight, end = 16.dp),
         )
 
         Column(
@@ -653,6 +683,27 @@ fun MapScreen(
                     .fillMaxWidth()
                     .padding(start = 16.dp, top = 8.dp, end = 16.dp),
             )
+            val density = LocalDensity.current
+            AnimatedVisibility(
+                visible = routeDraftVisible,
+                modifier = Modifier.onSizeChanged { size ->
+                    routeDraftHeight = with(density) { size.height.toDp() }
+                },
+            ) {
+                MapRouteDraftBar(
+                    from = routeFrom,
+                    to = routeTo,
+                    onClearFrom = viewModel::clearRouteFrom,
+                    onClearTo = viewModel::clearRouteTo,
+                    onSearch = {
+                        viewModel.hideRouteDraft()
+                        onNavigateToConnections()
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+                )
+            }
             MapFiltersMenu(
                 filters = filters,
                 expanded = filtersExpanded,
@@ -735,16 +786,8 @@ fun MapScreen(
                                 ),
                             )
                         },
-                        onBeginHere = {
-                            viewModel.clearSelection()
-                            viewModel.beginHere(stop)
-                            onNavigateToConnections()
-                        },
-                        onFinishHere = {
-                            viewModel.clearSelection()
-                            viewModel.finishHere(stop)
-                            onNavigateToConnections()
-                        },
+                        onBeginHere = { pickRouteEndpoint(isStart = true, stop = stop) },
+                        onFinishHere = { pickRouteEndpoint(isStart = false, stop = stop) },
                     )
                 }
             }

@@ -488,9 +488,58 @@ class MapViewModel @Inject constructor(
         _stopRoutes.value = StopRoutesUiState.Hidden
     }
 
-    fun beginHere(location: TransitLocation) = searchStateHolder.setBeginHere(location)
+    /**
+     * The route being assembled on the map. These are the search form's own start and
+     * destination — filling one here is the same act as typing it there — so the draft bar is
+     * gated on [routeDraftVisible] rather than on them being set: the picks are persisted
+     * across restarts, and a bar that reappeared on launch would be showing last week's search.
+     */
+    val routeFrom: StateFlow<TransitLocation?> = searchStateHolder.from
 
-    fun finishHere(location: TransitLocation) = searchStateHolder.setFinishHere(location)
+    val routeTo: StateFlow<TransitLocation?> = searchStateHolder.to
+
+    private val _routeDraftVisible = MutableStateFlow(false)
+    val routeDraftVisible: StateFlow<Boolean> = _routeDraftVisible
+
+    /** Whether a half-built route keeps the user on the map instead of opening the search form. */
+    val stayOnMapWhenPickingRoute: StateFlow<Boolean> = settings
+        .map { it.stayOnMapWhenPickingRoute }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.Eagerly,
+            AppSettings.DEFAULT.stayOnMapWhenPickingRoute,
+        )
+
+    fun beginHere(location: TransitLocation) {
+        searchStateHolder.setBeginHere(location)
+        _routeDraftVisible.value = true
+    }
+
+    fun finishHere(location: TransitLocation) {
+        searchStateHolder.setFinishHere(location)
+        _routeDraftVisible.value = true
+    }
+
+    fun clearRouteFrom() {
+        searchStateHolder.clearBeginHere()
+        hideRouteDraftIfEmpty()
+    }
+
+    fun clearRouteTo() {
+        searchStateHolder.clearFinishHere()
+        hideRouteDraftIfEmpty()
+    }
+
+    /** Called when the draft leaves the map — the route is either searched or abandoned. */
+    fun hideRouteDraft() {
+        _routeDraftVisible.value = false
+    }
+
+    private fun hideRouteDraftIfEmpty() {
+        if (searchStateHolder.from.value == null && searchStateHolder.to.value == null) {
+            _routeDraftVisible.value = false
+        }
+    }
 
     private companion object {
         const val CAMERA_SAVE_DEBOUNCE_MILLIS = 1_000L

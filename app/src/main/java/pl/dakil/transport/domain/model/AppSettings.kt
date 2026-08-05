@@ -130,6 +130,12 @@ data class AppSettings(
 
     /** Whether the itinerary map labels the stops where you board and alight. */
     val showItineraryStopNames: Boolean = true,
+
+    /**
+     * Whether "Begin here"/"Finish here" keep the user on the map while the other end of the
+     * route is still missing, instead of jumping to the Connections form after the first pick.
+     */
+    val stayOnMapWhenPickingRoute: Boolean = true,
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 

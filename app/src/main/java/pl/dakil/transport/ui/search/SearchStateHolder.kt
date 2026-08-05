@@ -97,6 +97,14 @@ class SearchStateHolder @Inject constructor(
         to.value = location
     }
 
+    fun clearBeginHere() {
+        from.value = null
+    }
+
+    fun clearFinishHere() {
+        to.value = null
+    }
+
     fun setDepartureStop(location: TransitLocation) {
         departureStop.value = location
     }
