@@ -87,6 +87,23 @@
     <string name="mode_aerial_lift">Aerial lift</string>
     <string name="mode_other">Transit</string>
 
+    <!-- Names for a stop served by each mode, so a stop never reads the same as a vehicle -->
+    <string name="stop_generic">Stop</string>
+    <string name="stop_tram">Tram stop</string>
+    <string name="stop_subway">Subway station</string>
+    <string name="stop_ferry">Ferry terminal</string>
+    <string name="stop_airplane">Airport</string>
+    <string name="stop_bus">Bus stop</string>
+    <string name="stop_coach">Coach stop</string>
+    <string name="stop_rail">Train station</string>
+    <string name="stop_highspeed_rail">High-speed rail station</string>
+    <string name="stop_long_distance">Long-distance station</string>
+    <string name="stop_night_rail">Night train station</string>
+    <string name="stop_regional_rail">Regional rail station</string>
+    <string name="stop_suburban">Suburban rail station</string>
+    <string name="stop_funicular">Funicular station</string>
+    <string name="stop_aerial_lift">Aerial lift station</string>
+
     <!-- Transit categories the user filters by -->
     <string name="category_bus">Bus</string>
     <string name="category_tram">Tram</string>

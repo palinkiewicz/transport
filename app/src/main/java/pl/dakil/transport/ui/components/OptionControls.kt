@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
@@ -28,7 +30,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 /**
@@ -166,6 +170,12 @@ fun SwitchRow(
 /**
  * A single-select row of connected [ToggleButton]s (expressive segmented-button idiom),
  * each option weighted equally across the full width.
+ *
+ * Equal weights mean a segment gets whatever width the row has to give, not the width its label
+ * wants — with four options on a narrow row the default button padding leaves the label almost no
+ * space, and a clipped single line renders as nothing at all. So the padding is trimmed and the
+ * label auto-sizes down to [LABEL_MIN_FONT_SIZE] to fit what is left. Options whose names are too
+ * long to survive that shrinking belong in [SingleChoiceToggleFlow] instead.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -190,6 +200,7 @@ fun <T> SingleChoiceConnectedRow(
                     options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 },
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },
@@ -198,11 +209,23 @@ fun <T> SingleChoiceConnectedRow(
                     Icon(it(option), contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(6.dp))
                 }
-                Text(label(option), maxLines = 1)
+                Text(
+                    text = label(option),
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = LABEL_MIN_FONT_SIZE,
+                        maxFontSize = MaterialTheme.typography.labelLarge.fontSize,
+                        stepSize = 0.5.sp,
+                    ),
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
     }
 }
+
+/** Floor for [SingleChoiceConnectedRow]'s shrinking labels — below this they stop being readable. */
+private val LABEL_MIN_FONT_SIZE = 10.sp
 
 /**
  * A wrapping single-select flow of [ToggleButton]s. Unlike [SingleChoiceConnectedRow] the

@@ -984,7 +984,7 @@ private fun StopInfoPanel(
                 ) {
                     Icon(
                         imageVector = if (isPoint) Icons.Default.Place else mode.icon,
-                        contentDescription = stringResource(if (isPoint) R.string.label_place else mode.labelRes),
+                        contentDescription = stringResource(if (isPoint) R.string.label_place else mode.stopLabelRes),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
@@ -999,7 +999,9 @@ private fun StopInfoPanel(
                     val subtitle = if (isPoint) {
                         stop.areaLabel ?: formatCoordinates(stop.lat, stop.lon)
                     } else {
-                        stop.primaryMode?.let { stringResource(it.labelRes) }
+                        // The place, not the mode: "Bus stop", not "Bus" — otherwise a selected
+                        // stop reads exactly like a selected vehicle of the same mode.
+                        stop.primaryMode?.let { stringResource(it.stopLabelRes) }
                     }
                     subtitle?.let {
                         Text(

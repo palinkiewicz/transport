@@ -65,7 +65,6 @@ import pl.dakil.transport.domain.model.DefaultTab
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
-import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.components.SingleChoiceToggleFlow
 import pl.dakil.transport.ui.components.SteppedSliderRow
 import pl.dakil.transport.ui.components.SwitchRow
@@ -209,7 +208,9 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
     SettingsGroup(title = stringResource(R.string.settings_group_search), icon = Icons.Default.Search) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text(stringResource(R.string.settings_connection_times), style = MaterialTheme.typography.titleSmall)
-            SingleChoiceConnectedRow(
+            // Wrapping flow like the opening-screen choice above: "Door to door" is far too long
+            // to share one row with the other mode without being cut off.
+            SingleChoiceToggleFlow(
                 options = ConnectionTimesMode.entries,
                 selected = settings.connectionTimesMode,
                 onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },

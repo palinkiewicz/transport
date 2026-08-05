@@ -93,6 +93,23 @@
     <string name="mode_aerial_lift">Kolej linowa</string>
     <string name="mode_other">Inny transport</string>
 
+    <!-- Names for a stop served by each mode, so a stop never reads the same as a vehicle -->
+    <string name="stop_generic">Przystanek</string>
+    <string name="stop_tram">Przystanek tramwajowy</string>
+    <string name="stop_subway">Stacja metra</string>
+    <string name="stop_ferry">Przystań promowa</string>
+    <string name="stop_airplane">Lotnisko</string>
+    <string name="stop_bus">Przystanek autobusowy</string>
+    <string name="stop_coach">Przystanek autokarowy</string>
+    <string name="stop_rail">Stacja kolejowa</string>
+    <string name="stop_highspeed_rail">Stacja kolei dużych prędkości</string>
+    <string name="stop_long_distance">Stacja dalekobieżna</string>
+    <string name="stop_night_rail">Stacja pociągów nocnych</string>
+    <string name="stop_regional_rail">Stacja kolei regionalnej</string>
+    <string name="stop_suburban">Stacja kolei podmiejskiej</string>
+    <string name="stop_funicular">Stacja kolei linowo-terenowej</string>
+    <string name="stop_aerial_lift">Stacja kolei linowej</string>
+
     <!-- Transit categories the user filters by -->
     <string name="category_bus">Autobus</string>
     <string name="category_tram">Tramwaj</string>
@@ -213,7 +230,7 @@
     <string name="via_field_label">Przystanek pośredni</string>
     <string name="via_remove">Usuń przystanek %1$d</string>
     <string name="via_minimum_stay">Minimalny czas pobytu</string>
-    <string name="via_stay_pass">Tylko przejazd</string>
+    <string name="via_stay_pass">Przejazd</string>
     <string name="via_pass_through_note">Wystarczy tylko przejechać — pozostanie w tym samym pojazdzie się liczy, więc przesiadka nie jest wymagana.</string>
     <plurals name="via_stopover_note">
         <item quantity="one">Wymusza postój przez co najmniej %1$d minutę.</item>
