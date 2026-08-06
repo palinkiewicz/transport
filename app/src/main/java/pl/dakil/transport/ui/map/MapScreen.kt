@@ -265,8 +265,9 @@ fun MapScreen(
                 PackageManager.PERMISSION_GRANTED,
         )
     }
-    // Starts true so the map centers on the user as soon as a fix is available after app entry.
-    var pendingLocateMe by remember { mutableStateOf(true) }
+    // Only ever set by the locate-me button: on entry the camera restores the stored position
+    // instead, so auto-centering on the user would throw that restored position away.
+    var pendingLocateMe by remember { mutableStateOf(false) }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions(),
@@ -298,7 +299,7 @@ fun MapScreen(
     val searchCameraTarget by viewModel.searchCameraTarget.collectAsStateWithLifecycle()
     LaunchedEffect(searchCameraTarget) {
         searchCameraTarget?.let { location ->
-            // Stop the entry-time locate-me animation from overriding the searched location.
+            // Stop an in-flight locate-me animation from overriding the searched location.
             pendingLocateMe = false
             cameraState.animateTo(
                 CameraPosition(
