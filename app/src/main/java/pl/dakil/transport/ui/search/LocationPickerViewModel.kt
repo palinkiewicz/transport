@@ -104,7 +104,7 @@ class LocationPickerViewModel @Inject constructor(
                 after = vias + to
             }
             PickerTarget.TO -> {
-                before = (vias + from).reversed()
+                before = (listOf(from) + vias).reversed()
                 after = emptyList()
             }
             PickerTarget.VIA -> {
