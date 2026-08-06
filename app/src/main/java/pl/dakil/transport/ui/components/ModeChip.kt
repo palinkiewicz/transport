@@ -39,19 +39,19 @@ fun parseRouteColor(hex: String?, fallback: Color): Color {
 fun ModeChip(
     mode: TransportMode,
     label: String,
-    routeColorHex: String? = null,
+    /** Already resolved — see [rememberLineColors]; the badge only decides its own contrast. */
+    containerColor: Color = mode.color,
     modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
     /** Announced for the tap target; ignored when [onClick] is null. */
     clickLabel: String? = null,
 ) {
-    val background = parseRouteColor(routeColorHex, mode.color)
-    val onColor = if (background.luminance() > 0.5f) Color.Black else Color.White
+    val onColor = if (containerColor.luminance() > 0.5f) Color.Black else Color.White
     val shape = RoundedCornerShape(8.dp)
     Box(
         modifier = modifier
             .clip(shape)
-            .background(background, shape)
+            .background(containerColor, shape)
             .then(
                 if (onClick != null) {
                     Modifier.clickable(onClickLabel = clickLabel, onClick = onClick)

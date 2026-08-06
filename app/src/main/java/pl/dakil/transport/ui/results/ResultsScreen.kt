@@ -58,11 +58,14 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.LoadingBox
+import pl.dakil.transport.ui.components.LineColorMap
+import pl.dakil.transport.ui.components.LineColorRequest
+import pl.dakil.transport.ui.components.lineColorKey
+import pl.dakil.transport.ui.components.rememberLineColorGroups
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.refreshSubtitle
-import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.components.rememberTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -119,6 +122,19 @@ fun ResultsScreen(
                         onAction = viewModel::refreshNow,
                     )
                 } else {
+                    // One group per card: legs are neighbours within a journey, but two
+                    // journeys sitting next to each other in the list are not a sequence.
+                    val lineColors = rememberLineColorGroups(
+                        state.result.journeys.map { journey ->
+                            journey.legs.filter { it.isTransit }.map { leg ->
+                                LineColorRequest(
+                                    key = lineColorKey(leg.mode, leg.lineLabel),
+                                    serverHex = leg.routeColor,
+                                    fallback = leg.mode.color,
+                                )
+                            }
+                        },
+                    )
                     LazyColumn(
                         modifier = Modifier
                             .padding(innerPadding)
@@ -140,6 +156,7 @@ fun ResultsScreen(
                                 fromName = viewModel.fromName,
                                 toName = viewModel.toName,
                                 timesMode = timesMode,
+                                lineColors = lineColors,
                                 onClick = { onJourneySelected(index) },
                             )
                         }
@@ -166,6 +183,7 @@ private fun JourneyCard(
     fromName: String,
     toName: String,
     timesMode: ConnectionTimesMode,
+    lineColors: LineColorMap,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -212,7 +230,7 @@ private fun JourneyCard(
                 )
             }
 
-            LegTimelineBar(journey)
+            LegTimelineBar(journey, lineColors)
 
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -222,7 +240,11 @@ private fun JourneyCard(
             ) {
                 journey.firstMileLeg?.let { AccessLegDistance(it) }
                 journey.legs.filter { it.isTransit }.forEach { leg ->
-                    ModeChip(mode = leg.mode, label = leg.lineLabel, routeColorHex = leg.routeColor)
+                    ModeChip(
+                        mode = leg.mode,
+                        label = leg.lineLabel,
+                        containerColor = lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color),
+                    )
                 }
                 if (journey.legs.none { it.isTransit }) {
                     ModeChip(
@@ -267,7 +289,7 @@ private fun JourneyCard(
  * colored by route/mode (walk legs in a muted tone) — a glanceable shape of the trip.
  */
 @Composable
-private fun LegTimelineBar(journey: Journey) {
+private fun LegTimelineBar(journey: Journey, lineColors: LineColorMap) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -277,7 +299,7 @@ private fun LegTimelineBar(journey: Journey) {
     ) {
         journey.legs.forEach { leg ->
             val color = if (leg.isTransit) {
-                parseRouteColor(leg.routeColor, leg.mode.color)
+                lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
             }

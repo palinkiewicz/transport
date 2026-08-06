@@ -91,6 +91,34 @@ enum class ConnectionTimesMode(@param:StringRes val labelRes: Int) {
 }
 
 /**
+ * Where a line's colour comes from on the list screens. The map always uses the server's colours:
+ * markers and route overlays have no "next line" order to hand a palette out along.
+ */
+@Serializable
+enum class LineColorMode(@param:StringRes val labelRes: Int) {
+    /** The colours the operator publishes, exactly as the API sends them. */
+    TRANSITOUS(R.string.line_colors_transitous),
+
+    /** Only [AppSettings.palette], handed out in the order lines first appear on a screen. */
+    CUSTOM(R.string.line_colors_custom),
+
+    /** Operator colours, except where two neighbouring lines would look the same. */
+    AUTO(R.string.line_colors_auto),
+}
+
+/** The user-definable colour set [LineColorMode.CUSTOM] and [LineColorMode.AUTO] draw from. */
+object LinePalette {
+    const val SIZE = 6
+
+    /**
+     * Material-expressive mid-tones, pairwise far enough apart that the [LineColorMode.AUTO]
+     * similarity test never has to reject one of its own entries. Every entry is also offered by
+     * the settings picker, so the swatch being edited shows up as the selected one.
+     */
+    val DEFAULT = listOf("6750A4", "00658F", "006D3B", "9A4B00", "B3261E", "984061")
+}
+
+/**
  * Everything the Settings screen tunes, persisted as one JSON blob. New fields must have
  * defaults so previously stored values keep decoding.
  */
@@ -143,8 +171,28 @@ data class AppSettings(
      * route is still missing, instead of jumping to the Connections form after the first pick.
      */
     val stayOnMapWhenPickingRoute: Boolean = true,
+
+    /** Where the list screens take their line colours from. */
+    val lineColorMode: LineColorMode = LineColorMode.TRANSITOUS,
+
+    /** The user's own colour set, as GTFS-shaped `RRGGBB` hex. Read it through [palette]. */
+    val customLineColors: List<String> = LinePalette.DEFAULT,
 ) {
     val isDefault: Boolean get() = this == DEFAULT
+
+    /**
+     * [customLineColors] normalised to exactly [LinePalette.SIZE] usable entries. A stored blob
+     * predating a palette resize (or hand-edited) would otherwise index out of bounds — unlike a
+     * bad enum name, a wrong-length list is not something `coerceInputValues` repairs.
+     */
+    val palette: List<String>
+        get() = List(LinePalette.SIZE) { index ->
+            customLineColors.getOrNull(index)?.takeIf { it.isNotBlank() } ?: LinePalette.DEFAULT[index]
+        }
+
+    /** Whether both line-colour fields still hold their defaults, for the group's reset button. */
+    val lineColorsAreDefault: Boolean
+        get() = lineColorMode == DEFAULT.lineColorMode && customLineColors == DEFAULT.customLineColors
 
     companion object {
         val DEFAULT = AppSettings()

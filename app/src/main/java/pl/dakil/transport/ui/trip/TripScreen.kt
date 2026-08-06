@@ -30,12 +30,14 @@ import pl.dakil.transport.domain.model.lastPassedIndex
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LoadingBox
+import pl.dakil.transport.ui.components.LineColorRequest
+import pl.dakil.transport.ui.components.lineColorKey
+import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
-import pl.dakil.transport.ui.components.parseRouteColor
 
 /** Timetable of a single vehicle run: every stop on the route with live times. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -49,6 +51,18 @@ fun TripScreen(
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    // One line on the whole screen, so it has no neighbour to clash with: AUTO comes out as the
+    // operator's colour and CUSTOM as the first palette entry.
+    val colorKey = lineColorKey(viewModel.mode, viewModel.lineLabel)
+    val lineColor = rememberLineColors(
+        listOf(
+            LineColorRequest(
+                key = colorKey,
+                serverHex = viewModel.routeColor,
+                fallback = viewModel.mode.color,
+            ),
+        ),
+    ).of(colorKey, viewModel.mode.color)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -56,7 +70,7 @@ fun TripScreen(
             LargeFlexibleTopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ModeChip(mode = viewModel.mode, label = viewModel.lineLabel, routeColorHex = viewModel.routeColor)
+                        ModeChip(mode = viewModel.mode, label = viewModel.lineLabel, containerColor = lineColor)
                         viewModel.headsign?.let {
                             Text(it, maxLines = 1)
                         }
@@ -84,7 +98,6 @@ fun TripScreen(
                 onRetry = viewModel::refreshNow,
             )
             is TripUiState.Content -> {
-                val railColor = parseRouteColor(viewModel.routeColor, viewModel.mode.color)
                 val now = rememberTickingNow()
                 LazyColumn(
                     modifier = Modifier
@@ -107,7 +120,7 @@ fun TripScreen(
                     }
                     tripTimetable(
                         stops = state.stops,
-                        railColor = railColor,
+                        railColor = lineColor,
                         currentIndex = state.stops.lastPassedIndex(now),
                         // The trip's own stop id is the pole the vehicle calls at, so the
                         // board opens with this direction's group already on top.

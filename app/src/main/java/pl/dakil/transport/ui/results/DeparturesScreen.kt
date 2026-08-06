@@ -48,6 +48,10 @@ import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
+import pl.dakil.transport.ui.components.LineColorMap
+import pl.dakil.transport.ui.components.LineColorRequest
+import pl.dakil.transport.ui.components.lineColorKey
+import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.components.RefreshButton
@@ -131,6 +135,19 @@ fun DeparturesScreen(
                             )
                         }
                         val groups = filtered.groupedByPole(viewModel.clickedPoleStopId)
+                        // Flattened in draw order, so "neighbouring lines" means what it looks
+                        // like on screen rather than what the API happened to return.
+                        val lineColors = rememberLineColors(
+                            groups.flatMap { group ->
+                                group.departures.map { departure ->
+                                    LineColorRequest(
+                                        key = lineColorKey(departure.mode, departure.lineLabel),
+                                        serverHex = departure.routeColor,
+                                        fallback = departure.mode.color,
+                                    )
+                                }
+                            },
+                        )
                         // Which stop a departure leaves from is only worth naming when the
                         // board spans more than one — an around-a-point search, or a station
                         // whose poles the feed names individually.
@@ -149,6 +166,7 @@ fun DeparturesScreen(
                                     val departure = group.departures[index]
                                     DepartureRow(
                                         departure = departure,
+                                        lineColors = lineColors,
                                         onClick = departure.tripId?.let { tripId ->
                                             {
                                                 onDepartureSelected(
@@ -201,7 +219,7 @@ private fun LineFilterRow(
 }
 
 @Composable
-private fun DepartureRow(departure: Departure, onClick: (() -> Unit)?) {
+private fun DepartureRow(departure: Departure, lineColors: LineColorMap, onClick: (() -> Unit)?) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -210,7 +228,14 @@ private fun DepartureRow(departure: Departure, onClick: (() -> Unit)?) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ModeChip(mode = departure.mode, label = departure.lineLabel, routeColorHex = departure.routeColor)
+        ModeChip(
+            mode = departure.mode,
+            label = departure.lineLabel,
+            containerColor = lineColors.of(
+                lineColorKey(departure.mode, departure.lineLabel),
+                departure.mode.color,
+            ),
+        )
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = departure.headsign ?: "",

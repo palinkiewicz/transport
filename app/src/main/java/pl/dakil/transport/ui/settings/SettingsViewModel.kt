@@ -41,4 +41,11 @@ class SettingsViewModel @Inject constructor(
     fun resetAll() = update { AppSettings.DEFAULT }
 
     fun resetMotion() = update { it.copy(vehicleMotion = VehicleMotionSettings.DEFAULT) }
+
+    fun resetLineColors() = update {
+        it.copy(
+            lineColorMode = AppSettings.DEFAULT.lineColorMode,
+            customLineColors = AppSettings.DEFAULT.customLineColors,
+        )
+    }
 }

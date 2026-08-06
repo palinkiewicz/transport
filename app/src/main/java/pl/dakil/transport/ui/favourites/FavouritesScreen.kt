@@ -43,6 +43,10 @@ import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LocationListItem
+import pl.dakil.transport.ui.components.LineColorMap
+import pl.dakil.transport.ui.components.LineColorRequest
+import pl.dakil.transport.ui.components.lineColorKey
+import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.navigation.ResultsRoute
 import pl.dakil.transport.ui.navigation.TripRoute
@@ -103,6 +107,15 @@ fun FavouritesScreen(
                 )
             }
         } else {
+            val lineColors = rememberLineColors(
+                favorites.lines.map { line ->
+                    LineColorRequest(
+                        key = lineColorKey(line.mode, line.label),
+                        serverHex = line.routeColor,
+                        fallback = line.mode.color,
+                    )
+                },
+            )
             LazyColumn(
                 modifier = Modifier
                     .padding(innerPadding)
@@ -157,6 +170,7 @@ fun FavouritesScreen(
                         val line = favorites.lines[index]
                         LineListItem(
                             line = line,
+                            lineColors = lineColors,
                             onClick = { onOpenTrip(line.toTripRoute()) },
                             onRemove = { viewModel.removeLine(line) },
                             modifier = Modifier.animateItem(),
@@ -245,6 +259,7 @@ private fun ConnectionListItem(
 @Composable
 private fun LineListItem(
     line: FavoriteLine,
+    lineColors: LineColorMap,
     onClick: () -> Unit,
     onRemove: () -> Unit,
     modifier: Modifier = Modifier,
@@ -260,7 +275,11 @@ private fun LineListItem(
         },
         supportingContent = { Text(stringResource(line.mode.labelRes)) },
         leadingContent = {
-            ModeChip(mode = line.mode, label = line.label, routeColorHex = line.routeColor)
+            ModeChip(
+                mode = line.mode,
+                label = line.label,
+                containerColor = lineColors.of(lineColorKey(line.mode, line.label), line.mode.color),
+            )
         },
         trailingContent = { FavoriteButton(isFavorite = true, onToggle = onRemove) },
         colors = ListItemDefaults.colors(containerColor = Color.Transparent),

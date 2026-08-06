@@ -324,6 +324,20 @@
     <string name="connection_times_door_to_door">Door to door</string>
     <string name="connection_times_both">Both</string>
 
+    <string name="settings_group_line_colors">Line colours</string>
+    <string name="settings_line_colors">Line colour source</string>
+    <string name="line_colors_transitous">Transitous</string>
+    <string name="line_colors_custom">Custom</string>
+    <string name="line_colors_auto">Automatic</string>
+    <string name="settings_line_colors_note_transitous">Lines keep the colours their operator publishes, exactly as the server sends them.</string>
+    <string name="settings_line_colors_note_custom">Lines use your own colours instead, handed out in the order they appear on screen.</string>
+    <string name="settings_line_colors_note_auto">Operator colours are kept, except where two lines next to each other would look the same — those fall back to your own colours.</string>
+    <string name="settings_line_colors_palette">Your colours</string>
+    <string name="settings_line_colors_palette_note">Tap a colour to change it. Lines take them in this order, starting again from the first once all six are used.</string>
+    <string name="settings_line_color_swatch">Colour %1$d</string>
+    <string name="settings_line_color_pick">Pick a colour</string>
+    <string name="settings_line_color_selected">Selected</string>
+
     <string name="settings_group_map_detail">Map detail</string>
     <string name="settings_stops_from_zoom">Stops from zoom</string>
     <string name="settings_stops_from_zoom_note">Lower shows stops earlier when zooming out, at the cost of a denser map and larger responses.</string>

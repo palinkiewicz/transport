@@ -340,6 +340,20 @@
     <string name="connection_times_door_to_door">Od drzwi do drzwi</string>
     <string name="connection_times_both">Oba</string>
 
+    <string name="settings_group_line_colors">Kolory linii</string>
+    <string name="settings_line_colors">Źródło kolorów linii</string>
+    <string name="line_colors_transitous">Transitous</string>
+    <string name="line_colors_custom">Własne</string>
+    <string name="line_colors_auto">Automatycznie</string>
+    <string name="settings_line_colors_note_transitous">Linie zachowują kolory publikowane przez przewoźnika, dokładnie takie, jakie przysyła serwer.</string>
+    <string name="settings_line_colors_note_custom">Linie używają Twoich kolorów, przydzielanych w kolejności pojawiania się na ekranie.</string>
+    <string name="settings_line_colors_note_auto">Kolory przewoźnika są zachowane poza miejscami, w których dwie sąsiadujące linie wyglądałyby tak samo — te dostają Twoje kolory.</string>
+    <string name="settings_line_colors_palette">Twoje kolory</string>
+    <string name="settings_line_colors_palette_note">Dotknij koloru, aby go zmienić. Linie biorą je w tej kolejności, wracając do pierwszego po wykorzystaniu wszystkich sześciu.</string>
+    <string name="settings_line_color_swatch">Kolor %1$d</string>
+    <string name="settings_line_color_pick">Wybierz kolor</string>
+    <string name="settings_line_color_selected">Wybrany</string>
+
     <string name="settings_group_map_detail">Szczegółowość mapy</string>
     <string name="settings_stops_from_zoom">Przystanki od poziomu przybliżenia</string>
     <string name="settings_stops_from_zoom_note">Niższa wartość pokazuje przystanki przy mniejszym zbliżeniu mapy, kosztem większego zagęszczenia ikon i większych odpowiedzi z serwera.</string>

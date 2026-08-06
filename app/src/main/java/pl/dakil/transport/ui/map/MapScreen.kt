@@ -1197,7 +1197,13 @@ private fun StopInfoPanel(
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
                 ) {
                     routesState.routes.forEach { route ->
-                        ModeChip(mode = route.mode, label = route.lineLabel, routeColorHex = route.routeColor)
+                        // The map keeps the feed's colours in every mode: markers and overlays have
+                        // no draw order to hand a palette out along.
+                        ModeChip(
+                            mode = route.mode,
+                            label = route.lineLabel,
+                            containerColor = parseRouteColor(route.routeColor, route.mode.color),
+                        )
                     }
                 }
                 is StopRoutesUiState.Error -> Text(

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,16 +20,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -50,9 +58,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -62,9 +74,11 @@ import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.DefaultTab
+import pl.dakil.transport.domain.model.LineColorMode
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
+import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.components.SingleChoiceToggleFlow
 import pl.dakil.transport.ui.components.SteppedSliderRow
 import pl.dakil.transport.ui.components.SwitchRow
@@ -109,6 +123,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             // interpolation tuning last (and collapsed).
             GeneralGroup(settings, viewModel)
             SearchAndResultsGroup(settings, viewModel)
+            LineColorsGroup(settings, viewModel)
             MapDetailGroup(settings, viewModel)
             DataRefreshGroup(settings, viewModel)
             VehicleMotionGroup(settings, viewModel)
@@ -235,6 +250,138 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
             supportingText = stringResource(R.string.settings_sort_by_distance_note),
         )
     }
+}
+
+/**
+ * Where line badges take their colour from, and the palette the two non-server modes draw on.
+ * Only the list screens honour this — see [pl.dakil.transport.ui.components.rememberLineColors].
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun LineColorsGroup(settings: AppSettings, viewModel: SettingsViewModel) {
+    var editingIndex by rememberSaveable { mutableStateOf<Int?>(null) }
+    val palette = settings.palette
+
+    SettingsGroup(
+        title = stringResource(R.string.settings_group_line_colors),
+        icon = Icons.Default.Palette,
+        onReset = viewModel::resetLineColors.takeIf { !settings.lineColorsAreDefault },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(R.string.settings_line_colors), style = MaterialTheme.typography.titleSmall)
+            SingleChoiceToggleFlow(
+                options = LineColorMode.entries,
+                selected = settings.lineColorMode,
+                onSelect = { mode -> viewModel.update { it.copy(lineColorMode = mode) } },
+                label = { stringResource(it.labelRes) },
+            )
+            // One note per mode rather than one paragraph covering all three: what the selected
+            // mode does is the only thing worth reading here.
+            Text(
+                text = stringResource(
+                    when (settings.lineColorMode) {
+                        LineColorMode.TRANSITOUS -> R.string.settings_line_colors_note_transitous
+                        LineColorMode.CUSTOM -> R.string.settings_line_colors_note_custom
+                        LineColorMode.AUTO -> R.string.settings_line_colors_note_auto
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        // Transitous never reads the palette, so offering it there is noise.
+        AnimatedVisibility(visible = settings.lineColorMode != LineColorMode.TRANSITOUS) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(stringResource(R.string.settings_line_colors_palette), style = MaterialTheme.typography.titleSmall)
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    palette.forEachIndexed { index, hex ->
+                        val description = stringResource(R.string.settings_line_color_swatch, index + 1)
+                        Surface(
+                            onClick = { editingIndex = index },
+                            shape = CircleShape,
+                            color = parseRouteColor(hex, MaterialTheme.colorScheme.surfaceVariant),
+                            modifier = Modifier
+                                .size(44.dp)
+                                .semantics { contentDescription = description },
+                        ) {}
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.settings_line_colors_palette_note),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    editingIndex?.let { index ->
+        ColorPresetDialog(
+            selected = palette[index],
+            onPick = { hex ->
+                viewModel.update { current ->
+                    current.copy(customLineColors = current.palette.toMutableList().also { it[index] = hex })
+                }
+                editingIndex = null
+            },
+            onDismiss = { editingIndex = null },
+        )
+    }
+}
+
+/**
+ * Twelve hue families in two tones each — enough range to build a readable set of six without
+ * asking anyone to reason about hex, and every entry mid-toned so a badge's black-or-white label
+ * stays legible on it.
+ */
+private val LINE_COLOR_PRESETS = listOf(
+    "B3261E", "E46962", "9A4B00", "D97706", "8B6B00", "C9A227",
+    "4C6B1F", "7CB342", "006D3B", "3FA96A", "00696D", "00A5A8",
+    "00658F", "3AA0CC", "1A56DB", "5B8DEF", "3730A3", "6D63D6",
+    "6750A4", "9A82DB", "8E24AA", "B85FCB", "984061", "C7809A",
+)
+
+@Composable
+private fun ColorPresetDialog(selected: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
+    val selectedLabel = stringResource(R.string.settings_line_color_selected)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.settings_line_color_pick)) },
+        text = {
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(6),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(LINE_COLOR_PRESETS.size) { index ->
+                    val hex = LINE_COLOR_PRESETS[index]
+                    val color = parseRouteColor(hex, MaterialTheme.colorScheme.surfaceVariant)
+                    Surface(
+                        onClick = { onPick(hex) },
+                        shape = CircleShape,
+                        color = color,
+                        modifier = Modifier.size(40.dp),
+                    ) {
+                        if (hex.equals(selected, ignoreCase = true)) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = selectedLabel,
+                                    tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 @Composable
