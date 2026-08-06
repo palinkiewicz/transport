@@ -123,8 +123,9 @@ data class AppSettings(
     val rememberMapCamera: Boolean = true,
 
     /**
-     * Whether destination suggestions are re-ranked by distance from the start point (or the
-     * current position when no start is set) instead of keeping the server's own ranking.
+     * Whether location suggestions are re-ranked by distance from the neighbouring point on the
+     * route being built — the previous stop, or the next one when the route has nothing before
+     * it, falling back to the current position — instead of keeping the server's own ranking.
      */
     val sortSuggestionsByDistance: Boolean = true,
 

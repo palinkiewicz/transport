@@ -77,14 +77,43 @@ class LocationPickerViewModel @Inject constructor(
         locationService.lastKnownLocation()?.let { GeoPoint(it.lat, it.lon) }
 
     /**
-     * What "near" means for this pick: when choosing a destination for a journey that already
-     * has a start, it is that start — the trip is measured from there, not from wherever the
-     * phone happens to be. Everything else falls back to the current position. Drives the
+     * What "near" means for this pick: the route point next to the one being filled — the leg
+     * is measured from there, not from wherever the phone happens to be. The route reads
+     * `from → vias… → to`, so a pick is measured against its neighbour on the way in, or, when
+     * that end of the route is still empty, its neighbour on the way out. Everything else (and
+     * a route with nothing else filled in) falls back to the current position. Drives the
      * geocoder's bias, the distances shown, and the optional distance sort.
      */
-    private val referencePosition: GeoPoint? = when (target) {
-        PickerTarget.TO -> searchStateHolder.from.value?.let { GeoPoint(it.lat, it.lon) } ?: userPosition
-        else -> userPosition
+    private val referencePosition: GeoPoint? = routeNeighbour()?.let { GeoPoint(it.lat, it.lon) } ?: userPosition
+
+    /**
+     * The already-picked location adjacent to the slot being filled, if any. Read once at
+     * construction: the form cannot change while the picker is on top of it.
+     */
+    private fun routeNeighbour(): TransitLocation? {
+        val from = searchStateHolder.from.value
+        val to = searchStateHolder.to.value
+        val vias = searchStateHolder.vias.value.map { it.location }
+        // The whole route in travel order, with the slot being filled left out of its own
+        // neighbourhood (an unfilled "Add stop" slot sits past the end of the list).
+        val before: List<TransitLocation?>
+        val after: List<TransitLocation?>
+        when (target) {
+            PickerTarget.FROM -> {
+                before = emptyList()
+                after = vias + to
+            }
+            PickerTarget.TO -> {
+                before = (vias + from).reversed()
+                after = emptyList()
+            }
+            PickerTarget.VIA -> {
+                before = (listOf(from) + vias.take(viaIndex)).reversed()
+                after = vias.drop(viaIndex + 1) + to
+            }
+            else -> return null
+        }
+        return before.firstOrNull { it != null } ?: after.firstOrNull { it != null }
     }
 
     /**
