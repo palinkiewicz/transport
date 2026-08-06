@@ -361,7 +361,15 @@ class MapViewModel @Inject constructor(
      */
     private val motionTracker = VehicleMotionTracker()
 
-    val vehicles: StateFlow<List<VehicleMarker>> =
+    /**
+     * The drawn markers and the selected vehicle's marker come out of **one** frame, computed in
+     * a single loop through the same [motionTracker]. The selection used to run its own loop off
+     * its own timer and skip the tracker entirely, which put the halo, info panel and camera
+     * focus at a different position than the marker they belong to: the two loops sampled
+     * different instants, and only the drawn marker got the tracker's monotonic clamping, so
+     * every delay revision (i.e. every fetch) pulled them apart. Keep them in one frame.
+     */
+    private val vehicleFrames: StateFlow<VehicleFrame> =
         combine(
             vehicleSegments,
             filters,
@@ -370,66 +378,71 @@ class MapViewModel @Inject constructor(
             focusSelectedVehicle,
         ) { segments, filters, motion, selected, focus ->
             val tripKey = selected?.firstOrNull()?.tripKey
+            // The selected trip tracks live positions independently of the viewport fetches:
+            // freshly fetched segments when they still cover it, the selection snapshot
+            // otherwise. Fetches only span a ~minute window, so once they stop renewing the
+            // trip (panned/zoomed away) the marker freezes at its last known position rather
+            // than disappearing — only deselection closes the panel, like the selected stop.
+            val selectedSegments = tripKey?.let { key ->
+                segments.filter { it.tripKey == key }.ifEmpty { selected }
+            }
             val visible = if (focus && tripKey != null) {
-                // Only the followed run. Falls back to the selection snapshot once the viewport
-                // fetches stop covering the trip, so the marker being followed never blinks out.
-                segments.filter { it.tripKey == tripKey }.ifEmpty { selected }
+                // Only the followed run, so the marker being followed never blinks out.
+                selectedSegments.orEmpty()
             } else {
                 segments.filter(filters::matchesVehicle)
             }
-            visible to motion
+            FrameInput(visible, selectedSegments, tripKey, motion)
         }
-            .flatMapLatest { (segments, motion) ->
-                if (segments.isEmpty()) {
-                    motionTracker.reset()
-                    flowOf(emptyList())
+            .flatMapLatest { input ->
+                // The selected trip may be filtered out of the drawn set; it still has to be in
+                // the tracker's frame so its halo reads the same corrected position.
+                val selectedIsVisible = input.visible.any { it.tripKey == input.tripKey }
+                val all = if (input.selectedSegments != null && !selectedIsVisible) {
+                    input.visible + input.selectedSegments
                 } else {
-                    flow {
-                        while (true) {
-                            emit(motionTracker.frame(frameTargets(segments, OffsetDateTime.now()), motion))
-                            delay(motion.frameIntervalMillis.toLong())
-                        }
-                    }
+                    input.visible
                 }
-            }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
-    val selectedStop: StateFlow<TransitLocation?> = _selectedStop
-
-    /**
-     * Marker of the selected vehicle, tracking its live position independently of the
-     * viewport fetches (refreshed from them whenever they still cover the trip). Fetches only
-     * cover a ~minute time window, so once they stop renewing the trip (panned/zoomed away)
-     * the marker freezes at the snapshot's last known position rather than disappearing —
-     * only deselection closes the panel, matching the selected stop's behavior.
-     */
-    val selectedVehicle: StateFlow<VehicleMarker?> =
-        combine(selectedVehicleSegments, vehicleSegments, motionSettings) { selected, fetched, motion ->
-            val tripKey = selected?.firstOrNull()?.tripKey
-            val segments = if (tripKey == null) null else {
-                fetched.filter { it.tripKey == tripKey }.ifEmpty { selected }
-            }
-            segments to motion
-        }
-            .flatMapLatest { (segments, motion) ->
-                if (segments == null) {
-                    flowOf<VehicleMarker?>(null)
+                if (all.isEmpty()) {
+                    motionTracker.reset()
+                    flowOf(VehicleFrame())
                 } else {
                     flow {
                         while (true) {
                             val now = OffsetDateTime.now()
+                            val markers = motionTracker.frame(frameTargets(all, now), input.motion)
                             emit(
-                                frameTargets(segments, now).firstOrNull()?.marker
-                                    // Past the segments' time coverage: hold the last position.
-                                    ?: segments.maxByOrNull { it.arrival }?.markerAt(now),
+                                VehicleFrame(
+                                    visible = if (selectedIsVisible) {
+                                        markers
+                                    } else {
+                                        markers.filterNot { it.id == input.tripKey }
+                                    },
+                                    selected = input.tripKey?.let { key ->
+                                        markers.firstOrNull { it.id == key }
+                                        // Past the segments' time coverage: hold the last position.
+                                            ?: input.selectedSegments?.maxByOrNull { it.arrival }?.markerAt(now)
+                                    },
+                                ),
                             )
-                            delay(motion.frameIntervalMillis.toLong())
+                            delay(input.motion.frameIntervalMillis.toLong())
                         }
                     }
                 }
             }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), VehicleFrame())
+
+    val vehicles: StateFlow<List<VehicleMarker>> = vehicleFrames
+        .map { it.visible }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val _selectedStop = MutableStateFlow<TransitLocation?>(null)
+    val selectedStop: StateFlow<TransitLocation?> = _selectedStop
+
+    /** Marker of the selected vehicle, at exactly the position it is drawn at. */
+    val selectedVehicle: StateFlow<VehicleMarker?> = vehicleFrames
+        .map { it.selected }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     private var vehicleDetailsJob: Job? = null
 
@@ -619,6 +632,20 @@ private data class TrackedTrip(val segments: List<VehicleSegment>, val lastSeenM
  * wins; a vehicle between segments (dwelling at a stop) sits at its next segment's start.
  * The positions are unsmoothed — [VehicleMotionTracker] turns them into what is drawn.
  */
+/** One frame of vehicle motion: what gets drawn, plus the selected vehicle from the same instant. */
+private data class VehicleFrame(
+    val visible: List<VehicleMarker> = emptyList(),
+    val selected: VehicleMarker? = null,
+)
+
+/** What a frame loop is started with — everything the loop needs, resolved once per input change. */
+private data class FrameInput(
+    val visible: List<VehicleSegment>,
+    val selectedSegments: List<VehicleSegment>?,
+    val tripKey: String?,
+    val motion: VehicleMotionSettings,
+)
+
 private fun frameTargets(segments: List<VehicleSegment>, time: OffsetDateTime): List<VehicleFrameTarget> =
     segments.groupBy { it.tripKey }.mapNotNull { (_, tripSegments) ->
         val current = tripSegments.firstOrNull { time >= it.departure && time <= it.arrival }
