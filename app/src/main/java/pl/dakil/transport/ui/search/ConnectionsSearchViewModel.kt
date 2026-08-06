@@ -76,6 +76,10 @@ class ConnectionsSearchViewModel @Inject constructor(
 
     fun swapFromTo() = searchStateHolder.swapFromTo()
 
+    fun clearFrom() = searchStateHolder.clearBeginHere()
+
+    fun clearTo() = searchStateHolder.clearFinishHere()
+
     fun setViaMinimumStay(index: Int, minutes: Int) =
         searchStateHolder.setViaMinimumStay(index, minutes)
 

@@ -5,6 +5,7 @@
     <string name="action_back">Wstecz</string>
     <string name="action_close">Zamknij</string>
     <string name="action_clear">Wyczyść</string>
+    <string name="action_clear_field">Wyczyść pole: %1$s</string>
     <string name="action_reset">Zresetuj</string>
     <string name="action_reset_all">Zresetuj wszystko</string>
     <string name="action_ok">OK</string>

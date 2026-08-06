@@ -125,6 +125,10 @@ class SearchStateHolder @Inject constructor(
         departureStop.value = location
     }
 
+    fun clearDepartureStop() {
+        departureStop.value = null
+    }
+
     fun setMapLocation(location: TransitLocation) {
         pendingMapLocation.value = location
     }

@@ -81,6 +81,8 @@ fun ConnectionsSearchScreen(
                 onRemoveVia = viewModel::removeVia,
                 onViaMinimumStayChange = viewModel::setViaMinimumStay,
                 onSwap = viewModel::swapFromTo,
+                onClearFrom = viewModel::clearFrom,
+                onClearTo = viewModel::clearTo,
             )
 
             // Explains why Search is disabled; the route card itself gives no hint that the
@@ -178,6 +180,8 @@ private fun RouteCard(
     onRemoveVia: (index: Int) -> Unit,
     onViaMinimumStayChange: (index: Int, minutes: Int) -> Unit,
     onSwap: () -> Unit,
+    onClearFrom: () -> Unit,
+    onClearTo: () -> Unit,
 ) {
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -199,6 +203,7 @@ private fun RouteCard(
                     value = uiState.from?.name,
                     onClick = onPickFrom,
                     modifier = Modifier.weight(1f),
+                    onClear = onClearFrom,
                 )
             }
 
@@ -252,6 +257,7 @@ private fun RouteCard(
                     value = uiState.to?.name,
                     onClick = onPickTo,
                     modifier = Modifier.weight(1f),
+                    onClear = onClearTo,
                 )
             }
         }

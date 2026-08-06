@@ -29,7 +29,7 @@ data class DeparturesUiState(
  */
 @HiltViewModel
 class DeparturesSearchViewModel @Inject constructor(
-    searchStateHolder: SearchStateHolder,
+    private val searchStateHolder: SearchStateHolder,
     private val searchOptionsRepository: SearchOptionsRepository,
 ) : ViewModel() {
 
@@ -50,6 +50,8 @@ class DeparturesSearchViewModel @Inject constructor(
             searchOptionsRepository.options.collect { options.value = it }
         }
     }
+
+    fun clearStop() = searchStateHolder.clearDepartureStop()
 
     /** Applies [transform] to the current options and persists the result. */
     fun updateOptions(transform: (SearchOptions) -> SearchOptions) {

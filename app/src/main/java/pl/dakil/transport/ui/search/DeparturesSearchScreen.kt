@@ -81,6 +81,7 @@ fun DeparturesSearchScreen(
                         value = uiState.stop?.name,
                         onClick = onPickStop,
                         modifier = Modifier.weight(1f),
+                        onClear = viewModel::clearStop,
                     )
                 }
             }
