@@ -67,7 +67,6 @@ fun AppNavHost(startDestinationViewModel: StartDestinationViewModel = hiltViewMo
             composable<MapRoute> {
                 MapScreen(
                     onOpenTimetable = { route -> navController.navigate(route) },
-                    onOpenTrip = { route -> navController.navigate(route) },
                     onNavigateToConnections = { navController.navigateToTab(ConnectionsRoute) },
                     onOpenLocationSearch = {
                         navController.navigate(LocationPickerRoute(PickerTarget.MAP))

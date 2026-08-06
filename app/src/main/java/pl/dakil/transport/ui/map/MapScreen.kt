@@ -22,11 +22,14 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,6 +78,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
@@ -82,13 +87,20 @@ import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlin.time.Duration.Companion.milliseconds
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import org.maplibre.compose.camera.CameraMoveReason
 import org.maplibre.compose.camera.CameraPosition
+import org.maplibre.compose.camera.CameraProjection
 import org.maplibre.compose.camera.rememberCameraState
 import org.maplibre.compose.expressions.dsl.asString
 import org.maplibre.compose.expressions.dsl.case
@@ -129,6 +141,7 @@ import org.maplibre.spatialk.geojson.LineString
 import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.R
+import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
@@ -140,7 +153,9 @@ import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
-import pl.dakil.transport.ui.navigation.TripRoute
+import pl.dakil.transport.domain.model.lastPassedIndex
+import pl.dakil.transport.ui.trip.rememberTickingNow
+import pl.dakil.transport.ui.trip.tripTimetable
 
 // The mode palette, glyph keys and stroke live in MapMarkers.kt — shared with the itinerary's
 // route map so a stop looks like the same object wherever the app draws one.
@@ -186,11 +201,30 @@ private fun detailZoom(stopsMinZoom: Float, defaultZoom: Float): Float =
  */
 private val PICKED_POINT_COLOR = Color(0xFF78909C)
 
+/** Share of the map the selected vehicle's panel may take before its timetable scrolls. */
+private const val VEHICLE_PANEL_MAX_MAP_FRACTION = 0.4f
+
+/** How long the camera takes to reach a freshly selected vehicle. */
+private val FOLLOW_CENTER_DURATION = 500.milliseconds
+
+/** Longest the viewport may go unreported while the camera never settles. */
+private const val VIEWPORT_HEARTBEAT_MILLIS = 30_000L
+
+/**
+ * Camera target that puts [vehicle] in the middle of the map a panel of [panelHeight] leaves
+ * visible: the camera aims half a panel *below* the vehicle, which lifts the vehicle by the
+ * same amount. Done in screen space rather than with `CameraPosition.padding`, which MapLibre
+ * applies in one step at the end of an animation instead of animating into it.
+ */
+private fun CameraProjection.targetCentering(vehicle: GeoPoint, panelHeight: Dp): Position {
+    val onScreen = screenLocationFromPosition(Position(latitude = vehicle.lat, longitude = vehicle.lon))
+    return positionFromScreenLocation(DpOffset(onScreen.x, onScreen.y + panelHeight / 2))
+}
+
 @OptIn(kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun MapScreen(
     onOpenTimetable: (DepartureBoardRoute) -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
     onNavigateToConnections: () -> Unit,
     onOpenLocationSearch: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
@@ -224,8 +258,20 @@ fun MapScreen(
 
     var filtersExpanded by rememberSaveable { mutableStateOf(false) }
 
+    val density = LocalDensity.current
+
     /** Measured height of the route draft bar, so the compass can sit clear of it. */
     var routeDraftHeight by remember { mutableStateOf(0.dp) }
+
+    /** Measured height of the map itself, which the vehicle panel is sized against. */
+    var mapHeight by remember { mutableStateOf(0.dp) }
+
+    /**
+     * The part of the map the vehicle panel hides. Its ceiling, not its measured height: the
+     * panel grows as the trip's details land, and following a live height would shunt the map
+     * mid-follow every time it did.
+     */
+    val vehiclePanelHeight = mapHeight * VEHICLE_PANEL_MAX_MAP_FRACTION
 
     /**
      * Filling one end of the route from the map. Staying put is the point of the draft bar —
@@ -319,17 +365,68 @@ fun MapScreen(
     val currentSelectedVehicle by rememberUpdatedState(selectedVehicle)
 
     LaunchedEffect(cameraState) {
-        snapshotFlow { cameraState.isCameraMoving }
-            .debounce(400)
-            .filter { moving -> !moving }
-            .collect {
-                // The ViewModel gates stop/vehicle fetches on zoom itself.
-                val bbox = cameraState.projection?.queryVisibleBoundingBox()
-                if (bbox != null) {
-                    viewModel.onViewportSettled(
-                        bbox.south, bbox.west, bbox.north, bbox.east,
-                        zoom = cameraState.position.zoom,
-                    )
+        merge(
+            snapshotFlow { cameraState.isCameraMoving }
+                .debounce(400)
+                .filter { moving -> !moving },
+            // Following a vehicle keeps the camera in near-constant motion, so it would
+            // otherwise never settle and the viewport would go stale — taking the followed
+            // trip's own segment fetches down with it. A standing viewport re-reports the same
+            // box, which the ViewModel discards, so this costs nothing when nothing moves.
+            flow {
+                while (true) {
+                    delay(VIEWPORT_HEARTBEAT_MILLIS)
+                    emit(false)
+                }
+            },
+        ).collect {
+            // The ViewModel gates stop/vehicle fetches on zoom itself.
+            val bbox = cameraState.projection?.queryVisibleBoundingBox()
+            if (bbox != null) {
+                viewModel.onViewportSettled(
+                    bbox.south, bbox.west, bbox.north, bbox.east,
+                    zoom = cameraState.position.zoom,
+                )
+            }
+        }
+    }
+
+    // Selecting a vehicle hands the camera over to it until the user takes it back. The
+    // followed vehicle is centred in the map the panel leaves visible, not in the map as a
+    // whole — that is what CameraPosition.padding shifts.
+    var followingVehicle by remember { mutableStateOf(false) }
+    val followedVehicleId = selectedVehicle?.id
+    LaunchedEffect(followedVehicleId) { followingVehicle = followedVehicleId != null }
+
+    // One pan or pinch of the user's own ends the follow at once, mid-animation included.
+    LaunchedEffect(followingVehicle) {
+        if (!followingVehicle) return@LaunchedEffect
+        snapshotFlow { cameraState.position to cameraState.moveReason }
+            .drop(1)
+            .first { (_, reason) -> reason == CameraMoveReason.GESTURE }
+        followingVehicle = false
+    }
+
+    LaunchedEffect(followingVehicle) {
+        if (!followingVehicle) return@LaunchedEffect
+        val projection = cameraState.awaitProjection()
+        // The first move is an animation — the vehicle is wherever it was tapped. After that
+        // its marker is redrawn many times a second, so the camera is set outright instead of
+        // queueing animations that would each land after the marker had moved on again.
+        var centered = false
+        snapshotFlow { selectedVehicle?.position to vehiclePanelHeight }
+            .collect { (position, panelHeight) ->
+                // Until the panel has been measured there is nothing to aim at: centring on the
+                // whole map first would land the vehicle short and snap it up a frame later.
+                if (position == null || panelHeight <= 0.dp) return@collect
+                val camera = cameraState.position.copy(
+                    target = projection.targetCentering(position, panelHeight),
+                )
+                if (centered) {
+                    cameraState.position = camera
+                } else {
+                    centered = true
+                    cameraState.animateTo(camera, duration = FOLLOW_CENTER_DURATION)
                 }
             }
     }
@@ -352,7 +449,11 @@ fun MapScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onSizeChanged { size -> mapHeight = with(density) { size.height.toDp() } },
+    ) {
         MaplibreMap(
             modifier = Modifier.fillMaxSize(),
             baseStyle = styleJson?.let { BaseStyle.Json(it) }
@@ -694,7 +795,6 @@ fun MapScreen(
                     .fillMaxWidth()
                     .padding(start = 16.dp, top = 8.dp, end = 16.dp),
             )
-            val density = LocalDensity.current
             AnimatedVisibility(
                 visible = routeDraftVisible,
                 modifier = Modifier.onSizeChanged { size ->
@@ -830,20 +930,7 @@ fun MapScreen(
                             ?.let(favorites::containsLine),
                         onToggleFavorite = { favoriteLine?.let(viewModel::toggleFavoriteLine) },
                         onClose = { viewModel.clearVehicleSelection() },
-                        onOpenTrip = vehicle.tripId?.let { tripId ->
-                            {
-                                viewModel.clearVehicleSelection()
-                                onOpenTrip(
-                                    TripRoute(
-                                        tripId = tripId,
-                                        lineLabel = vehicle.label,
-                                        headsign = destination,
-                                        modeName = vehicle.mode.name,
-                                        routeColor = vehicle.routeColor,
-                                    ),
-                                )
-                            }
-                        },
+                        maxHeight = vehiclePanelHeight,
                     )
                 }
             }
@@ -883,7 +970,10 @@ private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
 
 /**
  * Inline info panel for a tapped vehicle, mirroring [StopInfoPanel]. Shows the trip's
- * attributes as they load ([detailsState]) and opens the full trip timetable.
+ * attributes and its timetable as they load ([detailsState]).
+ *
+ * The panel is capped at half the screen so the map above it stays usable; the header stays
+ * put and only the timetable scrolls, which is also why it is not draggable/expandable.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -896,15 +986,23 @@ private fun VehicleInfoPanel(
     isFavorite: Boolean?,
     onToggleFavorite: () -> Unit,
     onClose: () -> Unit,
-    onOpenTrip: (() -> Unit)?,
+    /** Ceiling on the whole panel, so the map keeps the bigger share of the screen. */
+    maxHeight: Dp,
 ) {
+    val timetable = (detailsState as? VehicleDetailsUiState.Shown)?.details?.timetable.orEmpty()
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         tonalElevation = 3.dp,
         shadowElevation = 8.dp,
     ) {
-        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+        Column(
+            modifier = Modifier
+                .heightIn(max = maxHeight)
+                // The timetable runs to the panel's edge: its rows carry their own padding, and
+                // a gap below the last visible one reads as the list having stopped scrolling.
+                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = if (timetable.isEmpty()) 12.dp else 0.dp),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Same colored-circle look as the vehicle's marker on the map.
                 Box(
@@ -985,15 +1083,25 @@ private fun VehicleInfoPanel(
                 }
             }
 
-            if (onOpenTrip != null) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 4.dp, end = 8.dp),
+            if (timetable.isNotEmpty()) {
+                val now = rememberTickingNow()
+                val currentIndex = timetable.lastPassedIndex(now)
+                val listState = rememberLazyListState()
+                // Open on where the vehicle is now rather than at the run's first stop.
+                LaunchedEffect(timetable.first().place.favoriteKey) {
+                    if (currentIndex > 0) listState.scrollToItem(currentIndex)
+                }
+                LazyColumn(
+                    state = listState,
+                    // fill = false so a short run keeps the panel short instead of stretching it.
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .padding(top = 4.dp, end = 8.dp),
                 ) {
-                    PanelActionButton(
-                        stringResource(R.string.map_action_trip_timetable),
-                        Icons.Default.Schedule,
-                        onOpenTrip,
+                    tripTimetable(
+                        stops = timetable,
+                        railColor = parseRouteColor(vehicle.routeColor, markerColor(vehicle.mode)),
+                        currentIndex = currentIndex,
                     )
                 }
             }

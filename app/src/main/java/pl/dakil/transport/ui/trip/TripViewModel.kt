@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -22,21 +21,10 @@ import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.FavoriteLine
-import pl.dakil.transport.domain.model.Journey
-import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.TripStop
+import pl.dakil.transport.domain.model.toTripStops
 import pl.dakil.transport.ui.results.REFRESH_INTERVAL_SECONDS
-
-/** One row of a trip's timetable. */
-data class TripStop(
-    /** The stop itself — its id and coordinates are what open its departure board. */
-    val place: TransitLocation,
-    val time: OffsetDateTime,
-    val scheduledTime: OffsetDateTime,
-    val track: String?,
-) {
-    val name: String get() = place.name
-}
 
 sealed interface TripUiState {
     data object Loading : TripUiState
@@ -51,21 +39,6 @@ sealed interface TripUiState {
 
 /** Collapses per-leg amenity flags into one value for the whole run (null when no leg reports). */
 private fun List<Boolean>.allOrNull(): Boolean? = takeIf { it.isNotEmpty() }?.all { it }
-
-/** Flattens the trip itinerary (joined interlined legs) into a single ordered stop list. */
-fun Journey.toTripStops(): List<TripStop> = buildList {
-    val transitLegs = legs.filter { it.isTransit }
-    transitLegs.forEachIndexed { index, leg ->
-        if (index == 0) {
-            add(TripStop(leg.fromPlace, leg.startTime, leg.scheduledStartTime, leg.fromTrack))
-        }
-        leg.intermediateStops.forEach { stop ->
-            val arrival = stop.arrivalTime ?: return@forEach
-            add(TripStop(stop.place, arrival, stop.scheduledArrivalTime ?: arrival, stop.track))
-        }
-        add(TripStop(leg.toPlace, leg.endTime, leg.scheduledEndTime, leg.toTrack))
-    }
-}
 
 @HiltViewModel
 class TripViewModel @Inject constructor(

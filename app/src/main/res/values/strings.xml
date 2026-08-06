@@ -180,7 +180,6 @@
     <string name="map_locate_me">Locate me</string>
     <string name="map_attribution">Data: transitous.org</string>
     <string name="map_action_timetable">Timetable</string>
-    <string name="map_action_trip_timetable">Trip timetable</string>
     <string name="map_action_begin_here">Begin here</string>
     <string name="map_action_finish_here">Finish here</string>
     <string name="map_route_draft_from_hint">Pick a start</string>

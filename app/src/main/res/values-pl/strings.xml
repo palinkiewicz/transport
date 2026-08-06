@@ -188,7 +188,6 @@
     <string name="map_locate_me">Moja lokalizacja</string>
     <string name="map_attribution">Dane: transitous.org</string>
     <string name="map_action_timetable">Rozkład jazdy</string>
-    <string name="map_action_trip_timetable">Rozkład kursu</string>
     <string name="map_action_begin_here">Rozpocznij tutaj</string>
     <string name="map_action_finish_here">Zakończ tutaj</string>
     <string name="map_route_draft_from_hint">Wybierz początek</string>

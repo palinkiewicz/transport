@@ -254,7 +254,11 @@ class MapViewModel @Inject constructor(
             if (!focus || selected == null) {
                 emptyList()
             } else {
-                (details as? VehicleDetailsUiState.Shown)?.details?.stops.orEmpty()
+                // Interlined runs call at the joint stop twice; the map only wants one marker.
+                (details as? VehicleDetailsUiState.Shown)?.details?.timetable
+                    .orEmpty()
+                    .map { it.place }
+                    .distinctBy { it.favoriteKey }
             }
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())

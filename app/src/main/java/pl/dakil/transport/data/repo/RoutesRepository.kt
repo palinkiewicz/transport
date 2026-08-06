@@ -18,6 +18,7 @@ import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.domain.model.TripDetails
+import pl.dakil.transport.domain.model.toTripStops
 
 /** How many upcoming departures to sample when discovering which lines serve a stop. */
 private const val DEPARTURES_SAMPLE_SIZE = 48
@@ -72,7 +73,7 @@ class RoutesRepository @Inject constructor(
             ?: itinerary.legs.firstOrNull()
         val segments = itinerary.shapeSegments()
         TripDetails(
-            stops = itinerary.tripStops(),
+            timetable = itinerary.toDomain().toTripStops(),
             headsign = leg?.headsign,
             agencyName = leg?.agencyName,
             routeLongName = leg?.routeLongName,
@@ -108,21 +109,6 @@ class RoutesRepository @Inject constructor(
             segments = segments,
         )
     }
-
-    /**
-     * Every stop the run calls at, in order. Interlined runs come back as several legs sharing
-     * the stop they join at, so the list is deduplicated as it is built.
-     */
-    private fun ItineraryDto.tripStops(): List<TransitLocation> = legs
-        .flatMap { leg ->
-            buildList {
-                add(leg.from)
-                leg.intermediateStops?.let(::addAll)
-                add(leg.to)
-            }
-        }
-        .map { it.toTransitLocation() }
-        .distinctBy { it.favoriteKey }
 
     private fun ItineraryDto.shapeSegments(): List<List<GeoPoint>> = legs
         .mapNotNull { leg ->
