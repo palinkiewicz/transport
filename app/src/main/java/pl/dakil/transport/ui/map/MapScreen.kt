@@ -97,6 +97,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.sample
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.maplibre.compose.camera.CameraMoveReason
@@ -213,6 +214,13 @@ private val FOLLOW_CENTER_DURATION = 500.milliseconds
 
 /** Longest the viewport may go unreported while the camera never settles. */
 private const val VIEWPORT_HEARTBEAT_MILLIS = 30_000L
+
+/**
+ * How often the moving camera's box is handed to the cached-stop read. Roughly every few frames:
+ * often enough that stops keep up with a pan, rare enough that a fling is a handful of disk
+ * reads rather than one per frame.
+ */
+private const val LIVE_VIEWPORT_SAMPLE_MILLIS = 100L
 
 /**
  * Camera target that puts [vehicle] in the middle of the map a panel of [panelHeight] leaves
@@ -427,6 +435,22 @@ fun MapScreen(
                 )
             }
         }
+    }
+
+    // The cached half of the same story: where the camera is *now*, reported without waiting for
+    // it to settle, so stops already on disk are drawn while the finger is still moving rather
+    // than popping in 400 ms after it lifts. This never triggers a request — the settled
+    // viewport above remains the only thing that does.
+    LaunchedEffect(cameraState) {
+        snapshotFlow { cameraState.position }
+            .sample(LIVE_VIEWPORT_SAMPLE_MILLIS)
+            .collect {
+                val bbox = cameraState.projection?.queryVisibleBoundingBox() ?: return@collect
+                viewModel.onViewportChanged(
+                    bbox.south, bbox.west, bbox.north, bbox.east,
+                    zoom = cameraState.position.zoom,
+                )
+            }
     }
 
     // Selecting a vehicle hands the camera over to it until the user takes it back. The

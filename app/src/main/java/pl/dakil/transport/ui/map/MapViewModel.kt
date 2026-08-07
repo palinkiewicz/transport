@@ -35,9 +35,11 @@ import pl.dakil.transport.data.prefs.MapFiltersRepository
 import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.GeocodeRepository
+import pl.dakil.transport.data.local.Bbox
+import pl.dakil.transport.data.local.TileGrid
 import pl.dakil.transport.data.repo.MapStyleRepository
+import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.RoutesRepository
-import pl.dakil.transport.data.repo.StopsRepository
 import pl.dakil.transport.data.repo.VehiclesRepository
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.AppSettings
@@ -61,7 +63,49 @@ data class Viewport(
     val north: Double,
     val east: Double,
     val zoom: Double,
+) {
+    fun toBbox(): Bbox = Bbox(south = south, west = west, north = north, east = east)
+}
+
+/** What a cached-stop read was asked for, so an unchanged one can be skipped. */
+private data class CacheReadRequest(
+    val viewport: Viewport,
+    val minZoom: Float,
+    val ttlMillis: Long,
+    val showExpired: Boolean,
+    val generation: Int,
 )
+
+/**
+ * Stops read from the cache, with the box they were read for.
+ *
+ * [box] is wider than the viewport that triggered the read, so the map keeps drawing stops into
+ * the space a pan uncovers instead of waiting for a query per frame.
+ */
+private data class LoadedStops(
+    val box: Bbox?,
+    val stops: List<TransitLocation>,
+    val request: CacheReadRequest?,
+) {
+    fun covers(viewport: Bbox): Boolean {
+        val box = box ?: return false
+        return viewport.south >= box.south && viewport.north <= box.north &&
+            viewport.west >= box.west && viewport.east <= box.east
+    }
+
+    /** Whether [other] would be read the same way — same freshness rules, same cache contents. */
+    fun matches(other: CacheReadRequest): Boolean {
+        val request = request ?: return false
+        return request.minZoom == other.minZoom &&
+            request.ttlMillis == other.ttlMillis &&
+            request.showExpired == other.showExpired &&
+            request.generation == other.generation
+    }
+
+    companion object {
+        val EMPTY = LoadedStops(box = null, stops = emptyList(), request = null)
+    }
+}
 
 /** One vehicle's marker on the map: its interpolated position at a moment in time. */
 data class VehicleMarker(
@@ -111,7 +155,7 @@ sealed interface StopRoutesUiState {
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
 class MapViewModel @Inject constructor(
-    private val stopsRepository: StopsRepository,
+    private val placeCacheRepository: PlaceCacheRepository,
     private val geocodeRepository: GeocodeRepository,
     private val routesRepository: RoutesRepository,
     private val vehiclesRepository: VehiclesRepository,
@@ -151,7 +195,14 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch { favoritesRepository.toggleLine(line) }
     }
 
+    /** The camera's box once it has settled. Everything that costs a request keys off this. */
     private val viewport = MutableStateFlow<Viewport?>(null)
+
+    /**
+     * The camera's box as it moves, reported without waiting for it to settle. Read only by the
+     * cached-stop query, which never touches the network — see [cacheReads].
+     */
+    private val liveViewport = MutableStateFlow<Viewport?>(null)
 
     /**
      * Where the camera starts. Null while it is being read: the camera state is built once at
@@ -273,18 +324,106 @@ class MapViewModel @Inject constructor(
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val allStops: StateFlow<List<TransitLocation>> =
-        combine(viewport.filterNotNull(), settings.map { it.stopsMinZoom }.distinctUntilChanged()) { vp, minZoom ->
-            vp to minZoom
+    /**
+     * The stops the map is holding, and the padded box they were read for.
+     *
+     * Read from disk and kept a good margin wider than the screen, so a pan inside that margin
+     * needs no query at all and the stops simply extend as the map moves. Written by
+     * [cacheReads] below and, indirectly, by every successful refresh.
+     */
+    private val loadedStops = MutableStateFlow(LoadedStops.EMPTY)
+
+    /** Bumped after a refresh writes to the cache, to make the disk read run again. */
+    private val cacheGeneration = MutableStateFlow(0)
+
+    /**
+     * Reads cached stops for wherever the camera is *right now* — no settling, no network.
+     *
+     * This is what makes the map feel native rather than web-shaped: the stops for an area the
+     * app has seen before are already on disk, so they can be drawn while the finger is still
+     * moving. [liveViewport] deliberately updates during the gesture; the settled [viewport]
+     * next door is what decides whether anything is fetched.
+     */
+    private val cacheReads: Flow<Unit> =
+        combine(
+            liveViewport.filterNotNull(),
+            settings.map { it.stopsMinZoom }.distinctUntilChanged(),
+            settings.map { it.offlineCache }.distinctUntilChanged(),
+            cacheGeneration,
+        ) { vp, minZoom, cache, generation ->
+            CacheReadRequest(vp, minZoom, cache.stopCacheTtlMillis, cache.showExpiredCache, generation)
         }
-            .distinctUntilChanged()
-            .mapLatest { (vp, minZoom) ->
-                if (vp.zoom < minZoom) {
-                    emptyList()
-                } else {
-                    stopsRepository.stopsInViewport(vp.south, vp.west, vp.north, vp.east).getOrDefault(emptyList())
+            .mapLatest { request ->
+                val box = request.viewport.toBbox()
+                // Below the zoom where stops are drawn there is nothing to prepare, and a box
+                // that wide would read a whole country's worth of rows to throw them away.
+                if (request.viewport.zoom < request.minZoom) {
+                    loadedStops.value = LoadedStops.EMPTY
+                    return@mapLatest
                 }
+                val current = loadedStops.value
+                // Still inside the margin the last read covered, and nothing about how the cache
+                // should be interpreted has changed: the stops on screen are already right.
+                if (current.covers(box) && current.matches(request)) return@mapLatest
+
+                val padded = box.inflated(CACHE_READ_PADDING)
+                val area = placeCacheRepository.stopsIn(padded, request.ttlMillis, System.currentTimeMillis())
+                loadedStops.value = LoadedStops(
+                    box = padded,
+                    stops = if (request.showExpired) area.stops else area.stopsExcludingExpired(),
+                    request = request,
+                )
             }
+
+    /** Whether the last refresh of the visible area failed, i.e. the map is running on cache. */
+    private val _stopsOffline = MutableStateFlow(false)
+    val stopsOffline: StateFlow<Boolean> = _stopsOffline
+
+    /**
+     * Refreshes the areas of a settled viewport that the cache has never seen, or has held past
+     * its TTL. Only the missing tiles are asked for, merged into as few rectangles as possible,
+     * so panning back over familiar ground costs no request at all.
+     */
+    private val stopFetches: Flow<Unit> =
+        combine(
+            viewport.filterNotNull(),
+            settings.map { it.stopsMinZoom }.distinctUntilChanged(),
+            settings.map { it.offlineCache.stopCacheTtlMillis }.distinctUntilChanged(),
+        ) { vp, minZoom, ttl -> Triple(vp, minZoom, ttl) }
+            .distinctUntilChanged()
+            .mapLatest { (vp, minZoom, ttl) ->
+                if (vp.zoom < minZoom) return@mapLatest
+                val now = System.currentTimeMillis()
+                val area = placeCacheRepository.stopsIn(vp.toBbox(), ttl, now)
+                val stale = area.staleTiles
+                if (stale.isEmpty()) {
+                    _stopsOffline.value = false
+                    return@mapLatest
+                }
+                // A viewport this wide is not something to ask a shared API for in one go. Its
+                // cached stops stay on screen; refreshing waits for the user to zoom in.
+                if (TileGrid.tilesFor(vp.toBbox()).size > PlaceCacheRepository.MAX_VIEWPORT_TILES) {
+                    return@mapLatest
+                }
+                val failures = placeCacheRepository.refreshTiles(stale, now)
+                _stopsOffline.value = failures > 0
+                // Even a partly failed refresh usually wrote something; re-read either way.
+                cacheGeneration.update { it + 1 }
+            }
+
+    /**
+     * The stops of the area on screen, always straight from [loadedStops].
+     *
+     * Both pipelines are combined in rather than launched eagerly so they run exactly while the
+     * map is collecting — the same `WhileSubscribed` discipline the vehicle poller uses. Neither
+     * contributes a value; they only ever write into [loadedStops].
+     */
+    private val allStops: StateFlow<List<TransitLocation>> =
+        combine(
+            loadedStops,
+            cacheReads.onStart { emit(Unit) },
+            stopFetches.onStart { emit(Unit) },
+        ) { loaded, _, _ -> loaded.stops }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /**
@@ -472,7 +611,20 @@ class MapViewModel @Inject constructor(
 
     /** Called once the map camera has settled (already debounced by the caller). */
     fun onViewportSettled(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
-        viewport.value = Viewport(south, west, north, east, zoom)
+        val settled = Viewport(south, west, north, east, zoom)
+        viewport.value = settled
+        // A settled camera is also the newest live position; without this, a camera that moves
+        // programmatically (following a vehicle, flying to a pick) would leave the cache read
+        // looking at wherever the last gesture ended.
+        liveViewport.value = settled
+    }
+
+    /**
+     * Called while the camera is still moving. Feeds the cached-stop read only — never a fetch —
+     * so stops keep appearing during a pan instead of after it.
+     */
+    fun onViewportChanged(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
+        liveViewport.value = Viewport(south, west, north, east, zoom)
     }
 
     fun selectStop(stop: TransitLocation) {
@@ -717,6 +869,13 @@ class MapViewModel @Inject constructor(
 
     private companion object {
         const val CAMERA_SAVE_DEBOUNCE_MILLIS = 1_000L
+
+        /**
+         * How far past the viewport cached stops are read, as a fraction of its size. Wide
+         * enough that an ordinary pan is served from what is already in memory, small enough
+         * that the query stays cheap.
+         */
+        const val CACHE_READ_PADDING = 0.5
     }
 }
 

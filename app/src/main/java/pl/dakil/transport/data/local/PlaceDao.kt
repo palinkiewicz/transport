@@ -20,9 +20,16 @@ interface PlaceDao {
         WHERE stopId IS NOT NULL
           AND lat BETWEEN :south AND :north
           AND lon BETWEEN :west AND :east
+        LIMIT :limit
         """,
     )
-    suspend fun stopsInBox(south: Double, west: Double, north: Double, east: Double): List<CachedPlaceEntity>
+    suspend fun stopsInBox(
+        south: Double,
+        west: Double,
+        north: Double,
+        east: Double,
+        limit: Int,
+    ): List<CachedPlaceEntity>
 
     /**
      * Places whose folded name contains [pattern] (already `%…%`-wrapped and folded by the

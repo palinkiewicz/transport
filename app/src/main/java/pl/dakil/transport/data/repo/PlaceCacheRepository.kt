@@ -23,10 +23,18 @@ data class CachedArea(
     /** Tiles whose last fetch is older than the TTL — drawn, but worth refreshing. */
     val expiredTiles: List<TileKey>,
 ) {
-    val isComplete: Boolean get() = missingTiles.isEmpty() && expiredTiles.isEmpty()
-
     /** Areas the app should ask the API about: never fetched, or past their TTL. */
     val staleTiles: List<TileKey> get() = missingTiles + expiredTiles
+
+    /**
+     * [stops] with everything from an expired tile removed — what the map draws when the user
+     * has asked not to be shown data that may be out of date.
+     */
+    fun stopsExcludingExpired(): List<TransitLocation> {
+        if (expiredTiles.isEmpty()) return stops
+        val expired = expiredTiles.toHashSet()
+        return stops.filterNot { TileKey(TileGrid.tileX(it.lon), TileGrid.tileY(it.lat)) in expired }
+    }
 }
 
 /** How many places the cache holds, for the settings screen's stats line. */
@@ -62,11 +70,18 @@ class PlaceCacheRepository @Inject constructor(
      */
     suspend fun stopsIn(box: Bbox, ttlMillis: Long, now: Long): CachedArea {
         val stops = box.splitAtAntimeridian()
-            .flatMap { part -> placeDao.stopsInBox(part.south, part.west, part.north, part.east) }
+            .flatMap { part ->
+                placeDao.stopsInBox(part.south, part.west, part.north, part.east, MAX_STOPS_PER_READ)
+            }
             .map { it.toTransitLocation() }
 
         val tiles = TileGrid.tilesFor(box)
-        val fetchedAt = stopTileDao.tilesIn(tiles.map { it.id }).associate { it.tileKey to it.fetchedAt }
+        val fetchedAt = tiles.map { it.id }
+            // SQLite caps the parameters one statement may bind; a zoomed-out viewport can
+            // easily name more tiles than that.
+            .chunked(SQL_PARAMETER_CHUNK)
+            .flatMap { stopTileDao.tilesIn(it) }
+            .associate { it.tileKey to it.fetchedAt }
         val missing = tiles.filter { it.id !in fetchedAt }
         val expired = tiles.filter { tile ->
             fetchedAt[tile.id]?.let { now - it > ttlMillis } == true
@@ -119,7 +134,10 @@ class PlaceCacheRepository @Inject constructor(
         now: Long,
         tiles: List<TileKey>,
     ) = refreshLock.withLock {
-        val existing = placeDao.findByKeys(stops.map { it.favoriteKey }).associateBy { it.key }
+        val existing = stops.map { it.favoriteKey }
+            .chunked(SQL_PARAMETER_CHUNK)
+            .flatMap { placeDao.findByKeys(it) }
+            .associateBy { it.key }
         val rows = stops.map { stop ->
             val previous = existing[stop.favoriteKey]
             stop.toCachedPlace(fromMap = true, now = now).copy(
@@ -170,9 +188,26 @@ class PlaceCacheRepository @Inject constructor(
         stopTileDao.deleteAll()
     }
 
-    private companion object {
+    companion object {
         /** Above this many merged rectangles, one bounding-box request is the kinder option. */
         const val MAX_REFRESH_REQUESTS = 4
+
+        /**
+         * Ceiling on the stops one viewport read returns. Well past what a screen can usefully
+         * draw, and there only so a zoomed-out box over a dense country cannot pull the entire
+         * cache into memory.
+         */
+        const val MAX_STOPS_PER_READ = 6_000
+
+        /**
+         * Tiles a viewport may name before the app declines to fetch it at all. A box that large
+         * is not something to ask a shared community API for in one go; its cached stops are
+         * still drawn, they just stop being refreshed until the user zooms in.
+         */
+        const val MAX_VIEWPORT_TILES = 256
+
+        /** Comfortably under SQLite's bound-parameter limit. */
+        private const val SQL_PARAMETER_CHUNK = 500
     }
 }
 
