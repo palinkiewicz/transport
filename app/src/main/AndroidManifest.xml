@@ -28,7 +28,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- A point shared from a map app ("open in…"), routed to as a destination. -->
+            <!-- A point shared from a map app ("open in…"), shown selected on the Map screen. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
 

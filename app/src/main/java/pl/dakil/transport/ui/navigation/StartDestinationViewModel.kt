@@ -29,11 +29,11 @@ class StartDestinationViewModel @Inject constructor(
     private val _startTab = MutableStateFlow<DefaultTab?>(null)
     val startTab: StateFlow<DefaultTab?> = _startTab
 
-    /** Raised when another app hands over a destination — see [SearchStateHolder]. */
-    val pendingRouteRequest: StateFlow<Boolean> = searchStateHolder.pendingRouteRequest
+    /** Raised when another app hands over a point to show on the map — see [SearchStateHolder]. */
+    val pendingMapRequest: StateFlow<Boolean> = searchStateHolder.pendingMapRequest
 
-    fun consumeRouteRequest() {
-        searchStateHolder.pendingRouteRequest.value = false
+    fun consumeMapRequest() {
+        searchStateHolder.pendingMapRequest.value = false
     }
 
     init {

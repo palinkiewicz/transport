@@ -44,14 +44,15 @@ fun AppNavHost(
 
     val navController = rememberNavController()
 
-    // A destination shared by another app: the search form is where it is acted on, so opening
-    // that tab is the whole handling. Waits for the nav host to exist, hence living here rather
-    // than in the activity that parsed the intent.
-    val pendingRouteRequest by startDestinationViewModel.pendingRouteRequest.collectAsStateWithLifecycle()
-    LaunchedEffect(pendingRouteRequest) {
-        if (pendingRouteRequest) {
-            startDestinationViewModel.consumeRouteRequest()
-            navController.navigateToTab(ConnectionsRoute)
+    // A point shared by another app: the Map screen shows and selects it (through the same
+    // pending-location signal a MAP-target pick uses), so opening that tab is the whole handling
+    // here. Waits for the nav host to exist, hence living here rather than in the activity that
+    // parsed the intent.
+    val pendingMapRequest by startDestinationViewModel.pendingMapRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingMapRequest) {
+        if (pendingMapRequest) {
+            startDestinationViewModel.consumeMapRequest()
+            navController.navigateToTab(MapRoute)
         }
     }
 

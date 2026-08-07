@@ -207,15 +207,6 @@ class MapViewModel @Inject constructor(
         viewModelScope.launch {
             _filters.value = filtersRepository.filters.first()
         }
-        viewModelScope.launch {
-            searchStateHolder.pendingMapLocation.collect { location ->
-                if (location != null) {
-                    searchStateHolder.pendingMapLocation.value = null
-                    selectStop(location)
-                    _searchCameraTarget.value = location
-                }
-            }
-        }
     }
 
     /** Called by the screen once it has animated the camera to [searchCameraTarget]. */
@@ -616,6 +607,27 @@ class MapViewModel @Inject constructor(
     private fun hideRouteDraftIfEmpty() {
         if (searchStateHolder.from.value == null && searchStateHolder.to.value == null) {
             _routeDraftVisible.value = false
+        }
+    }
+
+    /**
+     * A location picked for the map — by the location picker, or by another app sharing a point.
+     *
+     * Deliberately the *last* thing in the class rather than sitting with the other init blocks
+     * up top: a location already waiting when the map opens (which is how a shared point
+     * arrives) makes this collector run [selectStop] synchronously during construction, so every
+     * field that touches — the selection, the routes panel, the followed run — has to be
+     * initialized by the time this line runs. Kotlin initializes in declaration order.
+     */
+    init {
+        viewModelScope.launch {
+            searchStateHolder.pendingMapLocation.collect { location ->
+                if (location != null) {
+                    searchStateHolder.pendingMapLocation.value = null
+                    selectStop(location)
+                    _searchCameraTarget.value = location
+                }
+            }
         }
     }
 

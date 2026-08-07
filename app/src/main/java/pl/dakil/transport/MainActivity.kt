@@ -37,12 +37,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * A point shared by another app (typically a map's "open in…") becomes the destination of a
-     * new search. Anything unparseable is ignored and the app just opens normally, rather than
-     * guessing at where the user meant to go.
+     * A point shared by another app (typically a map's "open in…") is opened on the Map screen,
+     * selected, with its panel showing. Anything unparseable is ignored and the app just opens
+     * normally, rather than guessing at where the user meant to go.
      */
     private fun handleGeoIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
-        parseGeoUri(intent.data)?.let(searchStateHolder::setExternalDestination)
+        parseGeoUri(intent.data)?.let(searchStateHolder::setExternalLocation)
     }
 }
