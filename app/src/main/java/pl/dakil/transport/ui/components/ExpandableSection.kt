@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -33,8 +34,9 @@ import pl.dakil.transport.R
 
 /**
  * A surface card with a clickable header that expands/collapses its [content], in the app's
- * extraLarge-surface idiom. [badge] (e.g. "Modified") appears next to the title, and
- * [headerActions] (e.g. a Reset button) sit before the chevron.
+ * extraLarge-surface idiom. [badge] (e.g. "Modified") sits under the title — so a long title
+ * keeps its own line rather than being squeezed by the chip — and [headerActions] (e.g. a Reset
+ * button) sit before the chevron.
  */
 @Composable
 fun ExpandableSection(
@@ -65,16 +67,16 @@ fun ExpandableSection(
                 ) {
                     Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(Modifier.width(12.dp))
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleSmall,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    if (badge != null) {
-                        Spacer(Modifier.width(8.dp))
-                        Badge { Text(badge) }
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        if (badge != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Badge { Text(badge) }
+                        }
                     }
-                    Spacer(Modifier.weight(1f))
                     headerActions()
                     Icon(
                         Icons.Default.ExpandMore,
