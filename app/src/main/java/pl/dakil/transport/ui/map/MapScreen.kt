@@ -34,6 +34,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.DirectionsBus
@@ -222,6 +223,9 @@ private const val VIEWPORT_HEARTBEAT_MILLIS = 30_000L
  */
 private const val LIVE_VIEWPORT_SAMPLE_MILLIS = 100L
 
+/** How long the download-area outcome stays on the panel before it clears itself. */
+private const val AREA_DOWNLOAD_MESSAGE_MILLIS = 4_000L
+
 /**
  * Camera target that puts [vehicle] in the middle of the map a panel of [panelHeight] leaves
  * visible: the camera aims half a panel *below* the vehicle, which lifts the vehicle by the
@@ -257,6 +261,19 @@ fun MapScreen(
     val stops by viewModel.stops.collectAsStateWithLifecycle()
     val vehicles by viewModel.vehicles.collectAsStateWithLifecycle()
     val filters by viewModel.filters.collectAsStateWithLifecycle()
+    val areaDownload by viewModel.areaDownload.collectAsStateWithLifecycle()
+    val stopsOffline by viewModel.stopsOffline.collectAsStateWithLifecycle()
+
+    // The outcome is a passing acknowledgement, not state to sit in the panel forever.
+    LaunchedEffect(areaDownload) {
+        if (areaDownload is AreaDownloadState.Done ||
+            areaDownload == AreaDownloadState.Failed ||
+            areaDownload == AreaDownloadState.TooLarge
+        ) {
+            delay(AREA_DOWNLOAD_MESSAGE_MILLIS)
+            viewModel.consumeAreaDownload()
+        }
+    }
     val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
@@ -884,8 +901,15 @@ fun MapScreen(
                 onExpandedChange = { filtersExpanded = it },
                 onUpdate = viewModel::updateFilters,
                 onReset = viewModel::resetFilters,
+                areaDownload = areaDownload,
+                onDownloadArea = viewModel::downloadVisibleArea,
                 modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
             )
+            // Only while the panel is closed: with it open the download row right below says
+            // the same thing, and the chip would be repeating itself.
+            AnimatedVisibility(visible = stopsOffline && !filtersExpanded) {
+                OfflineChip(modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp))
+            }
         }
 
         Column(
@@ -1009,6 +1033,42 @@ fun MapScreen(
  * opens the full-screen [pl.dakil.transport.ui.search.LocationPickerScreen], whose pick
  * flows back to the map as a selection + camera move.
  */
+/**
+ * Says the stops on screen came from the phone rather than the network.
+ *
+ * Informational, not an error: the whole point of the cache is that losing signal is not a
+ * failure, and the map is still perfectly usable. It only appears once a refresh has actually
+ * been attempted and failed — never merely because nothing needed refreshing.
+ */
+@Composable
+private fun OfflineChip(modifier: Modifier = Modifier) {
+    Surface(
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 3.dp,
+        shadowElevation = 4.dp,
+        modifier = modifier,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Icon(
+                Icons.Default.CloudOff,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = stringResource(R.string.map_offline_cached),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
 @Composable
 private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Surface(

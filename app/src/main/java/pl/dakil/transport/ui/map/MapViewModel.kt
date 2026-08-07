@@ -37,6 +37,7 @@ import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.local.Bbox
 import pl.dakil.transport.data.local.TileGrid
+import pl.dakil.transport.data.repo.CacheMaintenance
 import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.RoutesRepository
@@ -141,6 +142,17 @@ sealed interface VehicleDetailsUiState {
     data class Error(val error: AppError) : VehicleDetailsUiState
 }
 
+/** Progress of an explicit "download this area" request from the filter panel. */
+sealed interface AreaDownloadState {
+    data object Idle : AreaDownloadState
+    data object Running : AreaDownloadState
+    data class Done(val areas: Int) : AreaDownloadState
+    data object Failed : AreaDownloadState
+
+    /** The viewport covers more ground than the app is willing to fetch in one go. */
+    data object TooLarge : AreaDownloadState
+}
+
 /** State of the routes overlay + line chips loaded for the currently selected stop. */
 sealed interface StopRoutesUiState {
     data object Hidden : StopRoutesUiState
@@ -156,6 +168,7 @@ sealed interface StopRoutesUiState {
 @HiltViewModel
 class MapViewModel @Inject constructor(
     private val placeCacheRepository: PlaceCacheRepository,
+    private val cacheMaintenance: CacheMaintenance,
     private val geocodeRepository: GeocodeRepository,
     private val routesRepository: RoutesRepository,
     private val vehiclesRepository: VehiclesRepository,
@@ -379,6 +392,45 @@ class MapViewModel @Inject constructor(
     private val _stopsOffline = MutableStateFlow(false)
     val stopsOffline: StateFlow<Boolean> = _stopsOffline
 
+    private val _areaDownload = MutableStateFlow<AreaDownloadState>(AreaDownloadState.Idle)
+    val areaDownload: StateFlow<AreaDownloadState> = _areaDownload
+
+    private var areaDownloadJob: Job? = null
+
+    /**
+     * Fetches every tile of the current viewport, ignoring how fresh the cache thinks it is.
+     *
+     * For the one thing the automatic refresh cannot know: that the user is about to lose signal
+     * and wants this area on the phone now. The tile cap still applies — a country-sized viewport
+     * is not something to ask a shared API for, and the button says so rather than trying.
+     */
+    fun downloadVisibleArea() {
+        val vp = viewport.value ?: return
+        if (areaDownloadJob?.isActive == true) return
+        val tiles = TileGrid.tilesFor(vp.toBbox())
+        if (tiles.size > PlaceCacheRepository.MAX_VIEWPORT_TILES) {
+            _areaDownload.value = AreaDownloadState.TooLarge
+            return
+        }
+        areaDownloadJob = viewModelScope.launch {
+            _areaDownload.value = AreaDownloadState.Running
+            val now = System.currentTimeMillis()
+            // Every tile, not just the stale ones: "download this area" means the whole thing.
+            val failures = placeCacheRepository.refreshTiles(tiles, now)
+            cacheGeneration.update { it + 1 }
+            _areaDownload.value = if (failures > 0) {
+                AreaDownloadState.Failed
+            } else {
+                AreaDownloadState.Done(tiles.size)
+            }
+        }
+    }
+
+    /** Called by the screen once it has shown the outcome. */
+    fun consumeAreaDownload() {
+        _areaDownload.value = AreaDownloadState.Idle
+    }
+
     /**
      * Refreshes the areas of a settled viewport that the cache has never seen, or has held past
      * its TTL. Only the missing tiles are asked for, merged into as few rectangles as possible,
@@ -409,6 +461,9 @@ class MapViewModel @Inject constructor(
                 _stopsOffline.value = failures > 0
                 // Even a partly failed refresh usually wrote something; re-read either way.
                 cacheGeneration.update { it + 1 }
+                // A refresh is the only thing that grows the cache, so it is the only place the
+                // size limit has to be enforced.
+                cacheMaintenance.trim()
             }
 
     /**

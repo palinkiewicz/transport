@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
@@ -53,6 +56,8 @@ fun MapFiltersMenu(
     onExpandedChange: (Boolean) -> Unit,
     onUpdate: ((MapFilters) -> MapFilters) -> Unit,
     onReset: () -> Unit,
+    areaDownload: AreaDownloadState,
+    onDownloadArea: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     AnimatedContent(targetState = expanded, modifier = modifier, label = "map-filters") { open ->
@@ -62,6 +67,8 @@ fun MapFiltersMenu(
                 onUpdate = onUpdate,
                 onReset = onReset,
                 onClose = { onExpandedChange(false) },
+                areaDownload = areaDownload,
+                onDownloadArea = onDownloadArea,
             )
         } else {
             Surface(
@@ -87,6 +94,8 @@ private fun FiltersPanel(
     onUpdate: ((MapFilters) -> MapFilters) -> Unit,
     onReset: () -> Unit,
     onClose: () -> Unit,
+    areaDownload: AreaDownloadState,
+    onDownloadArea: () -> Unit,
 ) {
     Surface(
         shape = MaterialTheme.shapes.extraLarge,
@@ -126,6 +135,62 @@ private fun FiltersPanel(
                     onSelectedChange = { sources -> onUpdate { it.copy(vehicleSources = sources) } },
                 )
             }
+
+            DownloadAreaRow(
+                state = areaDownload,
+                onDownload = onDownloadArea,
+                modifier = Modifier.padding(top = 12.dp, end = 8.dp),
+            )
+        }
+    }
+}
+
+/**
+ * "Download this area" and whatever it last did.
+ *
+ * The automatic refresh already keeps everywhere the user goes on the phone; this is for the one
+ * case it cannot anticipate — being about to lose signal and wanting the area now, whether or
+ * not the cache considers it fresh.
+ */
+@Composable
+private fun DownloadAreaRow(
+    state: AreaDownloadState,
+    onDownload: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            TextButton(
+                onClick = onDownload,
+                enabled = state != AreaDownloadState.Running,
+                modifier = Modifier.weight(1f),
+            ) {
+                Icon(
+                    Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(stringResource(R.string.map_download_area))
+            }
+            if (state == AreaDownloadState.Running) {
+                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+            }
+        }
+        val message = when (state) {
+            is AreaDownloadState.Done ->
+                pluralStringResource(R.plurals.map_download_area_done, state.areas, state.areas)
+            AreaDownloadState.Failed -> stringResource(R.string.map_download_area_failed)
+            AreaDownloadState.TooLarge -> stringResource(R.string.map_download_area_too_large)
+            else -> null
+        }
+        if (message != null) {
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
+            )
         }
     }
 }

@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Layers
@@ -53,6 +54,7 @@ import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -78,6 +81,7 @@ import pl.dakil.transport.domain.model.DefaultTab
 import pl.dakil.transport.domain.model.GpxDelivery
 import pl.dakil.transport.domain.model.GpxFileName
 import pl.dakil.transport.domain.model.LineColorMode
+import pl.dakil.transport.domain.model.OfflineCacheSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
@@ -129,6 +133,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
             LineColorsGroup(settings, viewModel)
             ItineraryExportGroup(settings, viewModel)
             MapDetailGroup(settings, viewModel)
+            OfflineDataGroup(settings, viewModel)
             DataRefreshGroup(settings, viewModel)
             VehicleMotionGroup(settings, viewModel)
             Spacer(Modifier.size(8.dp))
@@ -595,6 +600,102 @@ private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) 
             checked = settings.showItineraryStopNames,
             onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
             supportingText = stringResource(R.string.settings_itinerary_stop_names_note),
+        )
+    }
+}
+
+/**
+ * How long fetched data is kept, how much of it, and what to do with it.
+ *
+ * The copy here has one job beyond naming the controls: making clear that none of this ever
+ * hides a stop the app already knows about. Expiry only decides when it is worth asking the API
+ * again — and "keep showing expired data" is the one switch that does gate what is drawn, which
+ * is why it says so plainly.
+ */
+@Composable
+private fun OfflineDataGroup(settings: AppSettings, viewModel: SettingsViewModel) {
+    val cache = settings.offlineCache
+    val stats by viewModel.cacheStats.collectAsStateWithLifecycle()
+    var confirmClear by remember { mutableStateOf(false) }
+
+    SettingsGroup(
+        title = stringResource(R.string.settings_group_offline),
+        icon = Icons.Default.CloudDownload,
+        onReset = viewModel::resetOfflineCache.takeIf { !cache.isDefault },
+    ) {
+        IntSliderRow(
+            title = stringResource(R.string.settings_stop_cache_ttl),
+            value = cache.stopCacheTtlDays,
+            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(stopCacheTtlDays = value) } },
+            min = OfflineCacheSettings.MIN_TTL_DAYS,
+            max = OfflineCacheSettings.MAX_TTL_DAYS,
+            valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
+            supportingText = stringResource(R.string.settings_stop_cache_ttl_note),
+        )
+        IntSliderRow(
+            title = stringResource(R.string.settings_search_cache_ttl),
+            value = cache.searchCacheTtlDays,
+            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(searchCacheTtlDays = value) } },
+            min = OfflineCacheSettings.MIN_TTL_DAYS,
+            max = OfflineCacheSettings.MAX_TTL_DAYS,
+            valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
+            supportingText = stringResource(R.string.settings_search_cache_ttl_note),
+        )
+        SwitchRow(
+            title = stringResource(R.string.settings_offline_search),
+            checked = cache.offlineSearchEnabled,
+            onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(offlineSearchEnabled = on) } },
+            supportingText = stringResource(R.string.settings_offline_search_note),
+        )
+        SwitchRow(
+            title = stringResource(R.string.settings_show_expired_cache),
+            checked = cache.showExpiredCache,
+            onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(showExpiredCache = on) } },
+            supportingText = stringResource(R.string.settings_show_expired_cache_note),
+        )
+        SteppedSliderRow(
+            title = stringResource(R.string.settings_cache_limit),
+            values = OfflineCacheSettings.MAX_PLACES_STEPS,
+            value = cache.maxCachedPlaces,
+            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(maxCachedPlaces = value) } },
+            valueLabel = { pluralStringResource(R.plurals.plural_places, it, it) },
+            supportingText = stringResource(R.string.settings_cache_limit_note),
+        )
+        stats?.let { current ->
+            Text(
+                text = stringResource(
+                    R.string.settings_cache_stats,
+                    pluralStringResource(R.plurals.plural_stops, current.stops, current.stops),
+                    pluralStringResource(R.plurals.plural_areas, current.areas, current.areas),
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        TextButton(
+            enabled = stats?.let { it.places > 0 } == true,
+            onClick = { confirmClear = true },
+        ) { Text(stringResource(R.string.settings_clear_cache)) }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text(stringResource(R.string.settings_clear_cache_title)) },
+            text = { Text(stringResource(R.string.settings_clear_cache_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmClear = false
+                        viewModel.clearCache()
+                    },
+                ) { Text(stringResource(R.string.settings_clear_cache_confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmClear = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            },
         )
     }
 }

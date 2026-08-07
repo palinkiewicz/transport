@@ -67,6 +67,18 @@
         <item quantity="many">%1$d przystanków</item>
         <item quantity="other">%1$d przystanku</item>
     </plurals>
+    <plurals name="plural_places">
+        <item quantity="one">%1$,d miejsce</item>
+        <item quantity="few">%1$,d miejsca</item>
+        <item quantity="many">%1$,d miejsc</item>
+        <item quantity="other">%1$,d miejsca</item>
+    </plurals>
+    <plurals name="plural_areas">
+        <item quantity="one">%1$,d obszar</item>
+        <item quantity="few">%1$,d obszary</item>
+        <item quantity="many">%1$,d obszarów</item>
+        <item quantity="other">%1$,d obszaru</item>
+    </plurals>
     <plurals name="plural_days">
         <item quantity="one">%1$d dzień</item>
         <item quantity="few">%1$d dni</item>
@@ -211,6 +223,16 @@
     <string name="map_filters_open">Filtry mapy</string>
     <string name="map_filters_title">Filtry mapy</string>
     <string name="map_filters_close">Zamknij filtry</string>
+    <string name="map_download_area">Pobierz ten obszar</string>
+    <plurals name="map_download_area_done">
+        <item quantity="one">Zapisano %1$d obszar do użytku offline.</item>
+        <item quantity="few">Zapisano %1$d obszary do użytku offline.</item>
+        <item quantity="many">Zapisano %1$d obszarów do użytku offline.</item>
+        <item quantity="other">Zapisano %1$d obszaru do użytku offline.</item>
+    </plurals>
+    <string name="map_download_area_failed">Nie udało się pobrać tego obszaru. To, co już zapisane, nadal się wyświetla.</string>
+    <string name="map_download_area_too_large">Przybliż, aby pobrać — ten widok obejmuje zbyt duży obszar.</string>
+    <string name="map_offline_cached">Offline · zapisane przystanki</string>
     <string name="map_filters_stops">Przystanki</string>
     <string name="map_filters_vehicles">Pojazdy</string>
     <string name="map_filters_source_note">Pozycje są szacowane na podstawie rozkładu jazdy; „Na żywo” oznacza czasy w czasie rzeczywistym.</string>
@@ -410,6 +432,23 @@
     <string name="settings_itinerary_stop_names_note">Wyświetla etykiety przystanków początkowych i docelowych na mapie trasy.</string>
 
     <string name="settings_group_auto_refresh">Automatyczne odświeżanie</string>
+    <string name="settings_group_offline">Dane offline</string>
+    <string name="settings_stop_cache_ttl">Odświeżaj przystanki po</string>
+    <string name="settings_stop_cache_ttl_note">Po jakim czasie przystanki obszaru są pobierane ponownie. Starsze nadal się wyświetlają — czeka tylko odświeżenie.</string>
+    <string name="settings_search_cache_ttl">Odświeżaj wyniki wyszukiwania po</string>
+    <string name="settings_search_cache_ttl_note">Jak długo znalezione miejsce jest używane ponownie, zanim wyszukiwanie trafi znów na serwer.</string>
+    <string name="settings_offline_search">Najpierw szukaj w zapisanych</string>
+    <string name="settings_offline_search_note">Odpowiada przy każdym znaku z tego, co już zapisane, a potem dokłada wyniki z serwera. Wyłączone — pisanie czeka na serwer za każdym razem.</string>
+    <string name="settings_show_expired_cache">Pokazuj dane oczekujące na odświeżenie</string>
+    <string name="settings_show_expired_cache_note">Rysuje przystanki z obszarów czekających na odświeżenie. Wyłączone — są ukryte do czasu pobrania, czyli bez internetu mapa będzie pusta.</string>
+    <string name="settings_cache_limit">Limit zapisanych miejsc</string>
+    <string name="settings_cache_limit_note">Powyżej tej liczby usuwane są miejsca oglądane najdawniej. Zapisane miejsca i trasy nie są usuwane nigdy.</string>
+    <!-- Cached stop count, then the number of map areas fetched. -->
+    <string name="settings_cache_stats">Zapisano: %1$s w %2$s</string>
+    <string name="settings_clear_cache">Wyczyść zapisane dane</string>
+    <string name="settings_clear_cache_title">Wyczyścić zapisane dane?</string>
+    <string name="settings_clear_cache_body">Wszystko, co aplikacja zapisała, zostanie pobrane ponownie, gdy będzie potrzebne. Zapisane miejsca i trasy pozostaną.</string>
+    <string name="settings_clear_cache_confirm">Wyczyść</string>
     <string name="settings_refresh_while_open">Odświeżaj na otwartym ekranie</string>
     <string name="settings_refresh_while_open_note">Gdy wyłączone, lista połączeń, tablica odjazdów i widok kursu wczytują się tylko raz i są odświeżane ręcznie przyciskiem.</string>
     <string name="settings_refresh_interval">Wyniki i odjazdy</string>

@@ -63,6 +63,14 @@
         <item quantity="one">%1$d stop</item>
         <item quantity="other">%1$d stops</item>
     </plurals>
+    <plurals name="plural_places">
+        <item quantity="one">%1$,d place</item>
+        <item quantity="other">%1$,d places</item>
+    </plurals>
+    <plurals name="plural_areas">
+        <item quantity="one">%1$,d area</item>
+        <item quantity="other">%1$,d areas</item>
+    </plurals>
     <plurals name="plural_days">
         <item quantity="one">%1$d day</item>
         <item quantity="other">%1$d days</item>
@@ -203,6 +211,14 @@
     <string name="map_filters_open">Map filters</string>
     <string name="map_filters_title">Map filters</string>
     <string name="map_filters_close">Close filters</string>
+    <string name="map_download_area">Download this area</string>
+    <plurals name="map_download_area_done">
+        <item quantity="one">%1$d area stored for offline use.</item>
+        <item quantity="other">%1$d areas stored for offline use.</item>
+    </plurals>
+    <string name="map_download_area_failed">Could not download this area. Whatever is already stored still shows.</string>
+    <string name="map_download_area_too_large">Zoom in to download — this view covers too much ground to fetch at once.</string>
+    <string name="map_offline_cached">Offline · showing stored stops</string>
     <string name="map_filters_stops">Stops</string>
     <string name="map_filters_vehicles">Vehicles</string>
     <string name="map_filters_source_note">Positions are estimated from timetables; \"Live\" means real-time times.</string>
@@ -394,6 +410,23 @@
     <string name="settings_itinerary_stop_names_note">Labels the stops where you board and alight on the itinerary map.</string>
 
     <string name="settings_group_auto_refresh">Auto-refresh</string>
+    <string name="settings_group_offline">Offline data</string>
+    <string name="settings_stop_cache_ttl">Refresh stops after</string>
+    <string name="settings_stop_cache_ttl_note">How long before an area\'s stops are fetched again. Stops past this keep showing — only the refresh waits.</string>
+    <string name="settings_search_cache_ttl">Refresh search results after</string>
+    <string name="settings_search_cache_ttl_note">How long a place found by searching is reused before the search is run against the server again.</string>
+    <string name="settings_offline_search">Search saved places first</string>
+    <string name="settings_offline_search_note">Answers every keystroke from what is already stored, then folds in the server\'s results. Off, typing waits for the server every time.</string>
+    <string name="settings_show_expired_cache">Show data past its refresh</string>
+    <string name="settings_show_expired_cache_note">Keeps drawing stops from areas due a refresh. Off, they are hidden until it lands — which with no connection means an empty map.</string>
+    <string name="settings_cache_limit">Stored places limit</string>
+    <string name="settings_cache_limit_note">Beyond this, the places looked at longest ago are dropped. Saved places and saved trips are never dropped.</string>
+    <!-- Cached stop count, then the number of map areas fetched. -->
+    <string name="settings_cache_stats">Stored: %1$s in %2$s</string>
+    <string name="settings_clear_cache">Clear stored data</string>
+    <string name="settings_clear_cache_title">Clear stored data?</string>
+    <string name="settings_clear_cache_body">Everything the app has stored will be fetched again the next time you need it. Saved places and saved trips are kept.</string>
+    <string name="settings_clear_cache_confirm">Clear</string>
     <string name="settings_refresh_while_open">Refresh while open</string>
     <string name="settings_refresh_while_open_note">Off, the connections list, departures board and trip view load once and are reloaded only by their refresh button.</string>
     <string name="settings_refresh_interval">Results &amp; departures</string>
