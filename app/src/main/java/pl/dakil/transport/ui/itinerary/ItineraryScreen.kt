@@ -89,9 +89,8 @@ import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.InlineRealTimeText
-import pl.dakil.transport.ui.components.LineColorMap
+import pl.dakil.transport.ui.components.LineColors
 import pl.dakil.transport.ui.components.LineColorRequest
-import pl.dakil.transport.ui.components.lineColorKey
 import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
@@ -109,7 +108,8 @@ private data class ItineraryStop(
     val time: OffsetDateTime,
     val scheduledTime: OffsetDateTime,
     val mode: TransportMode,
-    val lineLabel: String,
+    /** Which transit leg this stop belongs to, i.e. its slot in the journey's palette order. */
+    val colorIndex: Int,
     val routeColor: String?,
     val terminus: Boolean,
     /** True for a boarding stop; false where the journey gets off. */
@@ -131,7 +131,7 @@ private data class ItineraryWaypoint(
     val departure: OffsetDateTime?,
     val scheduledDeparture: OffsetDateTime?,
     val mode: TransportMode,
-    val lineLabel: String,
+    val colorIndex: Int,
     val routeColor: String?,
 )
 
@@ -148,7 +148,7 @@ private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
         departure = time.takeIf { boarding },
         scheduledDeparture = scheduledTime.takeIf { boarding },
         mode = mode,
-        lineLabel = lineLabel,
+        colorIndex = colorIndex,
         routeColor = routeColor,
     )
 
@@ -167,7 +167,7 @@ private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
                 scheduledDeparture = next.scheduledTime,
                 // The line you leave on is the one that matters at a transfer.
                 mode = next.mode,
-                lineLabel = next.lineLabel,
+                colorIndex = next.colorIndex,
                 routeColor = next.routeColor,
             )
             index += 2
@@ -198,7 +198,7 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 time = leg.startTime,
                 scheduledTime = leg.scheduledStartTime,
                 mode = leg.mode,
-                lineLabel = leg.lineLabel,
+                colorIndex = order,
                 routeColor = leg.routeColor,
                 terminus = order == 0,
                 boarding = true,
@@ -210,7 +210,7 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 time = leg.endTime,
                 scheduledTime = leg.scheduledEndTime,
                 mode = leg.mode,
-                lineLabel = leg.lineLabel,
+                colorIndex = order,
                 routeColor = leg.routeColor,
                 terminus = order == transitIndices.lastIndex,
                 boarding = false,
@@ -247,13 +247,16 @@ fun ItineraryScreen(
     // the map pane share the result; the route overlay itself keeps the feed's colours.
     val lineColors = rememberLineColors(
         journey?.legs.orEmpty().filter { it.isTransit }.map { leg ->
-            LineColorRequest(
-                key = lineColorKey(leg.mode, leg.lineLabel),
-                serverHex = leg.routeColor,
-                fallback = leg.mode.color,
-            )
+            LineColorRequest(leg.routeColor, leg.mode.color)
         },
     )
+    // Walk legs take no palette slot, so a leg's row index is not its slot in the palette order.
+    val transitOrder = remember(journey) {
+        journey?.legs.orEmpty().withIndex()
+            .filter { (_, leg) -> leg.isTransit }
+            .mapIndexed { order, (index, _) -> index to order }
+            .toMap()
+    }
 
     val export = rememberItineraryExport(journey, fromName, toName, viewModel)
 
@@ -329,6 +332,7 @@ fun ItineraryScreen(
                         // Tapping a stop in the list is a request to see where it is; only
                         // stops the map can actually point at are tappable.
                         lineColors = lineColors,
+                        colorIndex = transitOrder[index],
                         onOpenTrip = onOpenTrip,
                         onStopClick = if (!canShowMap) {
                             null
@@ -533,7 +537,7 @@ private fun ItineraryMap(
     fromName: String,
     toName: String,
     stops: List<ItineraryStop>,
-    lineColors: LineColorMap,
+    lineColors: LineColors,
     selectedStopId: String?,
     showStopNames: Boolean,
     onStopClick: (String?) -> Unit,
@@ -587,7 +591,7 @@ private fun ItineraryMapPane(
     fromName: String,
     toName: String,
     stops: List<ItineraryStop>,
-    lineColors: LineColorMap,
+    lineColors: LineColors,
     selectedStopId: String?,
     onWaypointClick: (String) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
@@ -630,8 +634,12 @@ private fun ItineraryMapPane(
                     verticalArrangement = Arrangement.spacedBy(6.dp),
                     modifier = Modifier.padding(top = 12.dp),
                 ) {
-                    transitLegs.forEach { leg ->
-                        LegModeChip(leg, lineColors, onOpenTrip)
+                    transitLegs.forEachIndexed { transitIndex, leg ->
+                        LegModeChip(
+                            leg = leg,
+                            containerColor = lineColors.at(transitIndex, leg.mode.color),
+                            onOpenTrip = onOpenTrip,
+                        )
                     }
                 }
             }
@@ -661,7 +669,7 @@ private fun ItineraryMapPane(
 @Composable
 private fun WaypointRow(
     waypoint: ItineraryWaypoint,
-    lineColors: LineColorMap,
+    lineColors: LineColors,
     selected: Boolean,
     onClick: () -> Unit,
 ) {
@@ -681,12 +689,7 @@ private fun WaypointRow(
             modifier = Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(
-                    lineColors.of(
-                        lineColorKey(waypoint.mode, waypoint.lineLabel),
-                        waypoint.mode.color,
-                    ),
-                ),
+                .background(lineColors.at(waypoint.colorIndex, waypoint.mode.color)),
         )
         waypoint.arrival?.let { arrival ->
             InlineRealTimeText(time = arrival, scheduledTime = waypoint.scheduledArrival ?: arrival)
@@ -762,15 +765,17 @@ private fun SummaryStat(label: String, value: String) {
 private fun LegRow(
     leg: JourneyLeg,
     legIndex: Int,
-    lineColors: LineColorMap,
+    lineColors: LineColors,
+    /** This leg's slot in the palette order; null for a leg that takes none (a walk). */
+    colorIndex: Int?,
     fromNameOverride: String? = null,
     toNameOverride: String? = null,
     onOpenTrip: (TripRoute) -> Unit,
     /** Null leaves the stop rows inert (nothing to show on a map). */
     onStopClick: ((String) -> Unit)? = null,
 ) {
-    val legColor = if (leg.isTransit) {
-        lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color)
+    val legColor = if (leg.isTransit && colorIndex != null) {
+        lineColors.at(colorIndex, leg.mode.color)
     } else {
         MaterialTheme.colorScheme.outline
     }
@@ -826,7 +831,7 @@ private fun LegRow(
                 Spacer(Modifier.height(4.dp))
             }
             if (leg.isTransit) {
-                LegModeChip(leg, lineColors, onOpenTrip)
+                LegModeChip(leg, lineColors.at(colorIndex ?: 0, leg.mode.color), onOpenTrip)
                 leg.headsign?.let {
                     Text(
                         text = stringResource(R.string.format_towards, it),
@@ -882,11 +887,11 @@ private fun LegRow(
  * tappable and doing nothing.
  */
 @Composable
-private fun LegModeChip(leg: JourneyLeg, lineColors: LineColorMap, onOpenTrip: (TripRoute) -> Unit) {
+private fun LegModeChip(leg: JourneyLeg, containerColor: Color, onOpenTrip: (TripRoute) -> Unit) {
     ModeChip(
         mode = leg.mode,
         label = leg.lineLabel,
-        containerColor = lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color),
+        containerColor = containerColor,
         clickLabel = stringResource(R.string.itinerary_open_trip),
         onClick = leg.tripId?.let { tripId ->
             {

@@ -36,6 +36,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -58,9 +59,8 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.LoadingBox
-import pl.dakil.transport.ui.components.LineColorMap
+import pl.dakil.transport.ui.components.LineColors
 import pl.dakil.transport.ui.components.LineColorRequest
-import pl.dakil.transport.ui.components.lineColorKey
 import pl.dakil.transport.ui.components.rememberLineColorGroups
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RealTimeText
@@ -122,19 +122,21 @@ fun ResultsScreen(
                         onAction = viewModel::refreshNow,
                     )
                 } else {
-                    // One group per card: legs are neighbours within a journey, but two
-                    // journeys sitting next to each other in the list are not a sequence.
+                    // One group per card: each result is its own run of legs, so every card
+                    // starts again at the first palette colour rather than continuing the count
+                    // from the card above it.
+                    val transitLegs = remember(state.result.journeys) {
+                        state.result.journeys.map { journey -> journey.legs.filter { it.isTransit } }
+                    }
                     val lineColors = rememberLineColorGroups(
-                        state.result.journeys.map { journey ->
-                            journey.legs.filter { it.isTransit }.map { leg ->
-                                LineColorRequest(
-                                    key = lineColorKey(leg.mode, leg.lineLabel),
-                                    serverHex = leg.routeColor,
-                                    fallback = leg.mode.color,
-                                )
-                            }
+                        transitLegs.map { legs ->
+                            legs.map { leg -> LineColorRequest(leg.routeColor, leg.mode.color) }
                         },
                     )
+                    // Where each card's legs begin in the flat list of resolved colours.
+                    val colorOffsets = remember(transitLegs) {
+                        transitLegs.runningFold(0) { total: Int, legs: List<JourneyLeg> -> total + legs.size }
+                    }
                     LazyColumn(
                         modifier = Modifier
                             .padding(innerPadding)
@@ -157,6 +159,7 @@ fun ResultsScreen(
                                 toName = viewModel.toName,
                                 timesMode = timesMode,
                                 lineColors = lineColors,
+                                colorOffset = colorOffsets[index],
                                 onClick = { onJourneySelected(index) },
                             )
                         }
@@ -183,7 +186,9 @@ private fun JourneyCard(
     fromName: String,
     toName: String,
     timesMode: ConnectionTimesMode,
-    lineColors: LineColorMap,
+    lineColors: LineColors,
+    /** Where this card's legs begin in [lineColors]. */
+    colorOffset: Int,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -230,7 +235,7 @@ private fun JourneyCard(
                 )
             }
 
-            LegTimelineBar(journey, lineColors)
+            LegTimelineBar(journey, lineColors, colorOffset)
 
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
@@ -239,11 +244,11 @@ private fun JourneyCard(
                 itemVerticalAlignment = Alignment.CenterVertically,
             ) {
                 journey.firstMileLeg?.let { AccessLegDistance(it) }
-                journey.legs.filter { it.isTransit }.forEach { leg ->
+                journey.legs.filter { it.isTransit }.forEachIndexed { transitIndex, leg ->
                     ModeChip(
                         mode = leg.mode,
                         label = leg.lineLabel,
-                        containerColor = lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color),
+                        containerColor = lineColors.at(colorOffset + transitIndex, leg.mode.color),
                     )
                 }
                 if (journey.legs.none { it.isTransit }) {
@@ -289,7 +294,7 @@ private fun JourneyCard(
  * colored by route/mode (walk legs in a muted tone) — a glanceable shape of the trip.
  */
 @Composable
-private fun LegTimelineBar(journey: Journey, lineColors: LineColorMap) {
+private fun LegTimelineBar(journey: Journey, lineColors: LineColors, colorOffset: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -297,9 +302,11 @@ private fun LegTimelineBar(journey: Journey, lineColors: LineColorMap) {
             .clip(CircleShape),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
+        // Walk legs take no palette slot, so the transit legs are counted separately.
+        var transitIndex = 0
         journey.legs.forEach { leg ->
             val color = if (leg.isTransit) {
-                lineColors.of(lineColorKey(leg.mode, leg.lineLabel), leg.mode.color)
+                lineColors.at(colorOffset + transitIndex++, leg.mode.color)
             } else {
                 MaterialTheme.colorScheme.surfaceVariant
             }

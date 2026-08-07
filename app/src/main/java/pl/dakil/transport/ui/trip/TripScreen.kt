@@ -31,7 +31,6 @@ import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LoadingBox
 import pl.dakil.transport.ui.components.LineColorRequest
-import pl.dakil.transport.ui.components.lineColorKey
 import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.RefreshButton
@@ -51,18 +50,11 @@ fun TripScreen(
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
-    // One line on the whole screen, so it has no neighbour to clash with: AUTO comes out as the
+    // One badge on the whole screen, so it has no neighbour to clash with: AUTO comes out as the
     // operator's colour and CUSTOM as the first palette entry.
-    val colorKey = lineColorKey(viewModel.mode, viewModel.lineLabel)
     val lineColor = rememberLineColors(
-        listOf(
-            LineColorRequest(
-                key = colorKey,
-                serverHex = viewModel.routeColor,
-                fallback = viewModel.mode.color,
-            ),
-        ),
-    ).of(colorKey, viewModel.mode.color)
+        listOf(LineColorRequest(viewModel.routeColor, viewModel.mode.color)),
+    ).at(0, viewModel.mode.color)
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),

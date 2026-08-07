@@ -10,7 +10,6 @@ import androidx.core.graphics.ColorUtils
 import kotlin.math.sqrt
 import pl.dakil.transport.domain.model.LineColorMode
 import pl.dakil.transport.domain.model.LinePalette
-import pl.dakil.transport.domain.model.TransportMode
 
 /**
  * Turning the feed's route colours into what the list screens actually draw.
@@ -19,7 +18,12 @@ import pl.dakil.transport.domain.model.TransportMode
  * colouring every badge straight from the feed can leave a whole departures board in one shade.
  * [LineColorMode] lets the user replace or repair that with their own palette; this file is the
  * single place that decision is made. The map is deliberately not a client: markers and overlays
- * have no "next line" order to hand a palette out along.
+ * have no draw order to hand a palette out along.
+ *
+ * The palette is handed out **by position, not by line**: the first badge in a run takes colour
+ * one, the second colour two, and so on, wrapping after six. Nothing is remembered — no lookup
+ * from a line to a colour, no state carried across refreshes — so what a screen draws is always a
+ * plain function of the rows it is drawing right now.
  */
 
 /** The line-colour preference as the UI needs it: a mode plus the palette already parsed. */
@@ -39,54 +43,45 @@ data class LineColorSettings(
  */
 val LocalLineColorSettings = staticCompositionLocalOf { LineColorSettings.DEFAULT }
 
-/** One line as a screen draws it, in draw order. */
+/** One line badge a screen is about to draw, in draw order. */
 data class LineColorRequest(
-    /** Line identity, from [lineColorKey]. */
-    val key: String,
     /** The feed's GTFS `RRGGBB` route colour, if it published one. */
     val serverHex: String?,
     /** What to draw when there is no usable server colour — normally the mode's colour. */
     val fallback: Color,
+    /**
+     * Set only where one screen draws the same line more than once — a departures board lists
+     * every departure, so line 127 can be four of its rows. Badges sharing a key share a colour
+     * and take one slot between them; the rest of the board carries on from there. Left null the
+     * counter simply advances once per badge.
+     */
+    val key: String? = null,
 )
 
-/**
- * Colour per line for one screen, keyed by [lineColorKey]. Resolved once per composition rather
- * than per row so [LineColorMode.AUTO] can see each line's neighbours.
- */
+/** The colours a screen's badges take, in the order they were requested. */
 @Immutable
-class LineColorMap internal constructor(private val byKey: Map<String, Color>) {
-    fun of(key: String, fallback: Color): Color = byKey[key] ?: fallback
+class LineColors internal constructor(private val colors: List<Color>) {
+    /** Colour for the [index]-th badge on the screen, counting from zero in draw order. */
+    fun at(index: Int, fallback: Color): Color = colors.getOrElse(index) { fallback }
 }
 
 /**
- * Identity a colour is assigned to. Deliberately coarser than `FavoriteLine.key`: that one
- * separates a line's two directions, which for colouring would mean drawing the same line in two
- * colours on one board.
- */
-fun lineColorKey(mode: TransportMode, label: String): String = "${mode.name}|$label"
-
-/**
- * Resolves colours for every line a screen draws.
+ * Resolves colours for every badge a screen draws.
  *
- * [groups] is the draw order, split wherever adjacency stops meaning anything — one group per
- * journey card on the results list, one flat group for a departures board. [LineColorMode.AUTO]
- * never compares across a group boundary.
- *
- * Assignments are sticky: a line keeps the palette index it got when it was first seen, so an
- * auto-refresh that reorders or drops rows doesn't reshuffle the board's colours. Changing the
- * setting (or editing a swatch) drops the state and starts over, which is what the user is asking
- * for when they change it.
+ * [groups] is the draw order, split wherever one run of badges stops being a continuation of the
+ * last — one group per journey card on the results list, one flat group for a departures board.
+ * Every group starts again at the first palette colour, and [LineColorMode.AUTO] never compares a
+ * badge with one on the other side of a boundary.
  */
 @Composable
-fun rememberLineColorGroups(groups: List<List<LineColorRequest>>): LineColorMap {
+fun rememberLineColorGroups(groups: List<List<LineColorRequest>>): LineColors {
     val settings = LocalLineColorSettings.current
-    val assignments = remember(settings) { LineColorAssignments(settings) }
-    return remember(assignments, groups) { assignments.resolve(groups) }
+    return remember(settings, groups) { resolve(settings, groups) }
 }
 
-/** [rememberLineColorGroups] for a screen that draws one continuous sequence of lines. */
+/** [rememberLineColorGroups] for a screen that draws one continuous sequence of badges. */
 @Composable
-fun rememberLineColors(requests: List<LineColorRequest>): LineColorMap =
+fun rememberLineColors(requests: List<LineColorRequest>): LineColors =
     rememberLineColorGroups(listOf(requests))
 
 /**
@@ -99,71 +94,49 @@ private const val SIMILAR_DELTA_E = 12.0
 /**
  * How far apart a *substitute* has to be. Clearing [SIMILAR_DELTA_E] is enough to call two colours
  * different, but not enough to be worth replacing one with the other: a palette red swapped in for
- * an operator red still reads as one line twice. Once we have decided to displace a line, the
+ * an operator red still reads as one line twice. Once we have decided to displace a badge, the
  * replacement has to be obviously another colour.
  */
 private const val DISTINCT_DELTA_E = 25.0
 
-/**
- * The sticky part of [rememberLineColors], kept out of composition so the walk is a plain loop.
- * Not thread-safe; only ever touched from the composition it belongs to.
- */
-internal class LineColorAssignments(private val settings: LineColorSettings) {
-    private val indexByKey = mutableMapOf<String, Int>()
-
-    /**
-     * Keys [LineColorMode.AUTO] has already displaced. Without this a line would flip between its
-     * operator colour and a palette one as the rows above it change between refreshes.
-     */
-    private val autoOverrides = mutableSetOf<String>()
-
-    fun resolve(groups: List<List<LineColorRequest>>): LineColorMap {
-        val resolved = mutableMapOf<String, Color>()
-        for (group in groups) {
-            var previous: Color? = null
-            for (request in group) {
-                val color = resolved[request.key] ?: resolve(request, previous)
-                resolved[request.key] = color
-                previous = color
-            }
-        }
-        return LineColorMap(resolved)
-    }
-
-    private fun resolve(request: LineColorRequest, previous: Color?): Color {
-        val index = indexByKey.getOrPut(request.key) { indexByKey.size }
-        val paletteColor = settings.palette[index % settings.palette.size]
-        return when (settings.mode) {
-            LineColorMode.TRANSITOUS -> parseRouteColor(request.serverHex, request.fallback)
-            LineColorMode.CUSTOM -> paletteColor
-            LineColorMode.AUTO -> {
-                val candidate = if (request.key in autoOverrides) {
-                    paletteColorUnlike(previous, index)
-                } else {
-                    parseRouteColor(request.serverHex, request.fallback)
+private fun resolve(settings: LineColorSettings, groups: List<List<LineColorRequest>>): LineColors {
+    val colors = mutableListOf<Color>()
+    for (group in groups) {
+        var index = 0
+        var previous: Color? = null
+        for (request in group) {
+            val color = when (settings.mode) {
+                LineColorMode.TRANSITOUS -> parseRouteColor(request.serverHex, request.fallback)
+                LineColorMode.CUSTOM -> settings.palette[index % settings.palette.size]
+                LineColorMode.AUTO -> {
+                    val server = parseRouteColor(request.serverHex, request.fallback)
+                    if (previous != null && tooSimilar(server, previous)) {
+                        settings.paletteColorUnlike(previous, index)
+                    } else {
+                        server
+                    }
                 }
-                if (previous == null || !tooSimilar(candidate, previous)) return candidate
-                autoOverrides += request.key
-                paletteColorUnlike(previous, index)
             }
+            colors += color
+            previous = color
+            index++
         }
     }
+    return LineColors(colors)
+}
 
-    /**
-     * The line's own palette colour, or — when that is not clearly different from the neighbour —
-     * the next one along that is. Scanning from the line's own index rather than jumping straight
-     * to the most distant colour keeps the palette being handed out roughly in order.
-     *
-     * With nothing clearing [DISTINCT_DELTA_E] the most distant entry wins anyway: six colours
-     * can't always beat an arbitrary feed colour, and the furthest one is the best on offer.
-     */
-    private fun paletteColorUnlike(previous: Color?, index: Int): Color {
-        val palette = settings.palette
-        val ordered = palette.indices.map { palette[(index + it) % palette.size] }
-        if (previous == null) return ordered.first()
-        return ordered.firstOrNull { deltaE(it, previous) >= DISTINCT_DELTA_E }
-            ?: ordered.maxBy { deltaE(it, previous) }
-    }
+/**
+ * The badge's own palette colour, or — when that is not clearly different from the neighbour — the
+ * next one along that is. Scanning from the badge's own position rather than jumping straight to
+ * the most distant colour keeps the palette being handed out roughly in order.
+ *
+ * With nothing clearing [DISTINCT_DELTA_E] the most distant entry wins anyway: six colours can't
+ * always beat an arbitrary feed colour, and the furthest one is the best on offer.
+ */
+private fun LineColorSettings.paletteColorUnlike(previous: Color, index: Int): Color {
+    val ordered = palette.indices.map { palette[(index + it) % palette.size] }
+    return ordered.firstOrNull { deltaE(it, previous) >= DISTINCT_DELTA_E }
+        ?: ordered.maxBy { deltaE(it, previous) }
 }
 
 /** Whether two colours are close enough to read as one line. */

@@ -33,6 +33,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -48,9 +49,7 @@ import pl.dakil.transport.domain.model.Departure
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
-import pl.dakil.transport.ui.components.LineColorMap
 import pl.dakil.transport.ui.components.LineColorRequest
-import pl.dakil.transport.ui.components.lineColorKey
 import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.rememberTimeFormatter
@@ -135,19 +134,22 @@ fun DeparturesScreen(
                             )
                         }
                         val groups = filtered.groupedByPole(viewModel.clickedPoleStopId)
-                        // Flattened in draw order, so "neighbouring lines" means what it looks
-                        // like on screen rather than what the API happened to return.
+                        // Flattened in draw order: the palette is handed out down the board, and
+                        // "neighbouring lines" means what it looks like on screen rather than what
+                        // the API happened to return.
                         val lineColors = rememberLineColors(
                             groups.flatMap { group ->
                                 group.departures.map { departure ->
-                                    LineColorRequest(
-                                        key = lineColorKey(departure.mode, departure.lineLabel),
-                                        serverHex = departure.routeColor,
-                                        fallback = departure.mode.color,
-                                    )
+                                    LineColorRequest(departure.routeColor, departure.mode.color)
                                 }
                             },
                         )
+                        // Where each pole's rows start in that flat order.
+                        val colorOffsets = remember(groups) {
+                            groups.runningFold(0) { total: Int, group: DepartureGroup ->
+                                total + group.departures.size
+                            }
+                        }
                         // Which stop a departure leaves from is only worth naming when the
                         // board spans more than one — an around-a-point search, or a station
                         // whose poles the feed names individually.
@@ -158,7 +160,7 @@ fun DeparturesScreen(
                             modifier = Modifier.fillMaxWidth(),
                             contentPadding = PaddingValues(vertical = 8.dp),
                         ) {
-                            groups.forEach { group ->
+                            groups.forEachIndexed { groupIndex, group ->
                                 item(key = "header-${group.key}") {
                                     DepartureGroupHeader(group, showStopName = showStopNames)
                                 }
@@ -166,7 +168,10 @@ fun DeparturesScreen(
                                     val departure = group.departures[index]
                                     DepartureRow(
                                         departure = departure,
-                                        lineColors = lineColors,
+                                        containerColor = lineColors.at(
+                                            colorOffsets[groupIndex] + index,
+                                            departure.mode.color,
+                                        ),
                                         onClick = departure.tripId?.let { tripId ->
                                             {
                                                 onDepartureSelected(
@@ -219,7 +224,7 @@ private fun LineFilterRow(
 }
 
 @Composable
-private fun DepartureRow(departure: Departure, lineColors: LineColorMap, onClick: (() -> Unit)?) {
+private fun DepartureRow(departure: Departure, containerColor: Color, onClick: (() -> Unit)?) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -228,14 +233,7 @@ private fun DepartureRow(departure: Departure, lineColors: LineColorMap, onClick
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        ModeChip(
-            mode = departure.mode,
-            label = departure.lineLabel,
-            containerColor = lineColors.of(
-                lineColorKey(departure.mode, departure.lineLabel),
-                departure.mode.color,
-            ),
-        )
+        ModeChip(mode = departure.mode, label = departure.lineLabel, containerColor = containerColor)
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = departure.headsign ?: "",
