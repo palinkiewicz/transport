@@ -65,6 +65,63 @@ data class VehicleMotionSettings(
     }
 }
 
+/**
+ * How long the app keeps what it has fetched, and how much of it.
+ *
+ * The governing rule behind every field: an expired cache is still *shown*. Expiry only decides
+ * when the app bothers to ask the API again — never whether the user gets to see a stop. With no
+ * connection at all, a three-week-old cache is the difference between a working map and a blank
+ * one, so throwing it away on a timer would defeat the point of having it.
+ */
+@Serializable
+data class OfflineCacheSettings(
+    /** Days before a fetched map area is asked for again. Its stops keep showing meanwhile. */
+    val stopCacheTtlDays: Int = 7,
+
+    /** Days before a cached search result is re-checked against the geocoder. */
+    val searchCacheTtlDays: Int = 7,
+
+    /**
+     * Cap on cached places, oldest evicted first. Starred places and the stops of saved
+     * itineraries are never evicted, however low this is set.
+     */
+    val maxCachedPlaces: Int = 50_000,
+
+    /**
+     * Whether stops from an area whose cache has expired are drawn while it refreshes. Off,
+     * they are hidden until the refresh lands — for people who would rather see nothing than
+     * something possibly out of date.
+     */
+    val showExpiredCache: Boolean = true,
+
+    /** Whether typing searches the local cache at all, or waits for the geocoder every time. */
+    val offlineSearchEnabled: Boolean = true,
+) {
+    val isDefault: Boolean get() = this == DEFAULT
+
+    val stopCacheTtlMillis: Long get() = stopCacheTtlDays * MILLIS_PER_DAY
+
+    val searchCacheTtlMillis: Long get() = searchCacheTtlDays * MILLIS_PER_DAY
+
+    companion object {
+        val DEFAULT = OfflineCacheSettings()
+
+        const val MIN_TTL_DAYS = 1
+        const val MAX_TTL_DAYS = 30
+
+        /**
+         * Selectable caps for [maxCachedPlaces]. Non-linear because the interesting decision is
+         * at the small end (a phone kept tight on space) while the large end only needs to say
+         * "effectively everything I will ever look at".
+         */
+        val MAX_PLACES_STEPS = listOf(
+            5_000, 10_000, 25_000, 50_000, 100_000, 200_000, 500_000,
+        )
+
+        private const val MILLIS_PER_DAY = 24L * 60 * 60 * 1000
+    }
+}
+
 /** Which bottom-bar tab the app opens on. */
 @Serializable
 enum class DefaultTab(@param:StringRes val labelRes: Int) {
@@ -244,6 +301,9 @@ data class AppSettings(
 
     /** What an itinerary exported as GPX contains. */
     val gpxExport: GpxExportSettings = GpxExportSettings(),
+
+    /** How long fetched stops and places are kept, and how many of them. */
+    val offlineCache: OfflineCacheSettings = OfflineCacheSettings(),
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 

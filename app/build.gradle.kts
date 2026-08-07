@@ -70,6 +70,11 @@ kotlin {
     }
 }
 
+ksp {
+    // Schemas are committed (app/schemas/) so every migration is reviewable in the diff.
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -93,6 +98,9 @@ dependencies {
     implementation(libs.okhttp.logging.interceptor)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     implementation(libs.maplibre.compose.android)
     implementation(libs.maplibre.compose.material3.android)

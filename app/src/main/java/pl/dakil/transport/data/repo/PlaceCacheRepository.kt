@@ -1,0 +1,181 @@
+package pl.dakil.transport.data.repo
+
+import javax.inject.Inject
+import javax.inject.Singleton
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import pl.dakil.transport.data.local.Bbox
+import pl.dakil.transport.data.local.CachedPlaceEntity
+import pl.dakil.transport.data.local.PlaceDao
+import pl.dakil.transport.data.local.StopTileDao
+import pl.dakil.transport.data.local.StopTileEntity
+import pl.dakil.transport.data.local.TileGrid
+import pl.dakil.transport.data.local.TileKey
+import pl.dakil.transport.data.local.toCachedPlace
+import pl.dakil.transport.data.local.toTransitLocation
+import pl.dakil.transport.domain.model.TransitLocation
+
+/** Where the stops of one area came from, so the UI can say when it is drawing stale data. */
+data class CachedArea(
+    val stops: List<TransitLocation>,
+    /** Tiles in the requested box that have never been fetched. */
+    val missingTiles: List<TileKey>,
+    /** Tiles whose last fetch is older than the TTL — drawn, but worth refreshing. */
+    val expiredTiles: List<TileKey>,
+) {
+    val isComplete: Boolean get() = missingTiles.isEmpty() && expiredTiles.isEmpty()
+
+    /** Areas the app should ask the API about: never fetched, or past their TTL. */
+    val staleTiles: List<TileKey> get() = missingTiles + expiredTiles
+}
+
+/** How many places the cache holds, for the settings screen's stats line. */
+data class CacheStats(val places: Int, val stops: Int, val areas: Int)
+
+/**
+ * The app's memory of the places it has seen.
+ *
+ * Every read is answered from disk, immediately and unconditionally — including from tiles whose
+ * TTL has passed. Freshness is reported alongside the data rather than gating it, so the map can
+ * draw first and let the network catch up, and so a phone with no connection keeps working
+ * instead of showing an empty world.
+ */
+@Singleton
+class PlaceCacheRepository @Inject constructor(
+    private val placeDao: PlaceDao,
+    private val stopTileDao: StopTileDao,
+    private val stopsRepository: StopsRepository,
+) {
+
+    /**
+     * Serializes area refreshes. Two overlapping rectangles refreshing at once would each
+     * delete the other's freshly inserted stops inside the overlap; the lock is cheap because
+     * refreshes are already settle-gated and rare.
+     */
+    private val refreshLock = Mutex()
+
+    /**
+     * Cached stops inside [box], with which of its tiles are stale at [ttlMillis].
+     *
+     * [now] is passed in rather than read here so a caller can evaluate a whole viewport against
+     * one instant.
+     */
+    suspend fun stopsIn(box: Bbox, ttlMillis: Long, now: Long): CachedArea {
+        val stops = box.splitAtAntimeridian()
+            .flatMap { part -> placeDao.stopsInBox(part.south, part.west, part.north, part.east) }
+            .map { it.toTransitLocation() }
+
+        val tiles = TileGrid.tilesFor(box)
+        val fetchedAt = stopTileDao.tilesIn(tiles.map { it.id }).associate { it.tileKey to it.fetchedAt }
+        val missing = tiles.filter { it.id !in fetchedAt }
+        val expired = tiles.filter { tile ->
+            fetchedAt[tile.id]?.let { now - it > ttlMillis } == true
+        }
+        return CachedArea(stops = stops, missingTiles = missing, expiredTiles = expired)
+    }
+
+    /**
+     * Fetches the stops of [tiles] and writes them into the cache, one request per merged
+     * rectangle.
+     *
+     * Rectangles come from [TileGrid.mergeIntoRects] so a viewport with a few holes costs a few
+     * small requests rather than one that re-downloads everything already known. Past
+     * [maxRequests] the whole set collapses into its bounding box instead: a screen of misses is
+     * one request, not forty, which matters on an API the whole community shares.
+     *
+     * @return the number of rectangles that failed, so the caller can flag the area as offline.
+     */
+    suspend fun refreshTiles(tiles: List<TileKey>, now: Long, maxRequests: Int = MAX_REFRESH_REQUESTS): Int {
+        if (tiles.isEmpty()) return 0
+        val rects = TileGrid.mergeIntoRects(tiles)
+        val batches = if (rects.size <= maxRequests) rects else listOf(tiles)
+
+        var failures = 0
+        for (batch in batches) {
+            // Whole tiles only, so everything in the box is covered by the response and can be
+            // stamped as fetched — a rectangle drawn any other way would mark tiles it only
+            // partly covered.
+            val box = TileGrid.boxOf(batch) ?: continue
+            stopsRepository.stopsInViewport(box.south, box.west, box.north, box.east).fold(
+                onSuccess = { stops -> refreshArea(box, stops, now, batch) },
+                // A failed rectangle stamps nothing, so it is simply retried next time.
+                onFailure = { failures++ },
+            )
+        }
+        return failures
+    }
+
+    /**
+     * Replaces the map-sourced stops of [box] with [stops] and marks [tiles] fetched.
+     *
+     * The replace is what lets a withdrawn stop disappear. Area information is carried over from
+     * the rows being replaced: `/v6/map/stops` returns no city/state/country, so a stop the
+     * geocoder had already described would otherwise lose its subtitle the first time the map
+     * refreshed over it.
+     */
+    private suspend fun refreshArea(
+        box: Bbox,
+        stops: List<TransitLocation>,
+        now: Long,
+        tiles: List<TileKey>,
+    ) = refreshLock.withLock {
+        val existing = placeDao.findByKeys(stops.map { it.favoriteKey }).associateBy { it.key }
+        val rows = stops.map { stop ->
+            val previous = existing[stop.favoriteKey]
+            stop.toCachedPlace(fromMap = true, now = now).copy(
+                city = stop.city ?: previous?.city,
+                state = stop.state ?: previous?.state,
+                country = stop.country ?: previous?.country,
+            )
+        }
+        placeDao.replaceMapPlacesInBox(box.south, box.west, box.north, box.east, rows)
+        stopTileDao.upsert(tiles.map { StopTileEntity(tileKey = it.id, fetchedAt = now) })
+    }
+
+    /**
+     * Records places the geocoder returned. Written with `fromMap = false` so an area refresh
+     * over the same ground leaves them alone — a searched address is not something
+     * `/v6/map/stops` would ever return, and deleting it would lose it for good.
+     */
+    suspend fun rememberGeocoded(places: List<TransitLocation>, now: Long) {
+        if (places.isEmpty()) return
+        placeDao.upsert(places.map { it.toCachedPlace(fromMap = false, now = now) })
+    }
+
+    /** Places whose folded name contains [foldedQuery]; ranking is the caller's job. */
+    suspend fun search(foldedQuery: String, stopsOnly: Boolean, limit: Int): List<TransitLocation> {
+        if (foldedQuery.isBlank()) return emptyList()
+        return placeDao
+            .searchByName(pattern = "%${foldedQuery.escapeLike()}%", stopsOnly = stopsOnly, limit = limit)
+            .map { it.toTransitLocation() }
+    }
+
+    /** Trims the cache back to [maxPlaces], oldest first, never touching [protectedKeys]. */
+    suspend fun evictIfOversized(maxPlaces: Int, protectedKeys: List<String>) {
+        val excess = placeDao.countPlaces() - maxPlaces
+        if (excess > 0) placeDao.deleteOldest(excess, protectedKeys)
+    }
+
+    suspend fun stats(): CacheStats = CacheStats(
+        places = placeDao.countPlaces(),
+        stops = placeDao.countStops(),
+        areas = stopTileDao.countTiles(),
+    )
+
+    /** Empties the cache apart from [protectedKeys] — what the settings screen's button does. */
+    suspend fun clear(protectedKeys: List<String>) {
+        placeDao.deleteAllExcept(protectedKeys)
+        // Every area has to be considered unknown again: the rows backing it are gone, and a
+        // tile left stamped would stop the map ever refetching what it just deleted.
+        stopTileDao.deleteAll()
+    }
+
+    private companion object {
+        /** Above this many merged rectangles, one bounding-box request is the kinder option. */
+        const val MAX_REFRESH_REQUESTS = 4
+    }
+}
+
+/** Escapes the LIKE wildcards so a query containing `%` or `_` matches them literally. */
+private fun String.escapeLike(): String =
+    replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
