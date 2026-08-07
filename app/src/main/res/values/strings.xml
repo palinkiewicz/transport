@@ -117,7 +117,7 @@
     <string name="tab_map">Map</string>
     <string name="tab_connections">Connections</string>
     <string name="tab_departures">Departures</string>
-    <string name="tab_favourites">Favourites</string>
+    <string name="tab_saved">Saved</string>
     <string name="tab_settings">Settings</string>
 
     <!-- Errors: one-line phrasing for inline spots with no room for a full screen -->
@@ -151,12 +151,16 @@
     <string name="error_details_hide">Hide technical details</string>
 
     <!-- Favourites -->
-    <string name="favourites_title">Favourites</string>
-    <string name="favourites_empty_title">Nothing starred yet</string>
-    <string name="favourites_empty_body">Star places while searching, connections from their results, and lines from a vehicle or trip — they will all gather here.</string>
-    <string name="favourites_section_places">Places</string>
-    <string name="favourites_section_connections">Connections</string>
-    <string name="favourites_section_lines">Lines</string>
+    <string name="saved_title">Saved</string>
+    <string name="saved_empty_title">Nothing saved yet</string>
+    <string name="saved_empty_body">Star places while searching, connections from their results, lines from a vehicle or trip, and whole journeys from an itinerary — they will all gather here, ready to open offline.</string>
+    <string name="saved_section_places">Places</string>
+    <string name="saved_section_connections">Connections</string>
+    <string name="saved_section_lines">Lines</string>
+    <string name="saved_section_trips">Trips</string>
+    <!-- Departure date, then the run's departure and arrival times. -->
+    <string name="saved_itinerary_subtitle">%1$s · %2$s – %3$s</string>
+    <string name="saved_itinerary_snapshot_note">Saved copy from %1$s. Times will update once this run can be checked again.</string>
     <string name="favourite_add">Add to favourites</string>
     <string name="favourite_remove">Remove from favourites</string>
 
@@ -213,7 +217,7 @@
     <string name="picker_placeholder_map">Search stops &amp; places</string>
     <string name="picker_stops_only_note">Only transit stops can be routed through.</string>
     <string name="picker_current_location">Current location</string>
-    <string name="picker_favourites_header">Favourites</string>
+    <string name="picker_saved_header">Saved</string>
     <string name="location_your_location">Your location</string>
 
     <!-- Connections search form -->

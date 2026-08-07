@@ -4,8 +4,10 @@ import kotlin.math.asin
 import kotlin.math.cos
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlinx.serialization.Serializable
 
 /** A bare WGS84 coordinate, used for map geometry that isn't a stop/place. */
+@Serializable
 data class GeoPoint(val lat: Double, val lon: Double) {
 
     /** Great-circle (haversine) distance to [other] in meters. */

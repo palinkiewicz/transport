@@ -123,7 +123,7 @@
     <string name="tab_map">Mapa</string>
     <string name="tab_connections">Połączenia</string>
     <string name="tab_departures">Odjazdy</string>
-    <string name="tab_favourites">Ulubione</string>
+    <string name="tab_saved">Zapisane</string>
     <string name="tab_settings">Ustawienia</string>
 
     <!-- Errors: one-line phrasing for inline spots with no room for a full screen -->
@@ -157,12 +157,16 @@
     <string name="error_details_hide">Ukryj szczegóły techniczne</string>
 
     <!-- Favourites -->
-    <string name="favourites_title">Ulubione</string>
-    <string name="favourites_empty_title">Brak ulubionych</string>
-    <string name="favourites_empty_body">Oznaczaj gwiazdką miejsca podczas wyszukiwania, połączenia z wyników oraz linie z widoku pojazdu lub kursu — trafią one w to miejsce.</string>
-    <string name="favourites_section_places">Miejsca</string>
-    <string name="favourites_section_connections">Połączenia</string>
-    <string name="favourites_section_lines">Linie</string>
+    <string name="saved_title">Zapisane</string>
+    <string name="saved_empty_title">Nic jeszcze nie zapisano</string>
+    <string name="saved_empty_body">Oznaczaj gwiazdką miejsca podczas wyszukiwania, połączenia z wyników, linie z widoku pojazdu lub kursu oraz całe trasy z widoku podróży — trafią one w to miejsce i otworzysz je bez internetu.</string>
+    <string name="saved_section_places">Miejsca</string>
+    <string name="saved_section_connections">Połączenia</string>
+    <string name="saved_section_lines">Linie</string>
+    <string name="saved_section_trips">Trasy</string>
+    <!-- Departure date, then the run's departure and arrival times. -->
+    <string name="saved_itinerary_subtitle">%1$s · %2$s – %3$s</string>
+    <string name="saved_itinerary_snapshot_note">Zapisana kopia z %1$s. Godziny zaktualizują się, gdy uda się ponownie sprawdzić ten kurs.</string>
     <string name="favourite_add">Dodaj do ulubionych</string>
     <string name="favourite_remove">Usuń z ulubionych</string>
 
@@ -221,7 +225,7 @@
     <string name="picker_placeholder_map">Szukaj przystanków i miejsc</string>
     <string name="picker_stops_only_note">Trasa przesiadkowa może prowadzić tylko przez przystanki.</string>
     <string name="picker_current_location">Obecna lokalizacja</string>
-    <string name="picker_favourites_header">Ulubione</string>
+    <string name="picker_saved_header">Zapisane</string>
     <string name="location_your_location">Twoja lokalizacja</string>
 
     <!-- Connections search form -->

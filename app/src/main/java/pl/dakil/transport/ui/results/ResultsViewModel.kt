@@ -85,6 +85,10 @@ class ResultsViewModel @Inject constructor(
     val fromName: String get() = route.fromName
     val toName: String get() = route.toName
 
+    /** The endpoints as places, for anything that has to re-plan this search — saving a journey. */
+    val fromPlace: TransitLocation get() = from
+    val toPlace: TransitLocation get() = to
+
     /** Names of the intermediate stops, for the results header. */
     val viaNames: List<String> = vias.map { it.location.name }
 

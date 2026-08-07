@@ -1,4 +1,4 @@
-package pl.dakil.transport.ui.favourites
+package pl.dakil.transport.ui.saved
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,27 +42,37 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.FavoriteLine
+import pl.dakil.transport.domain.model.SavedItinerary
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LocationListItem
 import pl.dakil.transport.ui.components.LineColorRequest
 import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
+import pl.dakil.transport.ui.components.rememberDateFormatter
+import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.navigation.ResultsRoute
+import pl.dakil.transport.ui.navigation.SavedItineraryRoute
 import pl.dakil.transport.ui.navigation.TripRoute
 
 /**
- * The Favourites tab: everything the user has starred — places, connections (start→end
- * pairs, searched for "now" on tap) and lines (opening their trip timetable).
+ * The Saved tab: everything the user has starred — places, connections (start→end pairs,
+ * searched for "now" on tap), lines (opening their trip timetable) and whole journeys (opening
+ * their stored copy, which works with no connection).
+ *
+ * There is no "keep offline" switch anywhere in here on purpose: everything the app has fetched
+ * is cached already, and starring is only how the user marks which of it matters.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun FavouritesScreen(
+fun SavedScreen(
     onOpenConnectionsSearch: () -> Unit,
     onOpenConnection: (ResultsRoute) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
-    viewModel: FavouritesViewModel = hiltViewModel(),
+    onOpenItinerary: (SavedItineraryRoute) -> Unit,
+    viewModel: SavedViewModel = hiltViewModel(),
 ) {
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val itineraries by viewModel.itineraries.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
 
     Scaffold(
@@ -71,14 +82,15 @@ fun FavouritesScreen(
         contentWindowInsets = WindowInsets.systemBars.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
         topBar = {
             LargeFlexibleTopAppBar(
-                title = { Text(stringResource(R.string.favourites_title)) },
+                title = { Text(stringResource(R.string.saved_title)) },
                 scrollBehavior = scrollBehavior,
             )
         },
     ) { innerPadding ->
         val isEmpty = favorites.locations.isEmpty() &&
             favorites.connections.isEmpty() &&
-            favorites.lines.isEmpty()
+            favorites.lines.isEmpty() &&
+            itineraries.isEmpty()
         if (isEmpty) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -95,11 +107,11 @@ fun FavouritesScreen(
                     modifier = Modifier.size(48.dp),
                 )
                 Text(
-                    text = stringResource(R.string.favourites_empty_title),
+                    text = stringResource(R.string.saved_empty_title),
                     style = MaterialTheme.typography.titleMedium,
                 )
                 Text(
-                    text = stringResource(R.string.favourites_empty_body),
+                    text = stringResource(R.string.saved_empty_body),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -114,7 +126,7 @@ fun FavouritesScreen(
                     .fillMaxSize(),
             ) {
                 if (favorites.locations.isNotEmpty()) {
-                    sectionHeader("places-header", R.string.favourites_section_places)
+                    sectionHeader("places-header", R.string.saved_section_places)
                     items(
                         count = favorites.locations.size,
                         key = { "loc:${favorites.locations[it].favoriteKey}" },
@@ -138,7 +150,7 @@ fun FavouritesScreen(
                 }
 
                 if (favorites.connections.isNotEmpty()) {
-                    sectionHeader("connections-header", R.string.favourites_section_connections)
+                    sectionHeader("connections-header", R.string.saved_section_connections)
                     items(
                         count = favorites.connections.size,
                         key = { "conn:${favorites.connections[it].key}" },
@@ -154,7 +166,7 @@ fun FavouritesScreen(
                 }
 
                 if (favorites.lines.isNotEmpty()) {
-                    sectionHeader("lines-header", R.string.favourites_section_lines)
+                    sectionHeader("lines-header", R.string.saved_section_lines)
                     items(
                         count = favorites.lines.size,
                         key = { "line:${favorites.lines[it].key}" },
@@ -169,9 +181,76 @@ fun FavouritesScreen(
                         )
                     }
                 }
+
+                if (itineraries.isNotEmpty()) {
+                    sectionHeader("trips-header", R.string.saved_section_trips)
+                    items(
+                        count = itineraries.size,
+                        key = { "trip:${itineraries[it].id}" },
+                    ) { index ->
+                        val itinerary = itineraries[index]
+                        SavedItineraryListItem(
+                            itinerary = itinerary,
+                            onClick = { onOpenItinerary(SavedItineraryRoute(itinerary.id)) },
+                            onRemove = { viewModel.removeItinerary(itinerary.id) },
+                            modifier = Modifier.animateItem(),
+                        )
+                    }
+                }
             }
         }
     }
+}
+
+/**
+ * A pinned journey. The subtitle leads with when it leaves, because that — not the endpoints,
+ * which the title already gives — is what distinguishes two saved runs of the same trip.
+ */
+@Composable
+private fun SavedItineraryListItem(
+    itinerary: SavedItinerary,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val timeFormatter = rememberTimeFormatter()
+    val dateFormatter = rememberDateFormatter()
+    val journey = itinerary.journey
+    ListItem(
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        leadingContent = {
+            Icon(
+                Icons.Default.CloudDownload,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        headlineContent = {
+            Text(
+                text = stringResource(
+                    R.string.format_route_arrow,
+                    itinerary.fromName,
+                    itinerary.toName,
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        supportingContent = {
+            Text(
+                text = stringResource(
+                    R.string.saved_itinerary_subtitle,
+                    dateFormatter.format(journey.departureScheduledTime),
+                    timeFormatter.format(journey.departureScheduledTime),
+                    timeFormatter.format(journey.arrivalScheduledTime),
+                ),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        trailingContent = { FavoriteButton(isFavorite = true, onToggle = onRemove) },
+        modifier = modifier.clickable(onClick = onClick),
+    )
 }
 
 private fun LazyListScope.sectionHeader(key: String, @StringRes titleRes: Int) {

@@ -1,6 +1,7 @@
 package pl.dakil.transport.domain.model
 
 import androidx.annotation.StringRes
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import pl.dakil.transport.R
 
@@ -128,7 +129,14 @@ enum class DefaultTab(@param:StringRes val labelRes: Int) {
     MAP(R.string.tab_map),
     CONNECTIONS(R.string.tab_connections),
     DEPARTURES(R.string.tab_departures),
-    FAVOURITES(R.string.tab_favourites),
+
+    /**
+     * The Saved tab. Kept serializing as `FAVOURITES`, its name before the tab was renamed:
+     * only enum *names* are persisted, so a bare rename would quietly reset the default-tab
+     * choice of everyone who had picked this one.
+     */
+    @SerialName("FAVOURITES")
+    SAVED(R.string.tab_saved),
 }
 
 /**

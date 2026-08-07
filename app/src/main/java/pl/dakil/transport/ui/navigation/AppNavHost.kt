@@ -20,8 +20,9 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import pl.dakil.transport.ui.components.LocalLineColorSettings
-import pl.dakil.transport.ui.favourites.FavouritesScreen
+import pl.dakil.transport.ui.saved.SavedScreen
 import pl.dakil.transport.ui.itinerary.ItineraryScreen
+import pl.dakil.transport.ui.itinerary.SavedItineraryScreen
 import pl.dakil.transport.ui.map.MapScreen
 import pl.dakil.transport.ui.results.DeparturesScreen
 import pl.dakil.transport.ui.results.ResultsScreen
@@ -103,11 +104,12 @@ fun AppNavHost(
                 composable<LocationPickerRoute> {
                     LocationPickerScreen(onBack = { navController.popBackStack() })
                 }
-                composable<FavouritesRoute> {
-                    FavouritesScreen(
+                composable<SavedRoute> {
+                    SavedScreen(
                         onOpenConnectionsSearch = { navController.navigateToTab(ConnectionsRoute) },
                         onOpenConnection = { route -> navController.navigate(route) },
                         onOpenTrip = { route -> navController.navigate(route) },
+                        onOpenItinerary = { route -> navController.navigate(route) },
                     )
                 }
                 composable<SettingsRoute> {
@@ -133,8 +135,15 @@ fun AppNavHost(
                             toName = resultsViewModel.toName,
                             onBack = { navController.popBackStack() },
                             onOpenTrip = { route -> navController.navigate(route) },
+                            endpoints = resultsViewModel.fromPlace to resultsViewModel.toPlace,
                         )
                     }
+                }
+                composable<SavedItineraryRoute> {
+                    SavedItineraryScreen(
+                        onBack = { navController.popBackStack() },
+                        onOpenTrip = { route -> navController.navigate(route) },
+                    )
                 }
                 composable<DepartureBoardRoute> {
                     DeparturesScreen(

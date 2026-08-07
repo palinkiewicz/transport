@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
@@ -83,6 +84,8 @@ import pl.dakil.transport.data.export.GpxLabels
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.GpxDelivery
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.SavedItinerary
+import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.ui.components.EmptyBox
@@ -94,6 +97,7 @@ import pl.dakil.transport.ui.components.LineColorRequest
 import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
+import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.map.RouteMap
 import pl.dakil.transport.ui.map.RouteMapPoint
@@ -230,6 +234,14 @@ fun ItineraryScreen(
     toName: String,
     onBack: () -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
+    /**
+     * The endpoints this journey was planned between. Given, the screen offers a star that pins
+     * the whole journey for offline use; the saved-itinerary screen passes null because a
+     * journey opened from the Saved tab is already pinned.
+     */
+    endpoints: Pair<TransitLocation, TransitLocation>? = null,
+    /** Shown above the itinerary when this is a stored copy rather than a fresh plan. */
+    savedNote: String? = null,
     viewModel: ItineraryViewModel = hiltViewModel(),
 ) {
     var showMap by rememberSaveable { mutableStateOf(false) }
@@ -273,6 +285,14 @@ fun ItineraryScreen(
                     }
                 },
                 actions = {
+                    if (journey != null && endpoints != null) {
+                        val savedIds by viewModel.savedIds.collectAsStateWithLifecycle()
+                        val (from, to) = endpoints
+                        FavoriteButton(
+                            isFavorite = SavedItinerary.idFor(from, to, journey) in savedIds,
+                            onToggle = { viewModel.toggleSaved(from, to, journey) },
+                        )
+                    }
                     if (journey != null) {
                         IconButton(onClick = export.start) {
                             Icon(Icons.Default.Share, contentDescription = stringResource(R.string.gpx_export))
@@ -319,6 +339,12 @@ fun ItineraryScreen(
                     .fillMaxWidth(),
                 contentPadding = PaddingValues(16.dp),
             ) {
+                if (savedNote != null) {
+                    item(key = "saved-note") {
+                        SavedCopyNote(savedNote)
+                        Spacer(Modifier.height(16.dp))
+                    }
+                }
                 item(key = "summary") {
                     JourneySummary(journey)
                     Spacer(Modifier.height(20.dp))
@@ -710,6 +736,38 @@ private fun WaypointRow(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+/**
+ * Says that what follows is a stored copy rather than a fresh plan.
+ *
+ * Deliberately an informational tile and not an error: a saved journey is meant to be opened
+ * offline, so its stored times are the feature working, not something going wrong.
+ */
+@Composable
+private fun SavedCopyNote(note: String) {
+    Surface(
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+        ) {
+            Icon(
+                Icons.Default.CloudDownload,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = note,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 

@@ -48,5 +48,5 @@ fun DefaultTab.route(): Any = when (this) {
     DefaultTab.MAP -> MapRoute
     DefaultTab.CONNECTIONS -> ConnectionsRoute
     DefaultTab.DEPARTURES -> DeparturesRoute
-    DefaultTab.FAVOURITES -> FavouritesRoute
+    DefaultTab.SAVED -> SavedRoute
 }

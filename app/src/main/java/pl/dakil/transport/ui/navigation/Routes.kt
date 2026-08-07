@@ -14,7 +14,7 @@ object ConnectionsRoute
 object DeparturesRoute
 
 @Serializable
-object FavouritesRoute
+object SavedRoute
 
 @Serializable
 object SettingsRoute
@@ -77,6 +77,10 @@ data class ResultsRoute(
 
 @Serializable
 data class ItineraryRoute(val index: Int)
+
+/** A journey pinned for offline use, opened from the Saved tab by its stored id. */
+@Serializable
+data class SavedItineraryRoute(val id: String)
 
 /** Full run of a single vehicle trip — all stops with times. */
 @Serializable

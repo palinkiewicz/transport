@@ -14,13 +14,17 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.dakil.transport.data.export.GpxLabels
 import pl.dakil.transport.data.export.gpxFileName
 import pl.dakil.transport.data.export.writeGpx
 import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.data.repo.SavedItineraryRepository
 import pl.dakil.transport.domain.model.GpxExportSettings
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.SavedItinerary
+import pl.dakil.transport.domain.model.TransitLocation
 
 /**
  * The itinerary screen is otherwise stateless — it is handed its [Journey] by the results graph's
@@ -29,8 +33,29 @@ import pl.dakil.transport.domain.model.Journey
 @HiltViewModel
 class ItineraryViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
+    private val savedItineraryRepository: SavedItineraryRepository,
     settingsRepository: SettingsRepository,
 ) : ViewModel() {
+
+    /**
+     * Ids of every pinned journey. The screen compares against it rather than being told a
+     * boolean, because the results loop hands it a new [Journey] object on every refresh and the
+     * identity has to be recomputed from that journey each time.
+     */
+    val savedIds: StateFlow<Set<String>> = savedItineraryRepository.itineraries
+        .map { saved -> saved.map { it.id }.toSet() }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptySet())
+
+    fun toggleSaved(from: TransitLocation, to: TransitLocation, journey: Journey) {
+        viewModelScope.launch {
+            val id = SavedItinerary.idFor(from, to, journey)
+            if (id in savedIds.value) {
+                savedItineraryRepository.delete(id)
+            } else {
+                savedItineraryRepository.save(from, to, journey)
+            }
+        }
+    }
 
     /** Whether the itinerary map labels the stops where you board and alight. */
     val showStopNames: StateFlow<Boolean> = settingsRepository.settings

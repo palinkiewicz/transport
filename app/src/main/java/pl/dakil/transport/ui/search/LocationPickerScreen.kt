@@ -193,7 +193,7 @@ private fun LocationPickerList(
             if (items.isNotEmpty()) {
                 item(key = "favourites-header") {
                     Text(
-                        text = stringResource(R.string.picker_favourites_header),
+                        text = stringResource(R.string.picker_saved_header),
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier

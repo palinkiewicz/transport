@@ -31,7 +31,7 @@ private val bottomBarDestinations = listOf(
     BottomBarDestination(MapRoute, R.string.tab_map, Icons.Default.Map),
     BottomBarDestination(ConnectionsRoute, R.string.tab_connections, Icons.Default.Route),
     BottomBarDestination(DeparturesRoute, R.string.tab_departures, Icons.Default.DepartureBoard),
-    BottomBarDestination(FavouritesRoute, R.string.tab_favourites, Icons.Default.Star),
+    BottomBarDestination(SavedRoute, R.string.tab_saved, Icons.Default.Star),
     BottomBarDestination(SettingsRoute, R.string.tab_settings, Icons.Default.Settings),
 )
 

@@ -132,6 +132,9 @@ interface SavedItineraryDao {
     @Query("SELECT * FROM saved_itinerary ORDER BY departureIso DESC")
     fun observeAll(): kotlinx.coroutines.flow.Flow<List<SavedItineraryEntity>>
 
+    @Query("SELECT * FROM saved_itinerary")
+    suspend fun getAll(): List<SavedItineraryEntity>
+
     @Query("SELECT * FROM saved_itinerary WHERE id = :id")
     suspend fun findById(id: String): SavedItineraryEntity?
 

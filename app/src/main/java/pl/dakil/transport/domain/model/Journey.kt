@@ -2,11 +2,19 @@ package pl.dakil.transport.domain.model
 
 import java.time.Duration
 import java.time.OffsetDateTime
+import kotlinx.serialization.Serializable
 
+/**
+ * A planned journey. Serializable so the user can pin one for offline use — see
+ * `SavedItineraryRepository`; [OffsetDateTimeSerializer] carries the times.
+ */
+@Serializable
 data class Journey(
     val id: String?,
     val duration: Int,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val startTime: OffsetDateTime,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val endTime: OffsetDateTime,
     val transfers: Int,
     val legs: List<JourneyLeg>,
@@ -39,16 +47,20 @@ data class Journey(
 }
 
 /** A stop passed through (not boarded/alighted at) on a transit leg. */
+@Serializable
 data class IntermediateStop(
     /** The stop itself, so a row can open its departure board. */
     val place: TransitLocation,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val arrivalTime: OffsetDateTime? = null,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val scheduledArrivalTime: OffsetDateTime? = null,
     val track: String? = null,
 ) {
     val name: String get() = place.name
 }
 
+@Serializable
 data class JourneyLeg(
     val mode: TransportMode,
     /** Identifies the vehicle run, for opening its full timetable; null on non-transit legs. */
@@ -58,9 +70,13 @@ data class JourneyLeg(
     val toPlace: TransitLocation,
     val fromTrack: String? = null,
     val toTrack: String? = null,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val startTime: OffsetDateTime,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val endTime: OffsetDateTime,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val scheduledStartTime: OffsetDateTime,
+    @Serializable(with = OffsetDateTimeSerializer::class)
     val scheduledEndTime: OffsetDateTime,
     val realTime: Boolean,
     val duration: Int,
