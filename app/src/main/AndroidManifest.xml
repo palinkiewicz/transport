@@ -38,6 +38,20 @@
                 <data android:scheme="geo" />
             </intent-filter>
         </activity>
+
+        <!--
+            Hands an exported itinerary to the share sheet. The authority carries ${applicationId}
+            so the debug build (.debug suffix) doesn't collide with a release install.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

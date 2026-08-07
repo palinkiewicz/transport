@@ -319,6 +319,22 @@
     <string name="itinerary_access_leg">%1$s · %2$s</string>
     <string name="itinerary_access_leg_distance">%1$s · %2$s · %3$s</string>
 
+    <!-- Exporting an itinerary as a GPX file -->
+    <string name="gpx_export">Eksportuj jako GPX</string>
+    <string name="gpx_export_share">Udostępnij</string>
+    <string name="gpx_export_save">Zapisz do pliku</string>
+    <string name="gpx_export_choose">Jak wyeksportować tę trasę?</string>
+    <string name="gpx_export_failed_title">Eksport nie powiódł się</string>
+    <string name="gpx_export_failed_body">Nie udało się zapisać trasy do pliku. Spróbuj ponownie lub wybierz inne miejsce zapisu.</string>
+    <!-- Share sheet subject line -->
+    <string name="gpx_export_subject">%1$s → %2$s</string>
+    <!-- Waypoint name prefixes inside the file, e.g. "Board Warszawa Centralna" -->
+    <string name="gpx_waypoint_board">Wsiądź:</string>
+    <string name="gpx_waypoint_transfer">Przesiądź się:</string>
+    <string name="gpx_waypoint_alight">Wysiądź:</string>
+    <!-- Joins the parts of a waypoint description, e.g. "S2 · towards Airport · Pl. 3" -->
+    <string name="gpx_desc_separator">" · "</string>
+
     <!-- Settings -->
     <string name="settings_title">Ustawienia</string>
     <string name="settings_group_general">Ogólne</string>
@@ -353,6 +369,28 @@
     <string name="settings_line_color_swatch">Kolor %1$d</string>
     <string name="settings_line_color_pick">Wybierz kolor</string>
     <string name="settings_line_color_selected">Wybrany</string>
+
+    <string name="settings_group_export">Eksport trasy</string>
+    <string name="settings_gpx_delivery">Sposób eksportu</string>
+    <string name="gpx_delivery_share">Udostępnianie</string>
+    <string name="gpx_delivery_save">Zapis do pliku</string>
+    <string name="gpx_delivery_ask">Pytaj za każdym razem</string>
+    <string name="settings_gpx_filename">Nazwa pliku</string>
+    <string name="gpx_filename_route_date">Trasa i data</string>
+    <string name="gpx_filename_date_time">Data i godzina</string>
+    <string name="gpx_filename_plain">Zwykła</string>
+    <string name="settings_gpx_tracks">Dołącz kształt trasy</string>
+    <string name="settings_gpx_tracks_note">Zapisuje przebieg każdego odcinka jako ślad. Bez tego plik zawiera same przystanki — jest mniejszy i wystarcza aplikacjom, które i tak pomijają ślady.</string>
+    <string name="settings_gpx_access_legs">Dołącz odcinki piesze</string>
+    <string name="settings_gpx_access_legs_note">Obejmuje dojście, dojazd rowerem lub samochodem na początku i końcu podróży, a nie tylko przejazdy.</string>
+    <string name="settings_gpx_intermediate_stops">Dołącz wszystkie mijane przystanki</string>
+    <string name="settings_gpx_intermediate_stops_note">Punkt trasy dla każdego przystanku na drodze pojazdu, nie tylko dla tych, na których wsiadasz i wysiadasz. Długi przejazd potrafi dodać ich kilkadziesiąt.</string>
+    <string name="settings_gpx_times">Dołącz godziny</string>
+    <string name="settings_gpx_times_note">Dodaje znacznik czasu do każdego punktu trasy. Zapisywane są w UTC, zgodnie z wymogami formatu GPX.</string>
+    <string name="settings_gpx_real_times">Używaj godzin rzeczywistych</string>
+    <string name="settings_gpx_real_times_note">Bez tego plik zawiera rozkładowe godziny zamiast opóźnień zgłaszanych przez przewoźnika.</string>
+    <string name="settings_gpx_descriptions">Dołącz szczegóły linii</string>
+    <string name="settings_gpx_descriptions_note">Dodaje linię, kierunek, peron i przewoźnika do każdego punktu trasy i śladu.</string>
 
     <string name="settings_group_map_detail">Szczegółowość mapy</string>
     <string name="settings_stops_from_zoom">Przystanki od poziomu przybliżenia</string>

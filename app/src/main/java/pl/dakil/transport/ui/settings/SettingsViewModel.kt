@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.domain.model.AppSettings
+import pl.dakil.transport.domain.model.GpxExportSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 
 @HiltViewModel
@@ -40,7 +41,12 @@ class SettingsViewModel @Inject constructor(
 
     fun resetAll() = update { AppSettings.DEFAULT }
 
+    fun updateGpx(transform: (GpxExportSettings) -> GpxExportSettings) =
+        update { it.copy(gpxExport = transform(it.gpxExport)) }
+
     fun resetMotion() = update { it.copy(vehicleMotion = VehicleMotionSettings.DEFAULT) }
+
+    fun resetGpxExport() = update { it.copy(gpxExport = GpxExportSettings.DEFAULT) }
 
     fun resetLineColors() = update {
         it.copy(

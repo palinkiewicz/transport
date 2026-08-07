@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The only thing this app ever hands out is an exported itinerary, written to a cache
+    subdirectory that is cleared before each export.
+-->
+<paths>
+    <cache-path
+        name="exports"
+        path="exports/" />
+</paths>

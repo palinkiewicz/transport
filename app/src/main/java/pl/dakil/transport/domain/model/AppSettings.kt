@@ -118,6 +118,70 @@ object LinePalette {
     val DEFAULT = listOf("6750A4", "00658F", "006D3B", "9A4B00", "B3261E", "984061")
 }
 
+/** How the itinerary export hands the finished file over. */
+@Serializable
+enum class GpxDelivery(@param:StringRes val labelRes: Int) {
+    /** Straight to the system share sheet, from a file in the app's cache. */
+    SHARE(R.string.gpx_delivery_share),
+
+    /** The system document picker, so the file lands wherever the user chooses. */
+    SAVE(R.string.gpx_delivery_save),
+
+    /** Offer both each time. */
+    ASK(R.string.gpx_delivery_ask),
+}
+
+/** How the exported file is named. */
+@Serializable
+enum class GpxFileName(@param:StringRes val labelRes: Int) {
+    /** `warszawa-centralna-lotnisko-chopina-2026-08-06.gpx` */
+    ROUTE_AND_DATE(R.string.gpx_filename_route_date),
+
+    /** `itinerary-20260806-0812.gpx` */
+    DATE_TIME(R.string.gpx_filename_date_time),
+
+    /** `itinerary.gpx` */
+    PLAIN(R.string.gpx_filename_plain),
+}
+
+/**
+ * What an itinerary exported as GPX contains and how it leaves the app.
+ *
+ * GPX is read by everything from hiking watches to desktop mapping tools, and they disagree about
+ * what they want: some choke on a file with thousands of track points, others ignore waypoints
+ * entirely. So the shape of the file is a user decision rather than one baked in.
+ */
+@Serializable
+data class GpxExportSettings(
+    val delivery: GpxDelivery = GpxDelivery.SHARE,
+
+    val fileName: GpxFileName = GpxFileName.ROUTE_AND_DATE,
+
+    /** One `<trk>` per leg, drawn from the leg's decoded geometry. Off, the file is waypoints only. */
+    val includeTracks: Boolean = true,
+
+    /** Whether the walk/bike/car legs at either end contribute waypoints and tracks too. */
+    val includeAccessLegs: Boolean = true,
+
+    /** A `<wpt>` for every stop passed through, not only the ones boarded and alighted at. */
+    val includeIntermediateStops: Boolean = false,
+
+    /** `<time>` stamps on the waypoints. */
+    val includeTimes: Boolean = true,
+
+    /** Real-time times where the feed revises them; off, always the published schedule. */
+    val useRealTimes: Boolean = true,
+
+    /** `<desc>` carrying the line, headsign, platform and operator. */
+    val includeDescriptions: Boolean = true,
+) {
+    val isDefault: Boolean get() = this == DEFAULT
+
+    companion object {
+        val DEFAULT = GpxExportSettings()
+    }
+}
+
 /**
  * Everything the Settings screen tunes, persisted as one JSON blob. New fields must have
  * defaults so previously stored values keep decoding.
@@ -177,6 +241,9 @@ data class AppSettings(
 
     /** The user's own colour set, as GTFS-shaped `RRGGBB` hex. Read it through [palette]. */
     val customLineColors: List<String> = LinePalette.DEFAULT,
+
+    /** What an itinerary exported as GPX contains. */
+    val gpxExport: GpxExportSettings = GpxExportSettings(),
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 
