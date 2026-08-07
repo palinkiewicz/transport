@@ -27,7 +27,10 @@ import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.remote.toAppError
+import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.data.repo.GeocodeRepository
+import pl.dakil.transport.data.repo.PlaceCacheRepository
+import pl.dakil.transport.data.repo.PlaceSearchEngine
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
@@ -52,6 +55,7 @@ class LocationPickerViewModel @Inject constructor(
     @param:ApplicationContext private val context: Context,
     savedStateHandle: SavedStateHandle,
     private val geocodeRepository: GeocodeRepository,
+    private val placeCacheRepository: PlaceCacheRepository,
     locationService: LocationService,
     private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
@@ -163,15 +167,63 @@ class LocationPickerViewModel @Inject constructor(
     private val sortByDistance: Flow<Boolean> =
         settingsRepository.settings.map { it.sortSuggestionsByDistance }
 
+    private val offlineSearchEnabled: Flow<Boolean> =
+        settingsRepository.settings.map { it.offlineCache.offlineSearchEnabled }
+
+    /**
+     * Places already on disk that match the query, ranked locally.
+     *
+     * Runs on the keystroke itself — no debounce — because it costs one indexed query and no
+     * network at all. This is what puts a plausible list under the user's finger while the
+     * geocoder is still being waited on, and the whole list when there is no connection to wait
+     * on. [suggestions] then merges in on top of it.
+     */
+    private val cachedMatches: Flow<List<TransitLocation>> =
+        combine(_query, sortByDistance, offlineSearchEnabled) { query, sortByDistance, enabled ->
+            Triple(query, sortByDistance, enabled)
+        }
+            .mapLatest { (query, sortByDistance, enabled) ->
+                if (!enabled || query.isBlank()) {
+                    emptyList()
+                } else {
+                    val candidates = placeCacheRepository.search(
+                        foldedQuery = foldForSearch(query),
+                        stopsOnly = stopsOnly,
+                        limit = PlaceSearchEngine.CANDIDATE_LIMIT,
+                    )
+                    PlaceSearchEngine.rank(
+                        query = query,
+                        places = candidates,
+                        reference = referencePosition,
+                        distanceWeight = if (sortByDistance) {
+                            PlaceSearchEngine.DISTANCE_WEIGHT_WHEN_SORTING
+                        } else {
+                            0.0
+                        },
+                        limit = MAX_CACHED_SUGGESTIONS,
+                    )
+                }
+            }
+            .onStart { emit(emptyList()) }
+
     /** Suggestions while typing; the favourite places when the query is blank. */
     val items: StateFlow<List<PickerItem>> =
         combine(
             _query,
+            cachedMatches,
             suggestions,
             favoritesRepository.favorites,
             sortByDistance,
-        ) { query, suggestions, favorites, sortByDistance ->
-            val locations = (if (query.isBlank()) favorites.locations else suggestions)
+        ) { query, cached, suggestions, favorites, sortByDistance ->
+            val locations = if (query.isBlank()) {
+                favorites.locations
+            } else {
+                // The geocoder leads where it has answered: it knows about places never cached,
+                // and its matches carry the city/state the map's own stops never do. The cached
+                // rest follows, which is what keeps the list from emptying while the request is
+                // in flight — or failing.
+                (suggestions + cached).distinctBy { it.favoriteKey }
+            }
                 // A starred address or map point can't stand in for a stop id.
                 .filter { !stopsOnly || it.stopId != null }
             val items = locations.map { location ->
@@ -209,5 +261,14 @@ class LocationPickerViewModel @Inject constructor(
             PickerTarget.STOP -> searchStateHolder.setDepartureStop(location)
             PickerTarget.MAP -> searchStateHolder.setMapLocation(location)
         }
+    }
+
+    private companion object {
+        /**
+         * Cached matches offered alongside the geocoder's own. Kept near the geocoder's
+         * `numResults` so a healthy connection reads as one list rather than a short authoritative
+         * one followed by a long local tail.
+         */
+        const val MAX_CACHED_SUGGESTIONS = 12
     }
 }

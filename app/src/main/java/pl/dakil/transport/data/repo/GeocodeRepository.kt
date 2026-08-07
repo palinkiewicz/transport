@@ -12,12 +12,16 @@ import pl.dakil.transport.domain.model.TransitLocation
 class GeocodeRepository @Inject constructor(
     private val api: MotisApi,
     private val json: Json,
+    private val placeCacheRepository: PlaceCacheRepository,
 ) {
 
     /**
      * Geocoder suggestions for [text]. With [stopsOnly] the API is asked for `STOP` matches
      * alone, so every suggestion carries a stop id — required wherever coordinates are not
      * accepted (intermediate stops, departure boards).
+     *
+     * Results are also written to the place cache, which is what lets the same query answer
+     * instantly next time — and answer at all with no connection.
      */
     suspend fun suggest(
         text: String,
@@ -33,11 +37,13 @@ class GeocodeRepository @Inject constructor(
             numResults = 8,
             type = if (stopsOnly) "STOP" else null,
         )
-        json.decode<List<MatchDto>>(body)
+        val results = json.decode<List<MatchDto>>(body)
             .map { it.toTransitLocation() }
             // The geocoder can return the same stop twice (e.g. matched by name and by alias);
             // duplicates would also crash the picker's LazyColumn, which keys rows by favoriteKey.
             .distinctBy { it.favoriteKey }
+        placeCacheRepository.rememberGeocoded(results, System.currentTimeMillis())
+        results
     }
 
     /**
