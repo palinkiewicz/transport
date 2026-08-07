@@ -1,5 +1,10 @@
 package pl.dakil.transport.ui.search
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -104,9 +109,10 @@ internal fun SearchHeader(icon: ImageVector, title: String) {
  * Side-by-side date and time buttons that open their pickers. Dialog visibility is internal
  * state; the caller only sees the committed [onDateTimeChange].
  *
- * [onResetToNow] adds a reset button; pass null to hide it. The tab's ViewModel outlives the
- * screen, so a time seeded at creation quietly goes stale — this is how the user gets back to
- * "now" without opening both pickers.
+ * [onResetToNow] adds a reset button, shown while [showResetToNow] is true. The tab's ViewModel
+ * outlives the screen, so a time seeded at creation quietly goes stale — this is how the user
+ * gets back to "now" without opening both pickers. Visibility is a flag rather than a null
+ * callback so the button can animate out with the callback still available to it.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -115,6 +121,7 @@ internal fun DateTimeRow(
     onDateTimeChange: (OffsetDateTime) -> Unit,
     modifier: Modifier = Modifier,
     onResetToNow: (() -> Unit)? = null,
+    showResetToNow: Boolean = false,
 ) {
     val dateFormatter = rememberDateFormatter()
     val timeFormatter = rememberTimeFormatter()
@@ -144,8 +151,16 @@ internal fun DateTimeRow(
             Spacer(Modifier.width(8.dp))
             Text(dateTime.format(timeFormatter))
         }
-        if (onResetToNow != null) {
-            FilledTonalIconButton(onClick = onResetToNow, shapes = IconButtonDefaults.shapes()) {
+        // Animated as a row slot, so the date/time buttons stretch into the space as it goes.
+        AnimatedVisibility(
+            visible = onResetToNow != null && showResetToNow,
+            enter = expandHorizontally(expandFrom = Alignment.CenterHorizontally) + fadeIn(),
+            exit = shrinkHorizontally(shrinkTowards = Alignment.CenterHorizontally) + fadeOut(),
+        ) {
+            FilledTonalIconButton(
+                onClick = { onResetToNow?.invoke() },
+                shapes = IconButtonDefaults.shapes(),
+            ) {
                 Icon(Icons.Default.Restore, contentDescription = stringResource(R.string.datetime_use_now))
             }
         }

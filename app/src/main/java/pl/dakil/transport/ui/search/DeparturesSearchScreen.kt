@@ -98,13 +98,12 @@ fun DeparturesSearchScreen(
                 },
             )
 
-            // Same rule as the connections form: nothing to reset to when the board is showing
-            // arrivals up to a time the user chose.
-            val canResetToNow = !uiState.options.arriveBy && isAwayFromNow(uiState.dateTime)
+            // Same rule as the connections form: offer the reset once the time has drifted.
             DateTimeRow(
                 dateTime = uiState.dateTime,
                 onDateTimeChange = viewModel::setDateTime,
-                onResetToNow = viewModel::setDateTimeToNow.takeIf { canResetToNow },
+                onResetToNow = viewModel::setDateTimeToNow,
+                showResetToNow = isAwayFromNow(uiState.dateTime),
             )
 
             SearchButton(

@@ -117,13 +117,12 @@ fun ConnectionsSearchScreen(
                 },
             )
 
-            // Only worth offering when there is something to reset, and only when leaving now
-            // is even the question — "arrive by" is always a time you picked.
-            val canResetToNow = !uiState.options.arriveBy && isAwayFromNow(uiState.dateTime)
+            // Only worth offering when the picked time has actually drifted from the clock.
             DateTimeRow(
                 dateTime = uiState.dateTime,
                 onDateTimeChange = viewModel::setDateTime,
-                onResetToNow = viewModel::setDateTimeToNow.takeIf { canResetToNow },
+                onResetToNow = viewModel::setDateTimeToNow,
+                showResetToNow = isAwayFromNow(uiState.dateTime),
             )
 
             IntSliderRow(
