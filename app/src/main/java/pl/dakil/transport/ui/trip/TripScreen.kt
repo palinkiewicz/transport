@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -44,9 +45,11 @@ import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 fun TripScreen(
     onBack: () -> Unit,
     onOpenDepartures: (DepartureBoardRoute) -> Unit,
+    onShowOnMap: () -> Unit,
     viewModel: TripViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val now = rememberTickingNow()
     val secondsUntilRefresh by viewModel.secondsUntilRefresh.collectAsStateWithLifecycle()
     val isFavorite by viewModel.isFavorite.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
@@ -76,6 +79,20 @@ fun TripScreen(
                 },
                 actions = {
                     RefreshButton(secondsUntilRefresh, onRefresh = viewModel::refreshNow)
+                    // Held back until the timetable is there: the map is handed this run's stops,
+                    // not just its id. A run that is not on the road goes over as its route and
+                    // stops alone — there is no vehicle to draw, but the line is still worth
+                    // seeing.
+                    if (uiState is TripUiState.Content) {
+                        IconButton(
+                            onClick = {
+                                viewModel.showOnMap()
+                                onShowOnMap()
+                            },
+                        ) {
+                            Icon(Icons.Default.Map, contentDescription = stringResource(R.string.trip_show_on_map))
+                        }
+                    }
                     FavoriteButton(isFavorite = isFavorite, onToggle = viewModel::toggleFavorite)
                 },
                 scrollBehavior = scrollBehavior,
@@ -90,7 +107,6 @@ fun TripScreen(
                 onRetry = viewModel::refreshNow,
             )
             is TripUiState.Content -> {
-                val now = rememberTickingNow()
                 LazyColumn(
                     modifier = Modifier
                         .padding(innerPadding)

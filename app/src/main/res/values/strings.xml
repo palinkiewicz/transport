@@ -169,6 +169,9 @@
     <string name="refresh_subtitle_departures">Live departures</string>
     <string name="refresh_subtitle_trip">Trip timetable</string>
 
+    <!-- Trip timetable screen -->
+    <string name="trip_show_on_map">Show on map</string>
+
     <!-- Vehicle attributes -->
     <string name="attribute_wheelchair">Wheelchair access</string>
     <string name="attribute_bikes">Bikes allowed</string>

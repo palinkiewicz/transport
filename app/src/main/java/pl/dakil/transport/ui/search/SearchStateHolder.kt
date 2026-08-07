@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.SessionState
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.ViaPoint
@@ -28,10 +29,11 @@ import pl.dakil.transport.domain.model.ViaPoint
  * — the Map's "Begin here"/"Finish here", the Favourites list, and the full-screen location
  * picker all write straight into these flows instead of passing nav arguments around.
  *
- * [pendingMapLocation] is the one exception and still works as a one-shot signal: it flows the
- * other way, from a `MAP`-target pick to [pl.dakil.transport.ui.map.MapViewModel], which
- * consumes it to select the location and drive the camera, then clears it. It is also the one
- * field never persisted — a signal that outlived the process would fire at the wrong moment.
+ * [pendingMapLocation] and [pendingMapTrip] are the exceptions and work as one-shot signals: they
+ * flow the other way, towards [pl.dakil.transport.ui.map.MapViewModel] — a `MAP`-target pick to be
+ * selected and centred on, and a trip opened from a timetable to be followed — which consumes and
+ * clears them. They are also the fields never persisted: a signal that outlived the process would
+ * fire at the wrong moment.
  */
 @OptIn(FlowPreview::class)
 @Singleton
@@ -59,6 +61,9 @@ class SearchStateHolder @Inject constructor(
 
     /** A map-target pick, consumed by the Map screen. */
     val pendingMapLocation = MutableStateFlow<TransitLocation?>(null)
+
+    /** A trip to follow on the map, raised by the trip timetable's "show on map" action. */
+    val pendingMapTrip = MutableStateFlow<PendingMapTrip?>(null)
 
     /**
      * Raised when another app hands over a point, and consumed by the nav host to open the Map
@@ -132,6 +137,14 @@ class SearchStateHolder @Inject constructor(
 
     fun setMapLocation(location: TransitLocation) {
         pendingMapLocation.value = location
+    }
+
+    /**
+     * A trip the user asked to see on the map. The caller navigates to the Map tab itself — the
+     * timetable screens it comes from are already inside the nav host, unlike a shared point.
+     */
+    fun setMapTrip(trip: PendingMapTrip) {
+        pendingMapTrip.value = trip
     }
 
     /** Reverses the whole route, intermediate stops included — they are held in travel order. */

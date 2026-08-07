@@ -46,6 +46,7 @@ import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.MapCamera
 import pl.dakil.transport.domain.model.MapFilters
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
@@ -172,10 +173,11 @@ class MapViewModel @Inject constructor(
     private val _filters = MutableStateFlow(MapFilters.DEFAULT)
     val filters: StateFlow<MapFilters> = _filters
 
-    // A location picked in the map's search field, pending the screen's camera move
-    // (the selection itself is applied here, via the regular selectStop path).
-    private val _searchCameraTarget = MutableStateFlow<TransitLocation?>(null)
-    val searchCameraTarget: StateFlow<TransitLocation?> = _searchCameraTarget
+    // Where the camera is asked to fly next, pending the screen's move: a location picked in the
+    // map's search field (whose selection is applied here, via the regular selectStop path), or
+    // the last known whereabouts of a trip opened from a timetable.
+    private val _cameraTarget = MutableStateFlow<GeoPoint?>(null)
+    val cameraTarget: StateFlow<GeoPoint?> = _cameraTarget
 
     init {
         viewModelScope.launch {
@@ -209,9 +211,9 @@ class MapViewModel @Inject constructor(
         }
     }
 
-    /** Called by the screen once it has animated the camera to [searchCameraTarget]. */
-    fun consumeSearchCameraTarget() {
-        _searchCameraTarget.value = null
+    /** Called by the screen once it has animated the camera to [cameraTarget]. */
+    fun consumeCameraTarget() {
+        _cameraTarget.value = null
     }
 
     fun updateFilters(transform: (MapFilters) -> MapFilters) {
@@ -229,6 +231,14 @@ class MapViewModel @Inject constructor(
     private val _vehicleDetails = MutableStateFlow<VehicleDetailsUiState>(VehicleDetailsUiState.Hidden)
     val vehicleDetails: StateFlow<VehicleDetailsUiState> = _vehicleDetails
 
+    /**
+     * The trip opened from a timetable, for as long as it stays selected. Non-null even when the
+     * run is not on the road and so has no marker of its own: that is exactly the case where the
+     * map's vehicle UI has nothing else to key off, and its route and stops still have to show.
+     */
+    private val _pinnedTrip = MutableStateFlow<PendingMapTrip?>(null)
+    val pinnedTrip: StateFlow<PendingMapTrip?> = _pinnedTrip
+
     /** Whether selecting a vehicle narrows the map to that run alone. */
     private val focusSelectedVehicle: StateFlow<Boolean> = settings
         .map { it.focusSelectedVehicle }
@@ -241,8 +251,17 @@ class MapViewModel @Inject constructor(
      * a glitch rather than as focus.
      */
     private val focusedTripStops: StateFlow<List<TransitLocation>> =
-        combine(selectedVehicleSegments, vehicleDetails, focusSelectedVehicle) { selected, details, focus ->
-            if (!focus || selected == null) {
+        combine(
+            selectedVehicleSegments,
+            vehicleDetails,
+            focusSelectedVehicle,
+            pinnedTrip,
+        ) { selected, details, focus, pinned ->
+            // A trip opened from a timetable with no vehicle to follow ignores the setting: its
+            // stops are the only thing there is to look at, so hiding them among the viewport's
+            // would defeat the whole point of opening it.
+            val followingVehicle = selected != null
+            if (if (followingVehicle) !focus else pinned == null) {
                 emptyList()
             } else {
                 // Interlined runs call at the joint stop twice; the map only wants one marker.
@@ -441,6 +460,9 @@ class MapViewModel @Inject constructor(
 
     private var vehicleDetailsJob: Job? = null
 
+    /** Fetch loop of a trip followed from a timetable — see [selectPinnedTrip]. */
+    private var pinnedTripJob: Job? = null
+
     private val _stopRoutes = MutableStateFlow<StopRoutesUiState>(StopRoutesUiState.Hidden)
     val stopRoutes: StateFlow<StopRoutesUiState> = _stopRoutes
 
@@ -504,17 +526,69 @@ class MapViewModel @Inject constructor(
         _selectedStop.value = null
         hideRoutes()
         if (selectedVehicleSegments.value?.firstOrNull()?.tripKey == vehicle.id) return
+        // A vehicle tapped on the map is tracked by the viewport fetches like any other; whatever
+        // trip was being followed from a timetable is not this one.
+        pinnedTripJob?.cancel()
+        _pinnedTrip.value = null
         selectedVehicleSegments.value = vehicleSegments.value.filter { it.tripKey == vehicle.id }
-        vehicleDetailsJob?.cancel()
         val tripId = vehicle.tripId
         if (tripId == null) {
             // No trip id — the panel can still show marker-level info, just no details/route.
+            vehicleDetailsJob?.cancel()
             _vehicleDetails.value = VehicleDetailsUiState.Hidden
             return
         }
+        loadVehicleDetails(tripId, vehicle.label)
+    }
+
+    /**
+     * Follows a trip opened from a timetable screen, which arrives as an id and a rough
+     * whereabouts rather than as a marker already on the map.
+     *
+     * Its segments can't come from the viewport — the map may be looking somewhere else entirely,
+     * and the user's filters or zoom may rule vehicle fetches out — so the trip gets its own fetch
+     * loop against a small box around it, renewed on the same cadence as the map's own. That keeps
+     * the marker moving for as long as the selection lives, which is what
+     * [clearVehicleSelection] then has to stop.
+     */
+    fun selectPinnedTrip(trip: PendingMapTrip) {
+        _selectedStop.value = null
+        hideRoutes()
+        pinnedTripJob?.cancel()
+        selectedVehicleSegments.value = null
+        _pinnedTrip.value = trip
+        loadVehicleDetails(trip.tripId, trip.label)
+        if (!trip.isRunning) {
+            // Nothing is moving to look for. The route and its stops come from the details being
+            // loaded, and the screen frames the whole line once they land.
+            return
+        }
+        // The fetch takes a moment; the camera starts moving now so switching to the map is not a
+        // second of nothing happening. The follow effect takes over once the marker exists.
+        _cameraTarget.value = trip.between.first
+        pinnedTripJob = viewModelScope.launch {
+            var between = trip.between
+            while (true) {
+                val motion = motionSettings.value
+                val segments = vehiclesRepository
+                    .segmentsForTrip(trip.tripId, between, motion.fetchWindowSeconds.toLong())
+                    .getOrDefault(emptyList())
+                if (segments.isNotEmpty()) {
+                    selectedVehicleSegments.value = segments
+                    // Follow the run: the next box is drawn around where it is by then, not
+                    // around where it was when the user left the timetable.
+                    segments.currentBox()?.let { between = it }
+                }
+                delay(motion.refreshIntervalSeconds * 1_000L)
+            }
+        }
+    }
+
+    private fun loadVehicleDetails(tripId: String, label: String) {
+        vehicleDetailsJob?.cancel()
         _vehicleDetails.value = VehicleDetailsUiState.Loading
         vehicleDetailsJob = viewModelScope.launch {
-            routesRepository.tripDetails(tripId, vehicle.label).fold(
+            routesRepository.tripDetails(tripId, label).fold(
                 onSuccess = { _vehicleDetails.value = VehicleDetailsUiState.Shown(it) },
                 onFailure = { error ->
                     if (error !is CancellationException) {
@@ -527,6 +601,8 @@ class MapViewModel @Inject constructor(
 
     fun clearVehicleSelection() {
         vehicleDetailsJob?.cancel()
+        pinnedTripJob?.cancel()
+        _pinnedTrip.value = null
         selectedVehicleSegments.value = null
         _vehicleDetails.value = VehicleDetailsUiState.Hidden
     }
@@ -621,11 +697,19 @@ class MapViewModel @Inject constructor(
      */
     init {
         viewModelScope.launch {
+            searchStateHolder.pendingMapTrip.collect { trip ->
+                if (trip != null) {
+                    searchStateHolder.pendingMapTrip.value = null
+                    selectPinnedTrip(trip)
+                }
+            }
+        }
+        viewModelScope.launch {
             searchStateHolder.pendingMapLocation.collect { location ->
                 if (location != null) {
                     searchStateHolder.pendingMapLocation.value = null
                     selectStop(location)
-                    _searchCameraTarget.value = location
+                    _cameraTarget.value = GeoPoint(lat = location.lat, lon = location.lon)
                 }
             }
         }
@@ -674,6 +758,20 @@ private fun frameTargets(segments: List<VehicleSegment>, time: OffsetDateTime): 
             fraction = current.fractionAt(time),
         )
     }
+
+/**
+ * The stretch a followed trip is on right now, as the two ends of the segment covering this
+ * moment — the box its next fetch is made against. Falls back to the whole known path when the
+ * run is between segments (dwelling at a stop) or past the segments' coverage, and null when the
+ * fetch carried no geometry at all — the caller then keeps the box it already had.
+ */
+private fun List<VehicleSegment>.currentBox(): Pair<GeoPoint, GeoPoint>? {
+    val now = OffsetDateTime.now()
+    val current = firstOrNull { now >= it.departure && now <= it.arrival }
+        ?: filter { it.departure > now }.minByOrNull { it.departure }
+    val path = current?.path?.takeIf { it.isNotEmpty() } ?: flatMap { it.path }
+    return if (path.isEmpty()) null else path.first() to path.last()
+}
 
 /** This segment's vehicle as a marker, positioned at [time] (clamped to the segment's path). */
 private fun VehicleSegment.markerAt(time: OffsetDateTime): VehicleMarker? {

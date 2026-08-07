@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.OffsetDateTime
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -21,10 +22,14 @@ import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.repo.TimetableRepository
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.FavoriteLine
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.TransportMode
 import pl.dakil.transport.domain.model.TripStop
+import pl.dakil.transport.domain.model.currentLegAt
+import pl.dakil.transport.domain.model.isRunningAt
 import pl.dakil.transport.domain.model.toTripStops
 import pl.dakil.transport.ui.results.REFRESH_INTERVAL_SECONDS
+import pl.dakil.transport.ui.search.SearchStateHolder
 
 sealed interface TripUiState {
     data object Loading : TripUiState
@@ -46,6 +51,7 @@ class TripViewModel @Inject constructor(
     private val timetableRepository: TimetableRepository,
     private val favoritesRepository: FavoritesRepository,
     private val settingsRepository: SettingsRepository,
+    private val searchStateHolder: SearchStateHolder,
 ) : ViewModel() {
 
     private val tripId: String = savedStateHandle["tripId"]!!
@@ -68,6 +74,28 @@ class TripViewModel @Inject constructor(
 
     fun toggleFavorite() {
         viewModelScope.launch { favoritesRepository.toggleLine(favoriteLine) }
+    }
+
+    /**
+     * Hands this run to the map, which shows it from there (the caller does the navigating).
+     * The stops go along as the vehicle's whereabouts: the map has no way to look a trip's
+     * position up by id, and this screen already knows where the run has got to — or, for a run
+     * that is not on the road, that there is no vehicle to look for in the first place.
+     */
+    fun showOnMap() {
+        val now = OffsetDateTime.now()
+        val stops = (_uiState.value as? TripUiState.Content)?.stops ?: return
+        val between = stops.currentLegAt(now) ?: return
+        searchStateHolder.setMapTrip(
+            PendingMapTrip(
+                tripId = tripId,
+                label = lineLabel,
+                mode = mode,
+                routeColor = routeColor,
+                between = between,
+                isRunning = stops.isRunningAt(now),
+            ),
+        )
     }
 
     private val _uiState = MutableStateFlow<TripUiState>(TripUiState.Loading)

@@ -177,6 +177,9 @@
     <string name="refresh_subtitle_departures">Odjazdy na żywo</string>
     <string name="refresh_subtitle_trip">Rozkład kursu</string>
 
+    <!-- Trip timetable screen -->
+    <string name="trip_show_on_map">Pokaż na mapie</string>
+
     <!-- Vehicle attributes -->
     <string name="attribute_wheelchair">Dostępność dla wózków</string>
     <string name="attribute_bikes">Możliwość przewozu rowerów</string>

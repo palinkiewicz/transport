@@ -13,6 +13,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -135,13 +136,16 @@ import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
 import org.maplibre.compose.style.rememberStyleState
 import org.maplibre.compose.util.ClickResult
+import org.maplibre.spatialk.geojson.BoundingBox
 import org.maplibre.spatialk.geojson.Feature
 import org.maplibre.spatialk.geojson.FeatureCollection
 import org.maplibre.spatialk.geojson.LineString
 import org.maplibre.spatialk.geojson.Point
 import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.R
+import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.GeoPoint
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
@@ -216,6 +220,17 @@ private const val VIEWPORT_HEARTBEAT_MILLIS = 30_000L
  * same amount. Done in screen space rather than with `CameraPosition.padding`, which MapLibre
  * applies in one step at the end of an animation instead of animating into it.
  */
+/** Bounds containing every point, or null when there are none to contain. */
+private fun List<GeoPoint>.boundingBox(): BoundingBox? {
+    if (isEmpty()) return null
+    return BoundingBox(
+        west = minOf { it.lon },
+        south = minOf { it.lat },
+        east = maxOf { it.lon },
+        north = maxOf { it.lat },
+    )
+}
+
 private fun CameraProjection.targetCentering(vehicle: GeoPoint, panelHeight: Dp): Position {
     val onScreen = screenLocationFromPosition(Position(latitude = vehicle.lat, longitude = vehicle.lon))
     return positionFromScreenLocation(DpOffset(onScreen.x, onScreen.y + panelHeight / 2))
@@ -239,6 +254,9 @@ fun MapScreen(
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
     val selectedVehicle by viewModel.selectedVehicle.collectAsStateWithLifecycle()
     val vehicleDetails by viewModel.vehicleDetails.collectAsStateWithLifecycle()
+    // A trip opened from a timetable. It outlives its marker: a run that is not on the road has
+    // no vehicle to draw, and only its route and stops are shown.
+    val pinnedTrip by viewModel.pinnedTrip.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     // Delegated on purpose: the map content lambda is composed once and never swapped, so the
     // layers below must read this through its State (a captured value would freeze at startup).
@@ -291,13 +309,14 @@ fun MapScreen(
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
     // panel is open — instead of leaving the app from under a full-screen selection.
     BackHandler(
-        enabled = filtersExpanded || selectedVehicle != null || selectedStop != null || routeDraftVisible,
+        enabled = filtersExpanded || selectedVehicle != null || pinnedTrip != null ||
+            selectedStop != null || routeDraftVisible,
     ) {
         when {
             filtersExpanded -> filtersExpanded = false
             // Stop first, then the vehicle: with both open the stop panel is on top.
             selectedStop != null -> viewModel.clearStopSelection()
-            selectedVehicle != null -> viewModel.clearVehicleSelection()
+            selectedVehicle != null || pinnedTrip != null -> viewModel.clearVehicleSelection()
             // Abandoning the draft leaves the picks in the search form; only the bar goes away.
             else -> viewModel.hideRouteDraft()
         }
@@ -340,21 +359,40 @@ fun MapScreen(
     )
     val styleState = rememberStyleState()
 
-    // A location picked in the map's search field: the ViewModel has already selected it
-    // (info panel + halo); the screen's part is centering the camera on it.
-    val searchCameraTarget by viewModel.searchCameraTarget.collectAsStateWithLifecycle()
-    LaunchedEffect(searchCameraTarget) {
-        searchCameraTarget?.let { location ->
+    // Where the ViewModel wants the camera: a location picked in the map's search field (already
+    // selected there, info panel + halo included), or a trip opened from a timetable, whose
+    // marker the follow effect below then takes over from this zoom.
+    val cameraTarget by viewModel.cameraTarget.collectAsStateWithLifecycle()
+    LaunchedEffect(cameraTarget) {
+        cameraTarget?.let { target ->
             // Stop an in-flight locate-me animation from overriding the searched location.
             pendingLocateMe = false
             cameraState.animateTo(
                 CameraPosition(
-                    target = Position(latitude = location.lat, longitude = location.lon),
+                    target = Position(latitude = target.lat, longitude = target.lon),
                     zoom = 16.0,
                 ),
             )
-            viewModel.consumeSearchCameraTarget()
+            viewModel.consumeCameraTarget()
         }
+    }
+
+    // A trip opened from a timetable whose run is off the road: with no marker to fly to and
+    // follow, the camera frames the whole line once its geometry lands, which is the only thing
+    // there is to look at. Keyed on the trip, so it happens once per opening and never fights the
+    // user's own panning afterwards.
+    val pinnedTripShape = pinnedTrip
+        ?.takeIf { !it.isRunning }
+        ?.let { (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape }
+    LaunchedEffect(pinnedTrip?.tripId, pinnedTripShape != null) {
+        val bounds = pinnedTripShape?.segments?.flatten()?.boundingBox() ?: return@LaunchedEffect
+        pendingLocateMe = false
+        cameraState.animateTo(
+            boundingBox = bounds,
+            // Clear of the panel below and the search bar above, so the whole run stays visible.
+            padding = PaddingValues(start = 32.dp, top = 96.dp, end = 32.dp, bottom = vehiclePanelHeight + 32.dp),
+            duration = FOLLOW_CENTER_DURATION,
+        )
     }
 
     // The map click callback below is captured once by MaplibreMap and never refreshed, so it
@@ -537,8 +575,9 @@ fun MapScreen(
             }
             val stopsSource = rememberGeoJsonSource(data = GeoJsonData.Features(stopFeatures))
             // The selected vehicle's route joins the selected stop's routes overlay for as
-            // long as the vehicle stays selected.
-            val vehicleRouteShape = if (selectedVehicle != null) {
+            // long as the vehicle stays selected — or, for a trip opened from a timetable with
+            // no vehicle on the road, for as long as the trip itself is open.
+            val vehicleRouteShape = if (selectedVehicle != null || pinnedTrip != null) {
                 (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape
             } else {
                 null
@@ -906,21 +945,24 @@ fun MapScreen(
             // Same animate-out pattern for the vehicle panel. It gives way to the stop panel
             // rather than stacking with it: tapping a stop of the followed run keeps the
             // vehicle selected, so the two can now be open at once.
-            var displayedVehicle by remember { mutableStateOf<VehicleMarker?>(null) }
-            selectedVehicle?.let { displayedVehicle = it }
+            // A pinned trip heads the panel itself while its run is off the road: there is no
+            // marker to read the line from, and the trip is still what the panel is about.
+            val panelLine = selectedVehicle?.panelLine() ?: pinnedTrip?.panelLine()
+            var displayedLine by remember { mutableStateOf<VehiclePanelLine?>(null) }
+            panelLine?.let { displayedLine = it }
             AnimatedVisibility(
-                visible = selectedVehicle != null && selectedStop == null,
+                visible = panelLine != null && selectedStop == null,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             ) {
-                displayedVehicle?.let { vehicle ->
+                displayedLine?.let { line ->
                     // Where the vehicle is actually going. `/map/trips` only knows the next
                     // stop, so the destination comes from the trip details fetched on
                     // selection; until they land there is nothing truthful to show.
                     val destination = (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.headsign
-                    val favoriteLine = vehicle.favoriteLine(destination)
+                    val favoriteLine = line.favoriteLine(destination)
                     VehicleInfoPanel(
-                        vehicle = vehicle,
+                        line = line,
                         destination = destination,
                         detailsState = vehicleDetails,
                         // Starring is held back until the destination is known: the favourite's
@@ -969,6 +1011,46 @@ private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
 }
 
 /**
+ * What the vehicle panel heads itself with. Comes from the marker of a vehicle being followed, or
+ * from the trip itself when one was opened from a timetable and its run is not on the road — the
+ * panel is the same either way, the run just has no position to describe.
+ */
+private data class VehiclePanelLine(
+    val tripId: String?,
+    val label: String,
+    val mode: TransportMode,
+    val routeColor: String?,
+    /** The vehicle's next stop; null when nothing is running (or before the first fetch lands). */
+    val nextStopName: String?,
+    /** Null for a run that is off the road: neither "live" nor "scheduled" is true of it. */
+    val realTime: Boolean?,
+) {
+
+    /** See [VehicleMarker.favoriteLine] — [destination] must be the headsign, not [nextStopName]. */
+    fun favoriteLine(destination: String?): FavoriteLine? = tripId?.let {
+        FavoriteLine(label = label, headsign = destination, mode = mode, routeColor = routeColor, tripId = it)
+    }
+}
+
+private fun VehicleMarker.panelLine() = VehiclePanelLine(
+    tripId = tripId,
+    label = label,
+    mode = mode,
+    routeColor = routeColor,
+    nextStopName = nextStopName,
+    realTime = realTime,
+)
+
+private fun PendingMapTrip.panelLine() = VehiclePanelLine(
+    tripId = tripId,
+    label = label,
+    mode = mode,
+    routeColor = routeColor,
+    nextStopName = null,
+    realTime = null,
+)
+
+/**
  * Inline info panel for a tapped vehicle, mirroring [StopInfoPanel]. Shows the trip's
  * attributes and its timetable as they load ([detailsState]).
  *
@@ -978,7 +1060,7 @@ private fun MapSearchBar(onClick: () -> Unit, modifier: Modifier = Modifier) {
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun VehicleInfoPanel(
-    vehicle: VehicleMarker,
+    line: VehiclePanelLine,
     /** The trip's destination, once its details have loaded; null until then. */
     destination: String?,
     detailsState: VehicleDetailsUiState,
@@ -1010,22 +1092,22 @@ private fun VehicleInfoPanel(
                         .padding(end = 12.dp)
                         .size(36.dp)
                         .background(
-                            parseRouteColor(vehicle.routeColor, markerColor(vehicle.mode)),
+                            parseRouteColor(line.routeColor, markerColor(line.mode)),
                             CircleShape,
                         ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
-                        imageVector = vehicle.mode.icon,
-                        contentDescription = stringResource(vehicle.mode.labelRes),
+                        imageVector = line.mode.icon,
+                        contentDescription = stringResource(line.mode.labelRes),
                         tint = Color.White,
                         modifier = Modifier.size(22.dp),
                     )
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = destination?.let { stringResource(R.string.format_route_arrow, vehicle.label, it) }
-                            ?: vehicle.label,
+                        text = destination?.let { stringResource(R.string.format_route_arrow, line.label, it) }
+                            ?: line.label,
                         style = MaterialTheme.typography.titleMedium,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1033,8 +1115,8 @@ private fun VehicleInfoPanel(
                     val details = (detailsState as? VehicleDetailsUiState.Shown)?.details
                     Text(
                         text = listOfNotNull(
-                            stringResource(vehicle.mode.labelRes),
-                            vehicle.nextStopName?.let { stringResource(R.string.map_vehicle_next_stop, it) },
+                            stringResource(line.mode.labelRes),
+                            line.nextStopName?.let { stringResource(R.string.map_vehicle_next_stop, it) },
                             details?.agencyName ?: details?.routeLongName,
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
@@ -1056,14 +1138,15 @@ private fun VehicleInfoPanel(
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
             ) {
-                if (vehicle.realTime) {
-                    AttributeChip(
+                when (line.realTime) {
+                    true -> AttributeChip(
                         Icons.Default.Sensors,
                         stringResource(R.string.attribute_live),
                         Color(0xFF2E7D32),
                     )
-                } else {
-                    AttributeChip(Icons.Default.Schedule, stringResource(R.string.attribute_scheduled))
+                    false -> AttributeChip(Icons.Default.Schedule, stringResource(R.string.attribute_scheduled))
+                    // Nothing is running, so neither chip is true of it.
+                    null -> {}
                 }
                 when (val state = detailsState) {
                     is VehicleDetailsUiState.Shown -> VehicleAmenityChips(
@@ -1100,7 +1183,7 @@ private fun VehicleInfoPanel(
                 ) {
                     tripTimetable(
                         stops = timetable,
-                        railColor = parseRouteColor(vehicle.routeColor, markerColor(vehicle.mode)),
+                        railColor = parseRouteColor(line.routeColor, markerColor(line.mode)),
                         currentIndex = currentIndex,
                     )
                 }

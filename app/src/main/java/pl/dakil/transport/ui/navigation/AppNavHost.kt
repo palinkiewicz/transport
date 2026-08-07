@@ -146,6 +146,9 @@ fun AppNavHost(
                     TripScreen(
                         onBack = { navController.popBackStack() },
                         onOpenDepartures = { route -> navController.navigate(route) },
+                        // The trip itself was already handed to the map by the screen; opening
+                        // the tab is all that is left, and it is the tab's own map that shows it.
+                        onShowOnMap = { navController.navigateToTab(MapRoute) },
                     )
                 }
             }
