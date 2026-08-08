@@ -74,9 +74,14 @@ object PlaceSearchEngine {
      * a tram-and-metro interchange reads as one.
      */
     fun groupIntoStations(places: List<TransitLocation>): List<Station> {
+        // The very same place can arrive twice — the geocoder and the cache both know it — and a
+        // caller merging two sources hands both over. Deduped by identity before anything else,
+        // because the callers key list rows by it and a repeat is a crash, not a cosmetic glitch.
+        // Earlier entries win, so a caller can order its richest source first.
+        val deduped = places.distinctBy { it.favoriteKey }
         // Only stops have platforms to merge. An address that happens to share a stop's name is a
         // different answer to the query, not another way in to the same one.
-        val (stops, other) = places.partition { it.stopId != null }
+        val (stops, other) = deduped.partition { it.stopId != null }
         val clusters = mutableListOf<List<TransitLocation>>()
         // Grouped by folded name first, so the distance test only ever runs within one name.
         for ((_, sameName) in stops.groupBy { foldForSearch(it.name) }) {

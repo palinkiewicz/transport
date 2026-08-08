@@ -208,6 +208,34 @@ class PlaceSearchEngineTest {
     }
 
     @Test
+    fun `a place held by both sources is returned once`() {
+        // What the picker hands over: the geocoder's answer concatenated with the cache's, where
+        // the cache is holding the very same rows because it stored them last time. Every result
+        // keys a list row, so a repeat here is a crash rather than a cosmetic problem.
+        val remote = listOf(
+            address("Marszałkowska 1").copy(city = "Warszawa"),
+            stop("Centrum", id = "pl-Warszawa_centruma13").copy(city = "Warszawa"),
+        )
+        val cached = listOf(address("Marszałkowska 1"), stop("Centrum", id = "pl-Warszawa_centruma13"))
+
+        val results = PlaceSearchEngine.groupIntoStations(remote + cached).map { it.place }
+        assertEquals(results.size, results.distinctBy { it.favoriteKey }.size)
+        assertEquals(2, results.size)
+        // The geocoder's copy is the one kept, because it knows the area.
+        assertTrue(results.all { it.city == "Warszawa" })
+    }
+
+    @Test
+    fun `ranking never returns two results with the same key`() {
+        val duplicated = listOf(
+            address("Centrum"), address("Centrum"),
+            stop("Centrum", id = "a"), stop("Centrum", id = "a"),
+        )
+        val results = PlaceSearchEngine.rank("centrum", duplicated)
+        assertEquals(results.size, results.distinctBy { it.favoriteKey }.size)
+    }
+
+    @Test
     fun `a more important station outranks a lesser one of the same name`() {
         val major = stop("Dworzec", id = "major", lat = 52.30, lon = 21.20, importance = 0.05)
         val minor = stop("Dworzec", id = "minor", lat = 52.40, lon = 21.30, importance = 0.00001)

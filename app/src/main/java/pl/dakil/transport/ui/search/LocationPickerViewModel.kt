@@ -259,6 +259,8 @@ class LocationPickerViewModel @Inject constructor(
     ): List<TransitLocation> {
         if (remote.isEmpty()) return cached
         val remoteRank = remote.withIndex().associate { (index, place) -> place.favoriteKey to index }
+        // Remote first, so where both sources hold the very same place the geocoder's copy — the
+        // one carrying the city and district — is the one kept.
         return PlaceSearchEngine.groupIntoStations(remote + cached)
             .sortedBy { station ->
                 station.members.minOfOrNull { remoteRank[it.favoriteKey] ?: Int.MAX_VALUE }
