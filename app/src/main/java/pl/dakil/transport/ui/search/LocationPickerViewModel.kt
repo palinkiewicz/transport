@@ -17,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
@@ -25,6 +27,7 @@ import kotlinx.coroutines.launch
 import pl.dakil.transport.R
 import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.remote.toAppError
 import pl.dakil.transport.data.local.foldForSearch
@@ -32,6 +35,7 @@ import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.PlaceSearchEngine
 import pl.dakil.transport.domain.model.AppError
+import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.PickerTarget
@@ -59,7 +63,8 @@ class LocationPickerViewModel @Inject constructor(
     locationService: LocationService,
     private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
-    settingsRepository: SettingsRepository,
+    sessionStateRepository: SessionStateRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
     /** What the pick fills: a Search screen field, or the map's selection. */
@@ -86,7 +91,8 @@ class LocationPickerViewModel @Inject constructor(
      * `from → vias… → to`, so a pick is measured against its neighbour on the way in, or, when
      * that end of the route is still empty, its neighbour on the way out. Everything else (and
      * a route with nothing else filled in) falls back to the current position. Drives the
-     * geocoder's bias, the distances shown, and the optional distance sort.
+     * distances shown and the optional distance sort; what the geocoder is biased toward is
+     * [biasPosition], which can stand in for this when there is nothing here to measure from.
      */
     private val referencePosition: GeoPoint? = routeNeighbour()?.let { GeoPoint(it.lat, it.lon) } ?: userPosition
 
@@ -121,6 +127,31 @@ class LocationPickerViewModel @Inject constructor(
     }
 
     /**
+     * Where the geocoder is asked to pull its results toward. Normally [referencePosition]; with
+     * neither a route neighbour nor a fix it falls back to wherever the map was last left, so a
+     * search still has *somewhere* to be local to instead of ranging over the whole planet —
+     * which is the case a fresh install or a denied location permission lands in.
+     *
+     * Deliberately separate from [referencePosition]: a forgotten map viewport is a fine hint for
+     * *which* places to ask the server for, but a distance measured from it would read as a claim
+     * about where the user actually is.
+     */
+    private val biasPosition: StateFlow<GeoPoint?> = flow {
+        if (referencePosition != null) return@flow
+        // With the setting off the stored camera is stale by the user's own choice — the same
+        // gate MapViewModel writes it behind.
+        if (!settingsRepository.settings.first().rememberMapCamera) return@flow
+        val camera = sessionStateRepository.state.first().mapCamera ?: return@flow
+        // Zoomed out past a city, the camera covers half a continent and biases toward nothing
+        // in particular — MapCamera.DEFAULT is all of Europe.
+        if (camera.zoom >= MIN_BIAS_CAMERA_ZOOM) emit(GeoPoint(camera.lat, camera.lon))
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, referencePosition)
+
+    /** How hard [biasPosition] pulls; see [AppSettings.searchBiasStrength]. */
+    private val biasStrength: Flow<Int> =
+        settingsRepository.settings.map { it.searchBiasStrength }
+
+    /**
      * "Your location" entry for the empty-query list; null without permission or a fix, and
      * withheld when only stops are offerable — a raw fix is a coordinate, never a stop.
      */
@@ -137,13 +168,24 @@ class LocationPickerViewModel @Inject constructor(
     private val retryTicks = MutableStateFlow(0)
 
     private val suggestions: Flow<List<TransitLocation>> =
-        combine(_query.debounce(300).distinctUntilChanged(), retryTicks) { query, _ -> query }
-            .mapLatest { query ->
+        combine(
+            _query.debounce(300).distinctUntilChanged(),
+            retryTicks,
+            biasPosition,
+            biasStrength,
+        ) { query, _, bias, strength -> Triple(query, bias, strength) }
+            .mapLatest { (query, bias, strength) ->
                 if (query.isBlank()) {
                     _searchError.value = null
                     emptyList()
                 } else {
-                    geocodeRepository.suggest(query, referencePosition?.lat, referencePosition?.lon, stopsOnly).fold(
+                    geocodeRepository.suggest(
+                        text = query,
+                        biasLat = bias?.lat,
+                        biasLon = bias?.lon,
+                        stopsOnly = stopsOnly,
+                        biasStrength = strength.toDouble(),
+                    ).fold(
                         onSuccess = { results ->
                             _searchError.value = null
                             results
@@ -179,10 +221,10 @@ class LocationPickerViewModel @Inject constructor(
      * on. [suggestions] then merges in on top of it.
      */
     private val cachedMatches: Flow<List<TransitLocation>> =
-        combine(_query, sortByDistance, offlineSearchEnabled) { query, sortByDistance, enabled ->
-            Triple(query, sortByDistance, enabled)
+        combine(_query, sortByDistance, offlineSearchEnabled, biasPosition) { query, sortByDistance, enabled, bias ->
+            CachedQuery(query, sortByDistance, enabled, bias)
         }
-            .mapLatest { (query, sortByDistance, enabled) ->
+            .mapLatest { (query, sortByDistance, enabled, bias) ->
                 if (!enabled || query.isBlank()) {
                     emptyList()
                 } else {
@@ -194,7 +236,9 @@ class LocationPickerViewModel @Inject constructor(
                     PlaceSearchEngine.rank(
                         query = query,
                         places = candidates,
-                        reference = referencePosition,
+                        // The same pull the geocoder is asked for, so the two halves of the list
+                        // agree on what "near" means.
+                        reference = bias,
                         distanceWeight = if (sortByDistance) {
                             PlaceSearchEngine.DISTANCE_WEIGHT_WHEN_SORTING
                         } else {
@@ -288,7 +332,21 @@ class LocationPickerViewModel @Inject constructor(
         }
     }
 
+    /** The inputs [cachedMatches] re-runs on; only a name for what `combine` produces. */
+    private data class CachedQuery(
+        val query: String,
+        val sortByDistance: Boolean,
+        val offlineSearchEnabled: Boolean,
+        val bias: GeoPoint?,
+    )
+
     private companion object {
+        /**
+         * Below this the map's last camera covers a country or more, which biases toward nothing
+         * in particular — a stored viewport only stands in for "near here" once it frames a city.
+         */
+        const val MIN_BIAS_CAMERA_ZOOM = 9.0
+
         /**
          * Cached matches offered alongside the geocoder's own. Kept near the geocoder's
          * `numResults` so a healthy connection reads as one list rather than a short authoritative

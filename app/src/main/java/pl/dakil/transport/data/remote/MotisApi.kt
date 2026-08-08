@@ -14,6 +14,8 @@ interface MotisApi {
     suspend fun geocode(
         @Query("text") text: String,
         @Query("place") place: String? = null,
+        /** How hard results are pulled toward [place]; higher biases harder, 1 is the API default. */
+        @Query("placeBias") placeBias: Double? = null,
         @Query("numResults") numResults: Int? = null,
         /** Comma-joined `LocationType`s to restrict results to (ADDRESS / PLACE / STOP). */
         @Query("type") type: String? = null,

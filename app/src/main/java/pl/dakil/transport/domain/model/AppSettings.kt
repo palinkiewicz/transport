@@ -286,6 +286,15 @@ data class AppSettings(
      */
     val sortSuggestionsByDistance: Boolean = true,
 
+    /**
+     * How hard the geocoder is asked to pull its results toward the point a search is measured
+     * from. [SEARCH_BIAS_NONE] leaves the server's own worldwide ranking alone; higher values
+     * keep a generic query ("Park") in the user's own city, at the cost of burying a far-away
+     * place searched by its exact name. Unlike [sortSuggestionsByDistance] this shapes the
+     * request, so it decides *which* results come back rather than reordering the ones that did.
+     */
+    val searchBiasStrength: Int = 4,
+
     /** Whether the itinerary map labels the stops where you board and alight. */
     val showItineraryStopNames: Boolean = true,
 
@@ -331,5 +340,9 @@ data class AppSettings(
 
     companion object {
         val DEFAULT = AppSettings()
+
+        /** [searchBiasStrength] range; 1 is the geocoder's own default, i.e. no added pull. */
+        const val SEARCH_BIAS_NONE = 1
+        const val SEARCH_BIAS_MAX = 10
     }
 }

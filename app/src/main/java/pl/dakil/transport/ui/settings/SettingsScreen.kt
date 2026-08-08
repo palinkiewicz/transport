@@ -258,6 +258,21 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
             onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
             supportingText = stringResource(R.string.settings_sort_by_distance_note),
         )
+        IntSliderRow(
+            title = stringResource(R.string.settings_search_bias),
+            value = settings.searchBiasStrength,
+            onValueCommit = { strength -> viewModel.update { it.copy(searchBiasStrength = strength) } },
+            min = AppSettings.SEARCH_BIAS_NONE,
+            max = AppSettings.SEARCH_BIAS_MAX,
+            valueLabel = { strength ->
+                if (strength <= AppSettings.SEARCH_BIAS_NONE) {
+                    stringResource(R.string.settings_search_bias_none)
+                } else {
+                    strength.toString()
+                }
+            },
+            supportingText = stringResource(R.string.settings_search_bias_note),
+        )
     }
 }
 

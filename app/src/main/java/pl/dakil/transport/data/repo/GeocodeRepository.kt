@@ -20,6 +20,13 @@ class GeocodeRepository @Inject constructor(
      * alone, so every suggestion carries a stop id — required wherever coordinates are not
      * accepted (intermediate stops, departure boards).
      *
+     * [biasStrength] is how hard the server is asked to pull its results toward the bias
+     * coordinate. This is the only thing that can keep a generic query local: sorting the answer
+     * afterwards can only reorder the handful of places the server already picked, so without a
+     * bias "Park" comes back from the other side of the planet and stays there. The cost of
+     * overdoing it is the mirror image — a distant place searched by its exact name gets buried
+     * under local near-misses — which is why the strength is the user's to set.
+     *
      * Results are also written to the place cache, which is what lets the same query answer
      * instantly next time — and answer at all with no connection.
      */
@@ -28,12 +35,15 @@ class GeocodeRepository @Inject constructor(
         biasLat: Double? = null,
         biasLon: Double? = null,
         stopsOnly: Boolean = false,
+        biasStrength: Double = 1.0,
     ): Result<List<TransitLocation>> = runCatching {
         if (text.isBlank()) return@runCatching emptyList()
         val place = if (biasLat != null && biasLon != null) "$biasLat,$biasLon" else null
         val body = api.geocode(
             text = text,
             place = place,
+            // Meaningless without a coordinate to bias toward, so it travels with one or not at all.
+            placeBias = biasStrength.takeIf { place != null },
             numResults = 8,
             type = if (stopsOnly) "STOP" else null,
         )
