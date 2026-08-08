@@ -13,9 +13,10 @@ import pl.dakil.transport.domain.model.JourneyLeg
 import pl.dakil.transport.domain.model.TransitLocation
 
 /**
- * The app-authored text an exported file needs. It is passed in rather than resolved here because
- * this is not the Compose layer and has no access to resources — the same reasoning as
- * [TransitLocation.currentPosition].
+ * What the exported file needs from the layer above: its app-authored text, and the colours the
+ * itinerary was actually drawn in. Both are passed in rather than resolved here because this is
+ * not the Compose layer — it can reach neither resources nor the line-colour setting, the same
+ * reasoning as [TransitLocation.currentPosition].
  */
 data class GpxLabels(
     /** `<metadata><name>`, e.g. "Warszawa Centralna → Lotnisko Chopina". */
@@ -43,6 +44,12 @@ data class GpxLabels(
     val track: (String) -> String,
     /** Renders a headsign as text, e.g. "towards Lotnisko Chopina". */
     val towards: (String) -> String,
+    /**
+     * The colour the leg is drawn in on screen, as GTFS-shaped `RRGGBB`, or null to leave the
+     * track uncoloured. Legs are matched by identity — the writer only ever sees the instances it
+     * was handed — so this reads a resolution made once above rather than repeating it.
+     */
+    val legColor: (JourneyLeg) -> String? = { null },
 )
 
 /**
@@ -68,7 +75,8 @@ fun writeGpx(
     out.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
     out.write(
         "<gpx version=\"1.1\" creator=\"${labels.creator.escapeXml()}\" " +
-            "xmlns=\"http://www.topografix.com/GPX/1/1\">\n",
+            "xmlns=\"http://www.topografix.com/GPX/1/1\" " +
+            "xmlns:$STYLE_PREFIX=\"$STYLE_NAMESPACE\">\n",
     )
 
     out.write("  <metadata>\n")
@@ -98,6 +106,13 @@ fun writeGpx(
                 leg.description(labels)?.let { out.tag(2, "desc", it) }
             }
             out.tag(2, "type", leg.mode.name.lowercase(Locale.US))
+            labels.legColor(leg)?.let { color ->
+                out.write("    <extensions>\n")
+                out.write("      <$STYLE_PREFIX:line>\n")
+                out.tag(3, "$STYLE_PREFIX:color", color)
+                out.write("      </$STYLE_PREFIX:line>\n")
+                out.write("    </extensions>\n")
+            }
             out.write("    <trkseg>\n")
             leg.path.forEach { point ->
                 out.write(
@@ -132,6 +147,16 @@ fun gpxFileName(
     GpxFileName.DATE_TIME -> "itinerary-${journey.departureTime.format(DATE_TIME_PATTERN)}.gpx"
     GpxFileName.PLAIN -> "itinerary.gpx"
 }
+
+/**
+ * GPX 1.1 has no colour of its own, so per-track colours ride in `<extensions>` under the GPX
+ * Style extension — the one form the common readers (OsmAnd, Locus, GPX Studio) agree on. Garmin's
+ * `gpxx:DisplayColor` was the alternative and is not usable here: it only accepts a fixed set of
+ * colour *names*, which cannot carry an operator's own hex. Readers that know neither skip the
+ * element, so the file stays valid GPX 1.1 either way.
+ */
+private const val STYLE_PREFIX = "gpx_style"
+private const val STYLE_NAMESPACE = "http://www.topografix.com/GPX/gpx_style/0/2"
 
 private val DATE_PATTERN = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
 private val DATE_TIME_PATTERN = DateTimeFormatter.ofPattern("yyyyMMdd-HHmm", Locale.US)

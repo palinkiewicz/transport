@@ -70,6 +70,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -114,7 +115,6 @@ private data class ItineraryStop(
     val mode: TransportMode,
     /** Which transit leg this stop belongs to, i.e. its slot in the journey's palette order. */
     val colorIndex: Int,
-    val routeColor: String?,
     val terminus: Boolean,
     /** True for a boarding stop; false where the journey gets off. */
     val boarding: Boolean,
@@ -136,7 +136,6 @@ private data class ItineraryWaypoint(
     val scheduledDeparture: OffsetDateTime?,
     val mode: TransportMode,
     val colorIndex: Int,
-    val routeColor: String?,
 )
 
 /**
@@ -153,7 +152,6 @@ private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
         scheduledDeparture = scheduledTime.takeIf { boarding },
         mode = mode,
         colorIndex = colorIndex,
-        routeColor = routeColor,
     )
 
     val result = mutableListOf<ItineraryWaypoint>()
@@ -172,7 +170,6 @@ private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
                 // The line you leave on is the one that matters at a transfer.
                 mode = next.mode,
                 colorIndex = next.colorIndex,
-                routeColor = next.routeColor,
             )
             index += 2
         } else {
@@ -203,7 +200,6 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 scheduledTime = leg.scheduledStartTime,
                 mode = leg.mode,
                 colorIndex = order,
-                routeColor = leg.routeColor,
                 terminus = order == 0,
                 boarding = true,
             ),
@@ -215,7 +211,6 @@ private fun journeyStops(journey: Journey, fromName: String, toName: String): Li
                 scheduledTime = leg.scheduledEndTime,
                 mode = leg.mode,
                 colorIndex = order,
-                routeColor = leg.routeColor,
                 terminus = order == transitIndices.lastIndex,
                 boarding = false,
             ),
@@ -257,8 +252,8 @@ fun ItineraryScreen(
         journey?.let { journeyStops(it, fromName, toName) }.orEmpty()
     }
 
-    // One journey is one sequence, so its transit legs are each other's neighbours. The list and
-    // the map pane share the result; the route overlay itself keeps the feed's colours.
+    // One journey is one sequence, so its transit legs are each other's neighbours. The list, the
+    // map pane, the route overlay and the exported file all read from this one resolution.
     val lineColors = rememberLineColors(
         journey?.legs.orEmpty().filter { it.isTransit }.map { leg ->
             LineColorRequest(leg.routeColor, leg.mode.color)
@@ -272,7 +267,18 @@ fun ItineraryScreen(
             .toMap()
     }
 
-    val export = rememberItineraryExport(journey, fromName, toName, viewModel)
+    /**
+     * The colour each leg ended up with, indexed like [Journey.legs] and null where a leg has no
+     * badge to take one from. Resolving once and passing it on is what stops the overlay and the
+     * exported file re-deriving colours of their own and disagreeing with what is on screen.
+     */
+    val legColors = remember(journey, lineColors, transitOrder) {
+        journey?.legs.orEmpty().mapIndexed { index, leg ->
+            transitOrder[index]?.let { order -> lineColors.at(order, leg.mode.color) }
+        }
+    }
+
+    val export = rememberItineraryExport(journey, fromName, toName, legColors, viewModel)
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -329,6 +335,7 @@ fun ItineraryScreen(
                 toName = toName,
                 stops = stops,
                 lineColors = lineColors,
+                legColors = legColors,
                 selectedStopId = selectedStopId,
                 showStopNames = showStopNames,
                 onStopClick = { selectedStopId = it },
@@ -406,12 +413,14 @@ private fun rememberItineraryExport(
     journey: Journey?,
     fromName: String,
     toName: String,
+    /** Per-leg colours from the itinerary list, so the file opens in the colours it was seen in. */
+    legColors: List<Color?>,
     viewModel: ItineraryViewModel,
 ): ItineraryExport {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by viewModel.gpxExport.collectAsStateWithLifecycle()
-    val labels = rememberGpxLabels(fromName, toName)
+    val labels = rememberGpxLabels(fromName, toName, journey, legColors)
     val subject = stringResource(R.string.gpx_export_subject, fromName, toName)
     val chooserTitle = stringResource(R.string.gpx_export)
 
@@ -521,14 +530,19 @@ private fun ExportChoiceRow(
 }
 
 /**
- * The app-authored text that ends up inside the exported file. Mode names come from the same
- * `labelRes` the rest of the UI reads. The two parameterized labels are read here as their raw
- * patterns and filled in later, because the writer calls them from a plain lambda that cannot be
- * composable — and resolving them off `LocalContext` instead would skip the resource system's
- * configuration handling.
+ * The app-authored text that ends up inside the exported file, plus the colour each leg is drawn
+ * in. Mode names come from the same `labelRes` the rest of the UI reads. The two parameterized
+ * labels are read here as their raw patterns and filled in later, because the writer calls them
+ * from a plain lambda that cannot be composable — and resolving them off `LocalContext` instead
+ * would skip the resource system's configuration handling.
  */
 @Composable
-private fun rememberGpxLabels(fromName: String, toName: String): GpxLabels {
+private fun rememberGpxLabels(
+    fromName: String,
+    toName: String,
+    journey: Journey?,
+    legColors: List<Color?>,
+): GpxLabels {
     val appName = stringResource(R.string.app_name)
     val documentName = stringResource(R.string.format_route_arrow, fromName, toName)
     val modeNames = TransportMode.entries.associateWith { stringResource(it.labelRes) }
@@ -538,7 +552,8 @@ private fun rememberGpxLabels(fromName: String, toName: String): GpxLabels {
     val separator = stringResource(R.string.gpx_desc_separator)
     val trackPattern = stringResource(R.string.format_track_short)
     val towardsPattern = stringResource(R.string.format_towards)
-    return remember(documentName, modeNames, board, transfer, alight, separator) {
+    val legs = journey?.legs.orEmpty()
+    return remember(documentName, modeNames, board, transfer, alight, separator, legs, legColors) {
         GpxLabels(
             documentName = documentName,
             originName = fromName,
@@ -551,9 +566,17 @@ private fun rememberGpxLabels(fromName: String, toName: String): GpxLabels {
             descSeparator = separator,
             track = { track -> String.format(Locale.getDefault(), trackPattern, track) },
             towards = { headsign -> String.format(Locale.getDefault(), towardsPattern, headsign) },
+            // By identity: two legs of one journey can be equal by value (the same line ridden
+            // twice), and they still deserve the colour their own position earned.
+            legColor = { leg ->
+                legColors.getOrNull(legs.indexOfFirst { it === leg })?.toRouteHex()
+            },
         )
     }
 }
+
+/** A resolved colour as the GTFS-shaped `RRGGBB` the export and the feed both speak. */
+private fun Color.toRouteHex(): String = String.format(Locale.US, "%06X", toArgb() and 0xFFFFFF)
 
 /**
  * The journey drawn on the app's base map (leg colors matching the list view), with a docked
@@ -566,21 +589,24 @@ private fun ItineraryMap(
     toName: String,
     stops: List<ItineraryStop>,
     lineColors: LineColors,
+    /** Per-leg colours from the itinerary list, so the overlay draws the journey it does. */
+    legColors: List<Color?>,
     selectedStopId: String?,
     showStopNames: Boolean,
     onStopClick: (String?) -> Unit,
     onOpenTrip: (TripRoute) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val lines = rememberJourneyRouteLines(journey)
-    val points = remember(stops) {
+    val lines = rememberJourneyRouteLines(journey, legColors)
+    val points = remember(stops, lineColors) {
         stops.map {
             RouteMapPoint(
                 id = it.id,
                 point = it.point,
                 name = it.name,
                 mode = it.mode,
-                routeColor = it.routeColor,
+                // A boarding pin belongs to its leg as much as the line does.
+                color = lineColors.at(it.colorIndex, it.mode.color),
                 terminus = it.terminus,
             )
         }

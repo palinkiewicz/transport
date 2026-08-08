@@ -91,28 +91,45 @@ data class RouteMapPoint(
     val id: String,
     val point: GeoPoint,
     val name: String,
-    /** Drives the marker's fill and glyph, so it reads as the same pin the main map draws. */
+    /** Drives the marker's glyph, and its fill wherever [color] leaves the choice open. */
     val mode: TransportMode,
-    /** GTFS `RRGGBB` route color of the leg this stop belongs to, when the feed has one. */
-    val routeColor: String? = null,
+    /**
+     * Fill for the pin, already resolved by whoever is drawing the route — normally the colour
+     * its leg's badge carries, so a stop and the line it belongs to agree. Null falls back to the
+     * mode's own marker colour.
+     */
+    val color: Color? = null,
     /** Ends of the whole journey are drawn larger than the transfer points between legs. */
     val terminus: Boolean = false,
 )
 
 /**
- * This journey's legs as [RouteMapLine]s, colored exactly like the itinerary screen's leg
- * rail: the feed's GTFS route color (mode color fallback) for transit legs, a muted dotted
- * line for walk/bike/car legs.
+ * This journey's legs as [RouteMapLine]s, colored exactly like the itinerary screen's leg rail,
+ * with a muted dotted line for walk/bike/car legs.
+ *
+ * [legColors] is one entry per leg of [journey], carrying the colour that leg's badge was drawn
+ * in (null for the legs that have no badge). Passing it is what keeps the two views in step:
+ * re-deriving the colour here from the feed's hex quietly disagrees with the rail whenever
+ * [pl.dakil.transport.domain.model.LineColorMode] substituted something, so the same journey
+ * came out in two different colour schemes. Left empty the feed's own colours are used, which is
+ * right for any caller drawing a route outside that setting's reach.
  */
 @Composable
-fun rememberJourneyRouteLines(journey: Journey): List<RouteMapLine> {
+fun rememberJourneyRouteLines(
+    journey: Journey,
+    legColors: List<Color?> = emptyList(),
+): List<RouteMapLine> {
     val walkColor = MaterialTheme.colorScheme.outline
-    return remember(journey, walkColor) {
-        journey.legs.mapNotNull { leg ->
+    return remember(journey, walkColor, legColors) {
+        journey.legs.mapIndexedNotNull { index, leg ->
             leg.path.takeIf { it.size >= 2 }?.let { path ->
                 RouteMapLine(
                     points = path,
-                    color = if (leg.isTransit) parseRouteColor(leg.routeColor, leg.mode.color) else walkColor,
+                    color = when {
+                        !leg.isTransit -> walkColor
+                        else -> legColors.getOrNull(index)
+                            ?: parseRouteColor(leg.routeColor, leg.mode.color)
+                    },
                     dashed = !leg.isTransit,
                 )
             }
@@ -289,7 +306,9 @@ fun RouteMap(
                                     "name" to JsonPrimitive(
                                         stop.name.takeIf { currentShowLabels }.orEmpty(),
                                     ),
-                                    "color" to JsonPrimitive(routeMarkerColorHex(stop.routeColor, stop.mode)),
+                                    "color" to JsonPrimitive(
+                                        stop.color?.toHexString() ?: markerColorHex(stop.mode),
+                                    ),
                                     "icon" to JsonPrimitive(markerIconKey(stop.mode)),
                                     "selected" to JsonPrimitive(stop.id == currentSelectedPointId),
                                 ),
