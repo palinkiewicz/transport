@@ -39,6 +39,14 @@ data class CachedPlaceEntity(
     val country: String?,
     /** [TransportMode] names, comma-joined. Unknown names are skipped when read back. */
     val modes: String,
+    /**
+     * The API's own significance score for this place, 0 when it did not say.
+     *
+     * Worth storing for two reasons: it ranks a major interchange above a request stop far
+     * better than any heuristic on the name could, and every pole of one station carries the
+     * *identical* value, which is what lets poles be recognised as one station.
+     */
+    val importance: Double,
     /** Whether the last confirmation of this row came from a map-area fetch. */
     val fromMap: Boolean,
     /** When this row was last written, in epoch millis; drives both TTL and eviction order. */
@@ -79,6 +87,14 @@ data class SavedItineraryEntity(
     val toJson: String,
     /** The serialized `Journey` itself. */
     val journeyJson: String,
+    /**
+     * When the run was last successfully checked against the API, or null if it never has been.
+     *
+     * Distinct from [savedAt]: it is what tells the user whether the times in front of them are
+     * current or the ones frozen when they starred it, which is the whole question a saved
+     * itinerary raises.
+     */
+    val lastRefreshedAt: Long? = null,
 )
 
 fun CachedPlaceEntity.toTransitLocation(): TransitLocation = TransitLocation(
@@ -93,6 +109,7 @@ fun CachedPlaceEntity.toTransitLocation(): TransitLocation = TransitLocation(
         .filter { it.isNotBlank() }
         // A mode the app no longer knows is dropped rather than crashing an old cache row.
         .mapNotNull { name -> runCatching { TransportMode.valueOf(name) }.getOrNull() },
+    importance = importance,
 )
 
 fun TransitLocation.toCachedPlace(fromMap: Boolean, now: Long): CachedPlaceEntity =
@@ -107,6 +124,7 @@ fun TransitLocation.toCachedPlace(fromMap: Boolean, now: Long): CachedPlaceEntit
         state = state,
         country = country,
         modes = modes.joinToString(",") { it.name },
+        importance = importance,
         fromMap = fromMap,
         fetchedAt = now,
     )

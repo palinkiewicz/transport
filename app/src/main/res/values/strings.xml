@@ -168,7 +168,13 @@
     <string name="saved_section_trips">Trips</string>
     <!-- Departure date, then the run's departure and arrival times. -->
     <string name="saved_itinerary_subtitle">%1$s · %2$s – %3$s</string>
-    <string name="saved_itinerary_snapshot_note">Saved copy from %1$s. Times will update once this run can be checked again.</string>
+    <!-- %1$s is a "today at 13:16" / "7 Aug at 13:16" phrase from the two strings below. -->
+    <string name="saved_itinerary_offline_note">Offline — showing the saved copy. Last checked %1$s.</string>
+    <string name="saved_itinerary_offline_never_note">Offline — showing the saved copy. This run has not been checked since it was saved.</string>
+    <string name="saved_itinerary_not_running_note">This run is no longer offered. The saved copy is shown as it was planned.</string>
+    <string name="saved_itinerary_departed_note">This journey has already departed. Saved %1$s.</string>
+    <string name="saved_itinerary_checked_today">today at %1$s</string>
+    <string name="saved_itinerary_checked_on">%1$s at %2$s</string>
     <string name="favourite_add">Add to favourites</string>
     <string name="favourite_remove">Remove from favourites</string>
 

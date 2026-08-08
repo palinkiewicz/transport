@@ -29,6 +29,7 @@ fun MatchDto.toTransitLocation(): TransitLocation =
         state = areas?.firstOrNull { it.adminLevel == 4.0 }?.name,
         country = country ?: areas?.firstOrNull { it.adminLevel == 2.0 }?.name,
         modes = modes?.map { TransportMode.fromApiValue(it) } ?: emptyList(),
+        importance = importance ?: 0.0,
     )
 
 fun PlaceDto.toTransitLocation(): TransitLocation =
@@ -38,6 +39,7 @@ fun PlaceDto.toTransitLocation(): TransitLocation =
         lon = lon,
         stopId = stopId,
         modes = modes?.map { TransportMode.fromApiValue(it) } ?: emptyList(),
+        importance = importance ?: 0.0,
     )
 
 /**

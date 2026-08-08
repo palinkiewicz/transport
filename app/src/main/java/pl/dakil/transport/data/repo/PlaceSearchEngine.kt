@@ -17,7 +17,16 @@ import pl.dakil.transport.domain.model.TransitLocation
 object PlaceSearchEngine {
 
     /**
-     * Scores and orders [places] for [query].
+     * One station and the platforms that were folded into it.
+     *
+     * [members] is kept so a caller can tell which sources contributed — the picker uses it to
+     * keep the geocoder's own ordering for the stations it returned, whichever of their platforms
+     * happened to be cached.
+     */
+    data class Station(val place: TransitLocation, val members: List<TransitLocation>)
+
+    /**
+     * Scores and orders [places] for [query], one row per station rather than per platform.
      *
      * [reference] is the point the user is measuring from — the neighbouring stop on the route
      * being built, or their own position. Passing null (or leaving [distanceWeight] at zero)
@@ -32,8 +41,9 @@ object PlaceSearchEngine {
     ): List<TransitLocation> {
         val folded = foldForSearch(query)
         if (folded.isEmpty()) return emptyList()
-        return places
-            .mapNotNull { place -> score(folded, place, reference, distanceWeight)?.let { place to it } }
+        return groupIntoStations(places.filter { foldForSearch(it.name).contains(folded) })
+            .map { it.place }
+            .map { station -> station to score(folded, station, reference, distanceWeight) }
             .sortedWith(
                 compareByDescending<Pair<TransitLocation, Double>> { it.second }
                     // A stable tie-break, so two equally scored places never swap places between
@@ -45,16 +55,82 @@ object PlaceSearchEngine {
             .map { it.first }
     }
 
-    /** Null when [place] does not contain [foldedQuery] at all. */
+    /**
+     * Collapses platforms into the stations they belong to.
+     *
+     * `/v6/map/stops` returns every pole separately — seven rows called "Centrum" for one
+     * interchange — while the geocoder answers with the single grouped station. Left alone, the
+     * picker shows the same place over and over and the user has to guess which row is the one
+     * they want. So the poles are put back together here.
+     *
+     * Two stops are the same station when they share a name *and* are close enough to be one
+     * place. `importance` corroborates it where the API supplied it: it is a station-level score,
+     * identical across every pole, so two same-named stops that disagree on it are two different
+     * stations however close they happen to sit.
+     *
+     * The row that represents a station is the member that can say the most about it: a
+     * geocoded one (which alone carries the city, and whose id is the station rather than one of
+     * its platforms) ahead of a bare map pole. Its modes are the union of the whole station's, so
+     * a tram-and-metro interchange reads as one.
+     */
+    fun groupIntoStations(places: List<TransitLocation>): List<Station> {
+        // Only stops have platforms to merge. An address that happens to share a stop's name is a
+        // different answer to the query, not another way in to the same one.
+        val (stops, other) = places.partition { it.stopId != null }
+        val clusters = mutableListOf<List<TransitLocation>>()
+        // Grouped by folded name first, so the distance test only ever runs within one name.
+        for ((_, sameName) in stops.groupBy { foldForSearch(it.name) }) {
+            val forName = mutableListOf<MutableList<TransitLocation>>()
+            for (place in sameName) {
+                val existing = forName.firstOrNull { cluster ->
+                    cluster.any { it.belongsToSameStationAs(place) }
+                }
+                if (existing != null) existing.add(place) else forName.add(mutableListOf(place))
+            }
+            clusters += forName
+        }
+        clusters += other.map { listOf(it) }
+        return clusters.map { Station(place = it.toStation(), members = it) }
+    }
+
+    /**
+     * Whether two same-named stops are platforms of one station: near enough to be one place,
+     * and not contradicted by the API's own station-level [TransitLocation.importance].
+     */
+    private fun TransitLocation.belongsToSameStationAs(other: TransitLocation): Boolean {
+        val bothScored = importance > 0.0 && other.importance > 0.0
+        if (bothScored && importance != other.importance) return false
+        return GeoPoint(lat, lon).distanceMetersTo(GeoPoint(other.lat, other.lon)) <= STATION_RADIUS_METERS
+    }
+
+    /** The one row a cluster is shown as; see [groupIntoStations]. */
+    private fun List<TransitLocation>.toStation(): TransitLocation {
+        val representative = maxWithOrNull(
+            compareBy<TransitLocation> { if (it.areaLabel != null) 1 else 0 }
+                .thenBy { it.importance }
+                // Last resort, so the same cluster always elects the same member.
+                .thenBy { it.favoriteKey },
+        ) ?: first()
+        return representative.copy(
+            modes = flatMap { it.modes }.distinct(),
+            // Any member that has been geocoded knows where the station is; the rest of the
+            // cluster is the same physical place, so the label describes them too.
+            city = representative.city ?: firstNotNullOfOrNull { it.city },
+            state = representative.state ?: firstNotNullOfOrNull { it.state },
+            country = representative.country ?: firstNotNullOfOrNull { it.country },
+            importance = maxOf { it.importance },
+        )
+    }
+
+    /** Callers filter to names containing [foldedQuery] first, so a match is assumed here. */
     private fun score(
         foldedQuery: String,
         place: TransitLocation,
         reference: GeoPoint?,
         distanceWeight: Double,
-    ): Double? {
+    ): Double {
         val name = foldForSearch(place.name)
-        val index = name.indexOf(foldedQuery)
-        if (index < 0) return null
+        val index = name.indexOf(foldedQuery).coerceAtLeast(0)
 
         var score = when {
             // "Cent" for "Centrum" — the user is almost certainly typing this name out.
@@ -70,6 +146,11 @@ object PlaceSearchEngine {
 
         // A stop can be searched from, departed from and routed through; an address cannot.
         if (place.stopId != null) score += IS_STOP
+
+        // The API's own view of how significant the place is, which separates a city's main
+        // interchange from a request stop that happens to share its name. Scores are tiny
+        // fractions, so this is normalised rather than added raw.
+        score += IMPORTANCE_WEIGHT * (place.importance / (place.importance + IMPORTANCE_MIDPOINT))
 
         if (reference != null && distanceWeight > 0.0) {
             val km = GeoPoint(place.lat, place.lon).distanceMetersTo(reference) / 1_000.0
@@ -90,6 +171,18 @@ object PlaceSearchEngine {
 
     private const val SHORTNESS_WEIGHT = 10.0
     private const val IS_STOP = 8.0
+    private const val IMPORTANCE_WEIGHT = 20.0
+
+    /** Importance at which the bonus is half its maximum; roughly a well-served city stop. */
+    private const val IMPORTANCE_MIDPOINT = 0.002
+
+    /**
+     * How far apart two same-named stops may sit and still be one station. Generous, because a
+     * big interchange spreads its platforms over a couple of streets — and two genuinely
+     * distinct stops that share a name this closely would be indistinguishable to the user
+     * anyway.
+     */
+    private const val STATION_RADIUS_METERS = 400.0
 
     /** Distance at which the proximity bonus is halved. */
     private const val DISTANCE_HALF_LIFE_KM = 2.0

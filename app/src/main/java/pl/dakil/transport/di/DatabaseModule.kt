@@ -21,10 +21,11 @@ object DatabaseModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): TransportDatabase =
         Room.databaseBuilder(context, TransportDatabase::class.java, TransportDatabase.NAME)
-            // The place and tile tables are a cache of a public API: rebuilding them costs the
-            // user a few requests, whereas shipping a broken migration would cost them the app.
-            // Saved itineraries are the one thing here that cannot be refetched, so any schema
-            // change touching `saved_itinerary` must come with a real migration instead.
+            .addMigrations(TransportDatabase.MIGRATION_1_2)
+            // Last resort only, for a version gap no migration covers. The place and tile tables
+            // are a cache of a public API and cost only a few requests to rebuild — but
+            // `saved_itinerary` cannot be refetched, so every schema change touching it must
+            // come with a real migration above rather than fall through to here.
             .fallbackToDestructiveMigration(dropAllTables = true)
             .build()
 

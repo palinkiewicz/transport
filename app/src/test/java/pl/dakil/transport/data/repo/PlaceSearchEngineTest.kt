@@ -6,6 +6,7 @@ import org.junit.Test
 import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
+import pl.dakil.transport.domain.model.TransportMode
 
 /**
  * Covers what would go wrong invisibly: folding that silently drops Polish stops from every
@@ -13,8 +14,28 @@ import pl.dakil.transport.domain.model.TransitLocation
  */
 class PlaceSearchEngineTest {
 
-    private fun stop(name: String, lat: Double = 52.23, lon: Double = 21.01) =
-        TransitLocation(name = name, lat = lat, lon = lon, stopId = "stop:$name")
+    private fun stop(
+        name: String,
+        lat: Double = 52.23,
+        lon: Double = 21.01,
+        id: String = "stop:$name",
+        importance: Double = 0.0,
+    ) = TransitLocation(name = name, lat = lat, lon = lon, stopId = id, importance = importance)
+
+    /** A platform of a station: same name and importance, a short walk away. */
+    private fun pole(
+        name: String,
+        id: String,
+        metresEast: Double,
+        importance: Double = 0.01,
+    ) = stop(
+        name = name,
+        lat = 52.23,
+        // ~1 degree of longitude is 68 km at this latitude.
+        lon = 21.01 + metresEast / 68_000.0,
+        id = id,
+        importance = importance,
+    )
 
     private fun address(name: String, lat: Double = 52.23, lon: Double = 21.01) =
         TransitLocation(name = name, lat = lat, lon = lon, stopId = null)
@@ -123,6 +144,74 @@ class PlaceSearchEngineTest {
             stop("Aaa Centrum"),
         )
         assertEquals(listOf("Centrum"), names(PlaceSearchEngine.rank("centrum", places, limit = 1)))
+    }
+
+    @Test
+    fun `platforms of one station collapse into a single result`() {
+        val poles = listOf(
+            pole("Centrum", "pl-Warszawa_centrum10", metresEast = 0.0),
+            pole("Centrum", "pl-Warszawa_centrum15", metresEast = 60.0),
+            pole("Centrum", "pl-Warszawa_centruma13", metresEast = 200.0),
+        )
+        assertEquals(listOf("Centrum"), names(PlaceSearchEngine.rank("centrum", poles)))
+    }
+
+    @Test
+    fun `same-named stations far apart stay separate`() {
+        val warsaw = stop("Rynek", lat = 52.23, lon = 21.01, id = "pl-Warszawa_rynek")
+        val krakow = stop("Rynek", lat = 50.06, lon = 19.94, id = "pl-Krakow_rynek")
+        assertEquals(2, PlaceSearchEngine.rank("rynek", listOf(warsaw, krakow)).size)
+    }
+
+    @Test
+    fun `nearby same-named stops with different importance are different stations`() {
+        // The API scores a station as a whole, so poles of one station always agree. Two that
+        // disagree are two stations that happen to share a name and sit close together.
+        val busy = pole("Rynek", "a", metresEast = 0.0, importance = 0.01)
+        val quiet = pole("Rynek", "b", metresEast = 100.0, importance = 0.0001)
+        assertEquals(2, PlaceSearchEngine.rank("rynek", listOf(busy, quiet)).size)
+    }
+
+    @Test
+    fun `a station is represented by the member that knows its area`() {
+        val bare = pole("Centrum", "pl-Warszawa_centrum10", metresEast = 0.0)
+        val geocoded = pole("Centrum", "pl-Warszawa_centruma13", metresEast = 200.0)
+            .copy(city = "Warszawa", country = "PL")
+
+        val result = PlaceSearchEngine.rank("centrum", listOf(bare, geocoded)).single()
+        assertEquals("pl-Warszawa_centruma13", result.stopId)
+        assertEquals("Warszawa, PL", result.areaLabel)
+    }
+
+    @Test
+    fun `a station carries the modes of every platform`() {
+        val tram = pole("Centrum", "a", metresEast = 0.0).copy(modes = listOf(TransportMode.TRAM))
+        val bus = pole("Centrum", "b", metresEast = 60.0).copy(modes = listOf(TransportMode.BUS))
+        val metro = pole("Centrum", "c", metresEast = 120.0).copy(modes = listOf(TransportMode.SUBWAY))
+
+        val result = PlaceSearchEngine.rank("centrum", listOf(tram, bus, metro)).single()
+        assertEquals(
+            setOf(TransportMode.TRAM, TransportMode.BUS, TransportMode.SUBWAY),
+            result.modes.toSet(),
+        )
+    }
+
+    @Test
+    fun `an address is never folded into a stop of the same name`() {
+        val results = PlaceSearchEngine.rank(
+            "centrum",
+            listOf(address("Centrum"), stop("Centrum")),
+        )
+        assertEquals(2, results.size)
+        // …and the stop still leads, because it is the one you can actually travel from.
+        assertEquals("stop:Centrum", results.first().stopId)
+    }
+
+    @Test
+    fun `a more important station outranks a lesser one of the same name`() {
+        val major = stop("Dworzec", id = "major", lat = 52.30, lon = 21.20, importance = 0.05)
+        val minor = stop("Dworzec", id = "minor", lat = 52.40, lon = 21.30, importance = 0.00001)
+        assertEquals("major", PlaceSearchEngine.rank("dworzec", listOf(minor, major)).first().stopId)
     }
 
     @Test

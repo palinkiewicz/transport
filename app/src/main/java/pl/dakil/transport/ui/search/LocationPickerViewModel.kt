@@ -218,11 +218,7 @@ class LocationPickerViewModel @Inject constructor(
             val locations = if (query.isBlank()) {
                 favorites.locations
             } else {
-                // The geocoder leads where it has answered: it knows about places never cached,
-                // and its matches carry the city/state the map's own stops never do. The cached
-                // rest follows, which is what keeps the list from emptying while the request is
-                // in flight — or failing.
-                (suggestions + cached).distinctBy { it.favoriteKey }
+                mergeSuggestions(suggestions, cached)
             }
                 // A starred address or map point can't stand in for a stop id.
                 .filter { !stopsOnly || it.stopId != null }
@@ -243,6 +239,33 @@ class LocationPickerViewModel @Inject constructor(
                 items
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * The geocoder's answers and the cache's, as one list with each station appearing once.
+     *
+     * The two sources describe the same places differently: the geocoder returns the grouped
+     * station, carrying its city and district, while the cache holds the individual platforms the
+     * map fetched, which carry neither. Concatenating them shows the same stop several times over
+     * — once from the geocoder and once per cached pole — so they are clustered together instead
+     * and each station is offered as the member that knows the most about it.
+     *
+     * Ordering keeps the geocoder in charge where it answered: it ranks against the whole world,
+     * not just what this phone has seen. Stations only the cache knows follow, in the local
+     * ranking's order — which is what is left when there is no connection at all.
+     */
+    private fun mergeSuggestions(
+        remote: List<TransitLocation>,
+        cached: List<TransitLocation>,
+    ): List<TransitLocation> {
+        if (remote.isEmpty()) return cached
+        val remoteRank = remote.withIndex().associate { (index, place) -> place.favoriteKey to index }
+        return PlaceSearchEngine.groupIntoStations(remote + cached)
+            .sortedBy { station ->
+                station.members.minOfOrNull { remoteRank[it.favoriteKey] ?: Int.MAX_VALUE }
+                    ?: Int.MAX_VALUE
+            }
+            .map { it.place }
+    }
 
     fun onQueryChange(query: String) {
         _query.value = query

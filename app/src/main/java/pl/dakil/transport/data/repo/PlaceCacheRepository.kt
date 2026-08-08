@@ -11,6 +11,7 @@ import pl.dakil.transport.data.local.StopTileDao
 import pl.dakil.transport.data.local.StopTileEntity
 import pl.dakil.transport.data.local.TileGrid
 import pl.dakil.transport.data.local.TileKey
+import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.data.local.toCachedPlace
 import pl.dakil.transport.data.local.toTransitLocation
 import pl.dakil.transport.domain.model.TransitLocation
@@ -158,6 +159,41 @@ class PlaceCacheRepository @Inject constructor(
     suspend fun rememberGeocoded(places: List<TransitLocation>, now: Long) {
         if (places.isEmpty()) return
         placeDao.upsert(places.map { it.toCachedPlace(fromMap = false, now = now) })
+        places.forEach { spreadAreaToStation(it) }
+    }
+
+    /**
+     * Copies a geocoded stop's city/state/country onto the map-fetched platforms of the same
+     * station.
+     *
+     * `/v6/map/stops` returns no area information at all, so a stop the map found is a bare name
+     * on a coordinate — several identical "Centrum" rows with nothing to tell them apart. The
+     * geocoder does return it, but only for the station as a whole. Spreading it here is what
+     * makes an area the user has searched once stay properly labelled afterwards, including with
+     * no connection.
+     *
+     * Scoped by name *and* proximity, so this can only ever label platforms of the very station
+     * the geocoder described.
+     */
+    private suspend fun spreadAreaToStation(station: TransitLocation) {
+        if (station.stopId == null || station.areaLabel == null) return
+        val box = Bbox(
+            south = station.lat - STATION_SPREAD_DEGREES,
+            west = station.lon - STATION_SPREAD_DEGREES,
+            north = station.lat + STATION_SPREAD_DEGREES,
+            east = station.lon + STATION_SPREAD_DEGREES,
+        )
+        val neighbours = placeDao
+            .stopsInBox(box.south, box.west, box.north, box.east, MAX_STOPS_PER_READ)
+            .filter { it.key != station.favoriteKey && it.searchName == foldForSearch(station.name) }
+            // Only fill gaps: a row the geocoder itself described already knows better.
+            .filter { it.city == null && it.state == null && it.country == null }
+        if (neighbours.isEmpty()) return
+        placeDao.upsert(
+            neighbours.map {
+                it.copy(city = station.city, state = station.state, country = station.country)
+            },
+        )
     }
 
     /** Places whose folded name contains [foldedQuery]; ranking is the caller's job. */
@@ -208,6 +244,13 @@ class PlaceCacheRepository @Inject constructor(
 
         /** Comfortably under SQLite's bound-parameter limit. */
         private const val SQL_PARAMETER_CHUNK = 500
+
+        /**
+         * Half-width of the box searched for platforms of a geocoded station, in degrees —
+         * roughly 500 m of latitude. Comfortably wider than `PlaceSearchEngine`'s own station
+         * radius, since this only proposes candidates that the name check then confirms.
+         */
+        private const val STATION_SPREAD_DEGREES = 0.0045
     }
 }
 

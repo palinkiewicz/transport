@@ -13,6 +13,14 @@ data class TransitLocation(
     val state: String? = null,
     val country: String? = null,
     val modes: List<TransportMode> = emptyList(),
+    /**
+     * The API's significance score for this place; 0 when it did not provide one.
+     *
+     * Two uses: ranking a major interchange above a request stop of the same name, and — because
+     * every pole of one station is given the identical value — corroborating that a group of
+     * same-named stops really is one station. See `PlaceSearchEngine`.
+     */
+    val importance: Double = 0.0,
 ) {
     /** Value to send as `fromPlace`/`toPlace`/`stopId` query parameters. */
     val queryValue: String

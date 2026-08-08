@@ -4,7 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.OffsetDateTime
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -15,6 +18,27 @@ import pl.dakil.transport.data.repo.SavedItineraryRepository
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.SavedItinerary
 
+/** How current the journey on screen is, and why. */
+enum class SavedItineraryFreshness {
+    /** Being checked against the API right now; the stored copy is on screen meanwhile. */
+    REFRESHING,
+
+    /** Just checked — the times shown are the API's current ones. */
+    CURRENT,
+
+    /** The API could not be reached. The stored copy stands, with when it was last checked. */
+    UNREACHABLE,
+
+    /** The API answered, but no longer offers this run — it was cancelled, or its day has gone. */
+    NO_LONGER_RUNNING,
+
+    /**
+     * The departure is in the past, so there is nothing to check. Not a failure: a journey that
+     * has already happened is a record, and its stored times are the right ones to show.
+     */
+    DEPARTED,
+}
+
 /** What the saved-itinerary screen is showing, and where it came from. */
 sealed interface SavedItineraryUiState {
     data object Loading : SavedItineraryUiState
@@ -24,22 +48,24 @@ sealed interface SavedItineraryUiState {
 
     data class Shown(
         val saved: SavedItinerary,
-        /** The journey to draw: the refreshed plan where one was found, else the snapshot. */
+        /** The journey to draw: the refreshed plan where one was found, else the stored copy. */
         val journey: Journey,
-        /** True while the stored copy is what is on screen. */
-        val fromSnapshot: Boolean,
+        val freshness: SavedItineraryFreshness,
     ) : SavedItineraryUiState
 }
 
 /**
  * Opens a pinned journey.
  *
- * A saved itinerary is deliberately never trusted to be current: the stored copy goes on screen
- * first — instantly, and with no connection at all — and a re-plan of the same run is attempted
- * behind it. The refreshed times only replace the snapshot when the returned journey is
- * recognisably the *same* run, matched on its legs' trip ids; anything else (a failed request, a
- * service that no longer operates, a different set of legs) leaves the stored copy standing.
- * Silently swapping in a different journey would be worse than showing a slightly old one.
+ * The stored copy goes on screen first — instantly, and with no connection at all — and a
+ * re-plan of the same run is attempted behind it. The refreshed times only replace the stored
+ * ones when the returned journey is recognisably the *same* run, matched on its legs' trip ids;
+ * silently swapping in a different journey would be worse than showing a slightly old one.
+ *
+ * The distinction the screen cares about is not "is this the stored copy" — it almost always is
+ * for the first moment — but *why*: a run that was just checked needs no caveat, one that could
+ * not be reached needs to say when it was last checked, and one whose departure has passed
+ * should not claim to be either.
  */
 @HiltViewModel
 class SavedItineraryViewModel @Inject constructor(
@@ -54,6 +80,8 @@ class SavedItineraryViewModel @Inject constructor(
     private val _uiState = MutableStateFlow<SavedItineraryUiState>(SavedItineraryUiState.Loading)
     val uiState: StateFlow<SavedItineraryUiState> = _uiState
 
+    private var refreshJob: Job? = null
+
     init {
         viewModelScope.launch {
             val saved = savedItineraryRepository.find(id)
@@ -61,20 +89,31 @@ class SavedItineraryViewModel @Inject constructor(
                 _uiState.value = SavedItineraryUiState.Missing
                 return@launch
             }
-            _uiState.value = SavedItineraryUiState.Shown(saved, saved.journey, fromSnapshot = true)
-            refresh(saved)
+            show(saved, saved.journey, SavedItineraryFreshness.REFRESHING)
+            startRefresh(saved)
         }
     }
 
-    /** Re-runs the refresh; the stored copy stays on screen throughout either way. */
+    /** Re-runs the check. The stored copy stays on screen throughout, whatever the outcome. */
     fun retry() {
         val shown = _uiState.value as? SavedItineraryUiState.Shown ?: return
-        viewModelScope.launch { refresh(shown.saved) }
+        startRefresh(shown.saved)
+    }
+
+    private fun startRefresh(saved: SavedItinerary) {
+        if (refreshJob?.isActive == true) return
+        refreshJob = viewModelScope.launch { refresh(saved) }
     }
 
     private suspend fun refresh(saved: SavedItinerary) {
+        if (!saved.isRefreshable(OffsetDateTime.now())) {
+            show(saved, saved.journey, SavedItineraryFreshness.DEPARTED)
+            return
+        }
+        show(saved, saved.journey, SavedItineraryFreshness.REFRESHING)
+
         val options = searchOptionsRepository.options.first()
-        val refreshed = planRepository.plan(
+        planRepository.plan(
             from = saved.from,
             to = saved.to,
             // The run's own scheduled departure, not "now": this is the journey the user pinned,
@@ -83,13 +122,32 @@ class SavedItineraryViewModel @Inject constructor(
             options = options,
             pageCursor = null,
             vias = emptyList(),
-        ).getOrNull()
-            ?.journeys
-            ?.firstOrNull { it.isSameRunAs(saved.journey) }
-            ?: return
+        ).fold(
+            onSuccess = { plan ->
+                val match = plan.journeys.firstOrNull { it.isSameRunAs(saved.journey) }
+                savedItineraryRepository.recordRefresh(saved, match, System.currentTimeMillis())
+                show(
+                    savedItineraryRepository.find(saved.id) ?: saved,
+                    match ?: saved.journey,
+                    if (match != null) {
+                        SavedItineraryFreshness.CURRENT
+                    } else {
+                        SavedItineraryFreshness.NO_LONGER_RUNNING
+                    },
+                )
+            },
+            onFailure = { error ->
+                // runCatching swallows cancellation into a failure; the screen going away is
+                // not the API being unreachable.
+                if (error !is CancellationException) {
+                    show(saved, saved.journey, SavedItineraryFreshness.UNREACHABLE)
+                }
+            },
+        )
+    }
 
-        savedItineraryRepository.updateSnapshot(saved, refreshed)
-        _uiState.value = SavedItineraryUiState.Shown(saved, refreshed, fromSnapshot = false)
+    private fun show(saved: SavedItinerary, journey: Journey, freshness: SavedItineraryFreshness) {
+        _uiState.value = SavedItineraryUiState.Shown(saved, journey, freshness)
     }
 }
 

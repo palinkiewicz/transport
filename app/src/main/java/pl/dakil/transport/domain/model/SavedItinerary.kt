@@ -19,9 +19,19 @@ data class SavedItinerary(
     val from: TransitLocation,
     val to: TransitLocation,
     val journey: Journey,
+    /** When the run was last successfully checked against the API; null if it never has been. */
+    val lastRefreshedAt: OffsetDateTime? = null,
 ) {
     val fromName: String get() = from.name
     val toName: String get() = to.name
+
+    /**
+     * Whether there is anything left to check. A run that has already departed cannot be
+     * re-planned — asking the API for a journey at a time in the past returns whatever runs
+     * *now*, which is a different journey — so a past itinerary is a record, not something with
+     * live times, and the app should stop pretending otherwise.
+     */
+    fun isRefreshable(now: OffsetDateTime): Boolean = journey.departureScheduledTime.isAfter(now)
 
     companion object {
         /**

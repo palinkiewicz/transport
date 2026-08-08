@@ -57,21 +57,26 @@ class SavedItineraryRepository @Inject constructor(
     suspend fun delete(id: String) = dao.delete(id)
 
     /**
-     * Replaces a saved journey's snapshot with a freshly planned one, keeping its saved-at time.
-     * Called after a refresh matched the same run, so the offline copy does not stay stale
-     * forever once the user has been online with it open.
+     * Records a successful check against the API, keeping the itinerary's saved-at time.
+     *
+     * [journey] is the re-planned run when one was recognised, or null when the API answered but
+     * no longer offers it. Either way the check happened, so [SavedItinerary.lastRefreshedAt]
+     * moves — that timestamp answers "how current are these times", which is not the same
+     * question as "did the run still exist".
      */
-    suspend fun updateSnapshot(existing: SavedItinerary, journey: Journey) {
+    suspend fun recordRefresh(existing: SavedItinerary, journey: Journey?, refreshedAt: Long) {
+        val updated = journey ?: existing.journey
         dao.upsert(
             SavedItineraryEntity(
                 id = existing.id,
                 savedAt = existing.savedAt.toInstant().toEpochMilli(),
                 fromName = existing.from.name,
                 toName = existing.to.name,
-                departureIso = journey.departureScheduledTime.toString(),
+                departureIso = updated.departureScheduledTime.toString(),
                 fromJson = json.encodeToString(TransitLocation.serializer(), existing.from),
                 toJson = json.encodeToString(TransitLocation.serializer(), existing.to),
-                journeyJson = json.encodeToString(Journey.serializer(), journey),
+                journeyJson = json.encodeToString(Journey.serializer(), updated),
+                lastRefreshedAt = refreshedAt,
             ),
         )
     }
@@ -90,6 +95,9 @@ class SavedItineraryRepository @Inject constructor(
             from = json.decodeFromString(TransitLocation.serializer(), fromJson),
             to = json.decodeFromString(TransitLocation.serializer(), toJson),
             journey = json.decodeFromString(Journey.serializer(), journeyJson),
+            lastRefreshedAt = lastRefreshedAt?.let {
+                OffsetDateTime.ofInstant(Instant.ofEpochMilli(it), ZoneId.systemDefault())
+            },
         )
     }.getOrNull()
 }

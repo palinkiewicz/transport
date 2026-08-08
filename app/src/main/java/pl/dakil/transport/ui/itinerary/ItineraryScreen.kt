@@ -240,8 +240,10 @@ fun ItineraryScreen(
      * journey opened from the Saved tab is already pinned.
      */
     endpoints: Pair<TransitLocation, TransitLocation>? = null,
-    /** Shown above the itinerary when this is a stored copy rather than a fresh plan. */
+    /** Shown above the itinerary when its times might not be the API's current ones. */
     savedNote: String? = null,
+    /** Offered beside [savedNote] where checking again could actually change the answer. */
+    onRetryRefresh: (() -> Unit)? = null,
     viewModel: ItineraryViewModel = hiltViewModel(),
 ) {
     var showMap by rememberSaveable { mutableStateOf(false) }
@@ -341,7 +343,7 @@ fun ItineraryScreen(
             ) {
                 if (savedNote != null) {
                     item(key = "saved-note") {
-                        SavedCopyNote(savedNote)
+                        SavedCopyNote(savedNote, onRetryRefresh)
                         Spacer(Modifier.height(16.dp))
                     }
                 }
@@ -740,13 +742,15 @@ private fun WaypointRow(
 }
 
 /**
- * Says that what follows is a stored copy rather than a fresh plan.
+ * Says why the times below might not be the API's current ones.
  *
- * Deliberately an informational tile and not an error: a saved journey is meant to be opened
- * offline, so its stored times are the feature working, not something going wrong.
+ * Deliberately an informational tile and not an error: a saved journey is meant to be openable
+ * offline, so falling back to its stored times is the feature working, not something going
+ * wrong. It is shown only when there is something to say — a run that was just checked gets no
+ * tile at all.
  */
 @Composable
-private fun SavedCopyNote(note: String) {
+private fun SavedCopyNote(note: String, onRetry: (() -> Unit)?) {
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -755,7 +759,7 @@ private fun SavedCopyNote(note: String) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
         ) {
             Icon(
                 Icons.Default.CloudDownload,
@@ -766,7 +770,11 @@ private fun SavedCopyNote(note: String) {
                 text = note,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f),
             )
+            if (onRetry != null) {
+                TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+            }
         }
     }
 }

@@ -178,7 +178,13 @@
     <string name="saved_section_trips">Trasy</string>
     <!-- Departure date, then the run's departure and arrival times. -->
     <string name="saved_itinerary_subtitle">%1$s · %2$s – %3$s</string>
-    <string name="saved_itinerary_snapshot_note">Zapisana kopia z %1$s. Godziny zaktualizują się, gdy uda się ponownie sprawdzić ten kurs.</string>
+    <!-- %1$s is a "today at 13:16" / "7 Aug at 13:16" phrase from the two strings below. -->
+    <string name="saved_itinerary_offline_note">Offline — pokazujemy zapisaną kopię. Ostatnio sprawdzono %1$s.</string>
+    <string name="saved_itinerary_offline_never_note">Offline — pokazujemy zapisaną kopię. Ten kurs nie był sprawdzany od zapisania.</string>
+    <string name="saved_itinerary_not_running_note">Ten kurs nie jest już oferowany. Pokazujemy zapisaną kopię z chwili zaplanowania.</string>
+    <string name="saved_itinerary_departed_note">Ta podróż już odjechała. Zapisano %1$s.</string>
+    <string name="saved_itinerary_checked_today">dziś o %1$s</string>
+    <string name="saved_itinerary_checked_on">%1$s o %2$s</string>
     <string name="favourite_add">Dodaj do ulubionych</string>
     <string name="favourite_remove">Usuń z ulubionych</string>
 

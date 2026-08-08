@@ -21,4 +21,6 @@ data class PlaceDto(
     val description: String? = null,
     val cancelled: Boolean? = null,
     val modes: List<String>? = null,
+    /** Significance score; identical across every pole of one station. */
+    val importance: Double? = null,
 )
