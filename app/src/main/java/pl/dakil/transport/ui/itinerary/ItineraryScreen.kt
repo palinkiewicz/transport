@@ -38,6 +38,8 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.HorizontalDivider
@@ -81,9 +83,10 @@ import java.util.Locale
 import kotlinx.coroutines.launch
 import pl.dakil.transport.BuildConfig
 import pl.dakil.transport.R
-import pl.dakil.transport.data.export.GpxLabels
+import pl.dakil.transport.data.export.ExportLabels
+import pl.dakil.transport.domain.model.ExportDelivery
+import pl.dakil.transport.domain.model.ExportFormat
 import pl.dakil.transport.domain.model.GeoPoint
-import pl.dakil.transport.domain.model.GpxDelivery
 import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.SavedItinerary
 import pl.dakil.transport.domain.model.TransitLocation
@@ -302,9 +305,7 @@ fun ItineraryScreen(
                         )
                     }
                     if (journey != null) {
-                        IconButton(onClick = export.start) {
-                            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.gpx_export))
-                        }
+                        ExportMenuButton(onPick = export.start)
                     }
                     if (canShowMap) {
                         IconButton(onClick = { showMap = !showMap }) {
@@ -388,25 +389,48 @@ fun ItineraryScreen(
     ItineraryExportDialogs(export)
 }
 
+/**
+ * The top bar's export button: a menu of the formats the journey can leave as, because which one
+ * is right depends on where the file is going and there is nothing to guess from.
+ */
+@Composable
+private fun ExportMenuButton(onPick: (ExportFormat) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export_action))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            ExportFormat.entries.forEach { format ->
+                DropdownMenuItem(
+                    text = { Text(stringResource(format.labelRes)) },
+                    onClick = {
+                        open = false
+                        onPick(format)
+                    },
+                )
+            }
+        }
+    }
+}
+
 /** What the top bar's export button does, and the state its dialogs read. */
 private class ItineraryExport(
-    val start: () -> Unit,
+    val start: (ExportFormat) -> Unit,
     val share: () -> Unit,
     val save: () -> Unit,
-    /** True while the "share or save?" sheet is up — only ever with [GpxDelivery.ASK]. */
+    /** True while the "share or save?" sheet is up — only ever with [ExportDelivery.ASK]. */
     val choosing: Boolean,
     val onDismissChoice: () -> Unit,
     val failed: Boolean,
     val onDismissFailure: () -> Unit,
 )
 
-private const val GPX_MIME_TYPE = "application/gpx+xml"
-
 /**
- * Wires the export button to the settings the user picked: straight to the share sheet, straight
- * to the document picker, or a sheet asking which. Everything user-visible in the file itself is
- * resolved here and handed to the writer as [GpxLabels] — the writer sits below the Compose layer
- * and has no resources of its own.
+ * Wires the picked format to the delivery the user chose in settings: straight to the share sheet,
+ * straight to the document picker, or a sheet asking which. Everything user-visible in the file
+ * itself is resolved here and handed to the writer as [ExportLabels] — the writer sits below the
+ * Compose layer and has no resources of its own.
  */
 @Composable
 private fun rememberItineraryExport(
@@ -419,32 +443,40 @@ private fun rememberItineraryExport(
 ): ItineraryExport {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val settings by viewModel.gpxExport.collectAsStateWithLifecycle()
-    val labels = rememberGpxLabels(fromName, toName, journey, legColors)
-    val subject = stringResource(R.string.gpx_export_subject, fromName, toName)
-    val chooserTitle = stringResource(R.string.gpx_export)
+    val settings by viewModel.export.collectAsStateWithLifecycle()
+    val labels = rememberExportLabels(fromName, toName, journey, legColors)
+    val subject = stringResource(R.string.export_subject, fromName, toName)
+    val chooserTitle = stringResource(R.string.export_action)
 
     var choosing by remember { mutableStateOf(false) }
     var failed by remember { mutableStateOf(false) }
+    /** The format the menu picked, held while the sheet or the document picker is up. */
+    var format by remember { mutableStateOf(ExportFormat.entries.first()) }
 
-    val saveLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument(GPX_MIME_TYPE),
-    ) { uri ->
-        // A null uri is the user backing out of the picker, not a failure.
-        if (uri != null && journey != null) {
-            scope.launch { failed = viewModel.exportTo(uri, journey, labels).isFailure }
+    // One launcher per format: `CreateDocument` freezes its mime type at construction, and the
+    // picker suggesting the wrong type is what makes a saved file open in the wrong app.
+    val saveLaunchers = ExportFormat.entries.associateWith { launcherFormat ->
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.CreateDocument(launcherFormat.mimeType),
+        ) { uri ->
+            // A null uri is the user backing out of the picker, not a failure.
+            if (uri != null && journey != null) {
+                scope.launch {
+                    failed = viewModel.exportTo(uri, launcherFormat, journey, labels).isFailure
+                }
+            }
         }
     }
 
-    val share = {
+    val shareAs = { chosen: ExportFormat ->
         choosing = false
         if (journey != null) {
             scope.launch {
-                val fileName = viewModel.fileNameFor(journey, fromName, toName)
-                viewModel.exportToCache(journey, fileName, labels)
+                val fileName = viewModel.fileNameFor(journey, chosen, fromName, toName)
+                viewModel.exportToCache(journey, chosen, fileName, labels)
                     .onSuccess { uri ->
                         val send = Intent(Intent.ACTION_SEND).apply {
-                            type = GPX_MIME_TYPE
+                            type = chosen.mimeType
                             putExtra(Intent.EXTRA_STREAM, uri)
                             putExtra(Intent.EXTRA_SUBJECT, subject)
                             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -460,21 +492,27 @@ private fun rememberItineraryExport(
         }
     }
 
-    val save = {
+    val saveAs = { chosen: ExportFormat ->
         choosing = false
-        if (journey != null) saveLauncher.launch(viewModel.fileNameFor(journey, fromName, toName))
+        if (journey != null) {
+            saveLaunchers.getValue(chosen)
+                .launch(viewModel.fileNameFor(journey, chosen, fromName, toName))
+        }
+        Unit
     }
 
     return ItineraryExport(
-        start = {
+        start = { picked ->
+            // Remembered for the "share or save?" sheet, which answers after this returns.
+            format = picked
             when (settings.delivery) {
-                GpxDelivery.SHARE -> share()
-                GpxDelivery.SAVE -> save()
-                GpxDelivery.ASK -> choosing = true
+                ExportDelivery.SHARE -> shareAs(picked)
+                ExportDelivery.SAVE -> saveAs(picked)
+                ExportDelivery.ASK -> choosing = true
             }
         },
-        share = share,
-        save = save,
+        share = { shareAs(format) },
+        save = { saveAs(format) },
         choosing = choosing,
         onDismissChoice = { choosing = false },
         failed = failed,
@@ -489,20 +527,20 @@ private fun ItineraryExportDialogs(export: ItineraryExport) {
         ModalBottomSheet(onDismissRequest = export.onDismissChoice) {
             Column(modifier = Modifier.padding(bottom = 24.dp)) {
                 Text(
-                    text = stringResource(R.string.gpx_export_choose),
+                    text = stringResource(R.string.export_choose),
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
-                ExportChoiceRow(Icons.Default.Share, stringResource(R.string.gpx_export_share), export.share)
-                ExportChoiceRow(Icons.Default.Save, stringResource(R.string.gpx_export_save), export.save)
+                ExportChoiceRow(Icons.Default.Share, stringResource(R.string.export_share), export.share)
+                ExportChoiceRow(Icons.Default.Save, stringResource(R.string.export_save), export.save)
             }
         }
     }
     if (export.failed) {
         AlertDialog(
             onDismissRequest = export.onDismissFailure,
-            title = { Text(stringResource(R.string.gpx_export_failed_title)) },
-            text = { Text(stringResource(R.string.gpx_export_failed_body)) },
+            title = { Text(stringResource(R.string.export_failed_title)) },
+            text = { Text(stringResource(R.string.export_failed_body)) },
             confirmButton = {
                 TextButton(onClick = export.onDismissFailure) { Text(stringResource(R.string.action_ok)) }
             },
@@ -537,24 +575,26 @@ private fun ExportChoiceRow(
  * would skip the resource system's configuration handling.
  */
 @Composable
-private fun rememberGpxLabels(
+private fun rememberExportLabels(
     fromName: String,
     toName: String,
     journey: Journey?,
     legColors: List<Color?>,
-): GpxLabels {
+): ExportLabels {
     val appName = stringResource(R.string.app_name)
     val documentName = stringResource(R.string.format_route_arrow, fromName, toName)
     val modeNames = TransportMode.entries.associateWith { stringResource(it.labelRes) }
-    val board = stringResource(R.string.gpx_waypoint_board)
-    val transfer = stringResource(R.string.gpx_waypoint_transfer)
-    val alight = stringResource(R.string.gpx_waypoint_alight)
-    val separator = stringResource(R.string.gpx_desc_separator)
+    val board = stringResource(R.string.export_waypoint_board)
+    val transfer = stringResource(R.string.export_waypoint_transfer)
+    val alight = stringResource(R.string.export_waypoint_alight)
+    val separator = stringResource(R.string.export_desc_separator)
+    val stopsFolder = stringResource(R.string.export_folder_stops)
+    val routeFolder = stringResource(R.string.export_folder_route)
     val trackPattern = stringResource(R.string.format_track_short)
     val towardsPattern = stringResource(R.string.format_towards)
     val legs = journey?.legs.orEmpty()
     return remember(documentName, modeNames, board, transfer, alight, separator, legs, legColors) {
-        GpxLabels(
+        ExportLabels(
             documentName = documentName,
             originName = fromName,
             destinationName = toName,
@@ -564,6 +604,8 @@ private fun rememberGpxLabels(
             transfer = transfer,
             alight = alight,
             descSeparator = separator,
+            stopsFolder = stopsFolder,
+            routeFolder = routeFolder,
             track = { track -> String.format(Locale.getDefault(), trackPattern, track) },
             towards = { headsign -> String.format(Locale.getDefault(), towardsPattern, headsign) },
             // By identity: two legs of one journey can be equal by value (the same line ridden

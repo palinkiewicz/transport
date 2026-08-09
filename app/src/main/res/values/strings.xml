@@ -332,21 +332,28 @@
     <string name="itinerary_access_leg">%1$s · %2$s</string>
     <string name="itinerary_access_leg_distance">%1$s · %2$s · %3$s</string>
 
-    <!-- Exporting an itinerary as a GPX file -->
-    <string name="gpx_export">Export as GPX</string>
-    <string name="gpx_export_share">Share</string>
-    <string name="gpx_export_save">Save to a file</string>
-    <string name="gpx_export_choose">How would you like to export this itinerary?</string>
-    <string name="gpx_export_failed_title">Export failed</string>
-    <string name="gpx_export_failed_body">The itinerary could not be written to a file. Try again, or pick another destination.</string>
+    <!-- Exporting an itinerary as a file -->
+    <string name="export_action">Export</string>
+    <!-- File format names: trademarks and format names, never translated -->
+    <string name="export_format_kmz" translatable="false">KMZ</string>
+    <string name="export_format_gpx" translatable="false">GPX</string>
+    <string name="export_format_geojson" translatable="false">GeoJSON</string>
+    <string name="export_share">Share</string>
+    <string name="export_save">Save to a file</string>
+    <string name="export_choose">How would you like to export this itinerary?</string>
+    <string name="export_failed_title">Export failed</string>
+    <string name="export_failed_body">The itinerary could not be written to a file. Try again, or pick another destination.</string>
     <!-- Share sheet subject line -->
-    <string name="gpx_export_subject">%1$s → %2$s</string>
+    <string name="export_subject">%1$s → %2$s</string>
     <!-- Waypoint name prefixes inside the file, e.g. "Board Warszawa Centralna" -->
-    <string name="gpx_waypoint_board">Board</string>
-    <string name="gpx_waypoint_transfer">Change at</string>
-    <string name="gpx_waypoint_alight">Get off at</string>
+    <string name="export_waypoint_board">Board</string>
+    <string name="export_waypoint_transfer">Change at</string>
+    <string name="export_waypoint_alight">Get off at</string>
     <!-- Joins the parts of a waypoint description, e.g. "S2 · towards Airport · Pl. 3" -->
-    <string name="gpx_desc_separator">" · "</string>
+    <string name="export_desc_separator">" · "</string>
+    <!-- Layer names inside a KMZ file -->
+    <string name="export_folder_stops">Stops</string>
+    <string name="export_folder_route">Route</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -387,26 +394,26 @@
     <string name="settings_line_color_selected">Selected</string>
 
     <string name="settings_group_export">Itinerary export</string>
-    <string name="settings_gpx_delivery">Export action</string>
-    <string name="gpx_delivery_share">Share</string>
-    <string name="gpx_delivery_save">Save to a file</string>
-    <string name="gpx_delivery_ask">Ask each time</string>
-    <string name="settings_gpx_filename">File name</string>
-    <string name="gpx_filename_route_date">Route and date</string>
-    <string name="gpx_filename_date_time">Date and time</string>
-    <string name="gpx_filename_plain">Plain</string>
-    <string name="settings_gpx_tracks">Include the route shape</string>
-    <string name="settings_gpx_tracks_note">Writes each leg\'s path as a track. Off, the file holds only the stops — smaller, and enough for apps that ignore tracks anyway.</string>
-    <string name="settings_gpx_access_legs">Include walking legs</string>
-    <string name="settings_gpx_access_legs_note">Covers the walk, cycle or drive at either end of the journey as well as the rides.</string>
-    <string name="settings_gpx_intermediate_stops">Include every stop passed</string>
-    <string name="settings_gpx_intermediate_stops_note">A waypoint for each stop the vehicle calls at, not only the ones you board and get off at. A long ride can add dozens.</string>
-    <string name="settings_gpx_times">Include times</string>
-    <string name="settings_gpx_times_note">Timestamps each waypoint. They are written in UTC, as the GPX format requires.</string>
-    <string name="settings_gpx_real_times">Use real-time times</string>
-    <string name="settings_gpx_real_times_note">Off, the file carries the published schedule instead of the delays the feed reports.</string>
-    <string name="settings_gpx_descriptions">Include line details</string>
-    <string name="settings_gpx_descriptions_note">Adds the line, direction, platform and operator to each waypoint and track.</string>
+    <string name="settings_export_delivery">Export action</string>
+    <string name="export_delivery_share">Share</string>
+    <string name="export_delivery_save">Save to a file</string>
+    <string name="export_delivery_ask">Ask each time</string>
+    <string name="settings_export_filename">File name</string>
+    <string name="export_filename_route_date">Route and date</string>
+    <string name="export_filename_date_time">Date and time</string>
+    <string name="export_filename_plain">Plain</string>
+    <string name="settings_export_tracks">Include the route shape</string>
+    <string name="settings_export_tracks_note">Writes each leg\'s path as a track. Off, the file holds only the stops — smaller, and enough for apps that ignore tracks anyway.</string>
+    <string name="settings_export_access_legs">Include walking legs</string>
+    <string name="settings_export_access_legs_note">Covers the walk, cycle or drive at either end of the journey as well as the rides.</string>
+    <string name="settings_export_intermediate_stops">Include every stop passed</string>
+    <string name="settings_export_intermediate_stops_note">A waypoint for each stop the vehicle calls at, not only the ones you board and get off at. A long ride can add dozens.</string>
+    <string name="settings_export_times">Include times</string>
+    <string name="settings_export_times_note">Timestamps each waypoint. They are written in UTC, as every one of the export formats requires.</string>
+    <string name="settings_export_real_times">Use real-time times</string>
+    <string name="settings_export_real_times_note">Off, the file carries the published schedule instead of the delays the feed reports.</string>
+    <string name="settings_export_descriptions">Include line details</string>
+    <string name="settings_export_descriptions_note">Adds the line, direction, platform and operator to each waypoint and track.</string>
 
     <string name="settings_group_map_detail">Map detail</string>
     <string name="settings_stops_from_zoom">Stops from zoom</string>

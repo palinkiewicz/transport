@@ -14,7 +14,7 @@ import pl.dakil.transport.data.repo.CacheStats
 import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.SavedItineraryRepository
 import pl.dakil.transport.domain.model.AppSettings
-import pl.dakil.transport.domain.model.GpxExportSettings
+import pl.dakil.transport.domain.model.ExportSettings
 import pl.dakil.transport.domain.model.OfflineCacheSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 
@@ -81,12 +81,12 @@ class SettingsViewModel @Inject constructor(
 
     fun resetAll() = update { AppSettings.DEFAULT }
 
-    fun updateGpx(transform: (GpxExportSettings) -> GpxExportSettings) =
-        update { it.copy(gpxExport = transform(it.gpxExport)) }
+    fun updateExport(transform: (ExportSettings) -> ExportSettings) =
+        update { it.copy(export = transform(it.export)) }
 
     fun resetMotion() = update { it.copy(vehicleMotion = VehicleMotionSettings.DEFAULT) }
 
-    fun resetGpxExport() = update { it.copy(gpxExport = GpxExportSettings.DEFAULT) }
+    fun resetItineraryExport() = update { it.copy(export = ExportSettings.DEFAULT) }
 
     fun resetLineColors() = update {
         it.copy(

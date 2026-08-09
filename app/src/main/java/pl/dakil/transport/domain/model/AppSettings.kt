@@ -183,67 +183,92 @@ object LinePalette {
     val DEFAULT = listOf("6750A4", "00658F", "006D3B", "9A4B00", "B3261E", "984061")
 }
 
-/** How the itinerary export hands the finished file over. */
-@Serializable
-enum class GpxDelivery(@param:StringRes val labelRes: Int) {
-    /** Straight to the system share sheet, from a file in the app's cache. */
-    SHARE(R.string.gpx_delivery_share),
+/**
+ * The file formats an itinerary can leave the app as. Picked per export from the share button's
+ * menu rather than stored in settings: which one is right depends on where the file is going, not
+ * on a standing preference.
+ *
+ * [extension] and [mimeType] are machine-facing and deliberately not resources; only [labelRes] is
+ * app text. Constant names are not persisted anywhere, but they do reach the outside world through
+ * the file's own name, so they are the format's usual spelling.
+ */
+enum class ExportFormat(
+    @param:StringRes val labelRes: Int,
+    val extension: String,
+    val mimeType: String,
+) {
+    /** Google Earth / My Maps and most GIS tools; a zip holding one `doc.kml`. */
+    KMZ(R.string.export_format_kmz, "kmz", "application/vnd.google-earth.kmz"),
 
-    /** The system document picker, so the file lands wherever the user chooses. */
-    SAVE(R.string.gpx_delivery_save),
+    /** The interchange format of watches, hiking apps and desktop mapping tools. */
+    GPX(R.string.export_format_gpx, "gpx", "application/gpx+xml"),
 
-    /** Offer both each time. */
-    ASK(R.string.gpx_delivery_ask),
+    /** RFC 7946, for anything that speaks web mapping. */
+    GEOJSON(R.string.export_format_geojson, "geojson", "application/geo+json"),
 }
 
-/** How the exported file is named. */
+/** How the itinerary export hands the finished file over. */
 @Serializable
-enum class GpxFileName(@param:StringRes val labelRes: Int) {
+enum class ExportDelivery(@param:StringRes val labelRes: Int) {
+    /** Straight to the system share sheet, from a file in the app's cache. */
+    SHARE(R.string.export_delivery_share),
+
+    /** The system document picker, so the file lands wherever the user chooses. */
+    SAVE(R.string.export_delivery_save),
+
+    /** Offer both each time. */
+    ASK(R.string.export_delivery_ask),
+}
+
+/** How the exported file is named. The extension comes from the chosen [ExportFormat]. */
+@Serializable
+enum class ExportFileName(@param:StringRes val labelRes: Int) {
     /** `warszawa-centralna-lotnisko-chopina-2026-08-06.gpx` */
-    ROUTE_AND_DATE(R.string.gpx_filename_route_date),
+    ROUTE_AND_DATE(R.string.export_filename_route_date),
 
-    /** `itinerary-20260806-0812.gpx` */
-    DATE_TIME(R.string.gpx_filename_date_time),
+    /** `itinerary-20260806-0812.kmz` */
+    DATE_TIME(R.string.export_filename_date_time),
 
-    /** `itinerary.gpx` */
-    PLAIN(R.string.gpx_filename_plain),
+    /** `itinerary.geojson` */
+    PLAIN(R.string.export_filename_plain),
 }
 
 /**
- * What an itinerary exported as GPX contains and how it leaves the app.
+ * What an exported itinerary contains and how it leaves the app — the same set of choices for
+ * every [ExportFormat], since all three carry the same points, paths and text.
  *
- * GPX is read by everything from hiking watches to desktop mapping tools, and they disagree about
- * what they want: some choke on a file with thousands of track points, others ignore waypoints
- * entirely. So the shape of the file is a user decision rather than one baked in.
+ * The readers disagree about what they want: some choke on a file with thousands of track points,
+ * others ignore waypoints entirely. So the shape of the file is a user decision rather than one
+ * baked in.
  */
 @Serializable
-data class GpxExportSettings(
-    val delivery: GpxDelivery = GpxDelivery.SHARE,
+data class ExportSettings(
+    val delivery: ExportDelivery = ExportDelivery.SHARE,
 
-    val fileName: GpxFileName = GpxFileName.ROUTE_AND_DATE,
+    val fileName: ExportFileName = ExportFileName.ROUTE_AND_DATE,
 
-    /** One `<trk>` per leg, drawn from the leg's decoded geometry. Off, the file is waypoints only. */
+    /** One path per leg, drawn from the leg's decoded geometry. Off, the file is waypoints only. */
     val includeTracks: Boolean = true,
 
     /** Whether the walk/bike/car legs at either end contribute waypoints and tracks too. */
     val includeAccessLegs: Boolean = true,
 
-    /** A `<wpt>` for every stop passed through, not only the ones boarded and alighted at. */
+    /** A waypoint for every stop passed through, not only the ones boarded and alighted at. */
     val includeIntermediateStops: Boolean = false,
 
-    /** `<time>` stamps on the waypoints. */
+    /** Timestamps on the waypoints. */
     val includeTimes: Boolean = true,
 
     /** Real-time times where the feed revises them; off, always the published schedule. */
     val useRealTimes: Boolean = true,
 
-    /** `<desc>` carrying the line, headsign, platform and operator. */
+    /** A description carrying the line, headsign, platform and operator. */
     val includeDescriptions: Boolean = true,
 ) {
     val isDefault: Boolean get() = this == DEFAULT
 
     companion object {
-        val DEFAULT = GpxExportSettings()
+        val DEFAULT = ExportSettings()
     }
 }
 
@@ -316,8 +341,12 @@ data class AppSettings(
     /** The user's own colour set, as GTFS-shaped `RRGGBB` hex. Read it through [palette]. */
     val customLineColors: List<String> = LinePalette.DEFAULT,
 
-    /** What an itinerary exported as GPX contains. */
-    val gpxExport: GpxExportSettings = GpxExportSettings(),
+    /**
+     * What an exported itinerary contains. The stored key predates KMZ and GeoJSON and is kept as
+     * it was: renaming it would silently reset the choices of everyone who had tuned the export.
+     */
+    @SerialName("gpxExport")
+    val export: ExportSettings = ExportSettings(),
 
     /** How long fetched stops and places are kept, and how many of them. */
     val offlineCache: OfflineCacheSettings = OfflineCacheSettings(),

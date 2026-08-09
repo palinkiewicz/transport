@@ -78,8 +78,8 @@ import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.ConnectionTimesMode
 import pl.dakil.transport.domain.model.DefaultTab
-import pl.dakil.transport.domain.model.GpxDelivery
-import pl.dakil.transport.domain.model.GpxFileName
+import pl.dakil.transport.domain.model.ExportDelivery
+import pl.dakil.transport.domain.model.ExportFileName
 import pl.dakil.transport.domain.model.LineColorMode
 import pl.dakil.transport.domain.model.OfflineCacheSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
@@ -357,72 +357,73 @@ private fun LineColorsGroup(settings: AppSettings, viewModel: SettingsViewModel)
 }
 
 /**
- * What an itinerary exported as GPX contains, and how it leaves the app. GPX readers disagree
- * wildly about what they want out of a file — some ignore waypoints, others choke on long tracks —
- * so the shape of the export is the user's to decide.
+ * What an exported itinerary contains, and how it leaves the app — the same choices whichever
+ * format the share menu picks. The readers disagree wildly about what they want out of a file —
+ * some ignore waypoints, others choke on long tracks — so the shape of the export is the user's to
+ * decide.
  */
 @Composable
 private fun ItineraryExportGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    val gpx = settings.gpxExport
+    val export = settings.export
     SettingsGroup(
         title = stringResource(R.string.settings_group_export),
         icon = Icons.Default.Share,
-        onReset = viewModel::resetGpxExport.takeIf { !gpx.isDefault },
+        onReset = viewModel::resetItineraryExport.takeIf { !export.isDefault },
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_gpx_delivery), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_export_delivery), style = MaterialTheme.typography.titleSmall)
             SingleChoiceToggleFlow(
-                options = GpxDelivery.entries,
-                selected = gpx.delivery,
-                onSelect = { delivery -> viewModel.updateGpx { it.copy(delivery = delivery) } },
+                options = ExportDelivery.entries,
+                selected = export.delivery,
+                onSelect = { delivery -> viewModel.updateExport { it.copy(delivery = delivery) } },
                 label = { stringResource(it.labelRes) },
             )
-            Text(stringResource(R.string.settings_gpx_filename), style = MaterialTheme.typography.titleSmall)
+            Text(stringResource(R.string.settings_export_filename), style = MaterialTheme.typography.titleSmall)
             SingleChoiceToggleFlow(
-                options = GpxFileName.entries,
-                selected = gpx.fileName,
-                onSelect = { name -> viewModel.updateGpx { it.copy(fileName = name) } },
+                options = ExportFileName.entries,
+                selected = export.fileName,
+                onSelect = { name -> viewModel.updateExport { it.copy(fileName = name) } },
                 label = { stringResource(it.labelRes) },
             )
         }
         SwitchRow(
-            title = stringResource(R.string.settings_gpx_tracks),
-            checked = gpx.includeTracks,
-            onCheckedChange = { on -> viewModel.updateGpx { it.copy(includeTracks = on) } },
-            supportingText = stringResource(R.string.settings_gpx_tracks_note),
+            title = stringResource(R.string.settings_export_tracks),
+            checked = export.includeTracks,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTracks = on) } },
+            supportingText = stringResource(R.string.settings_export_tracks_note),
         )
         SwitchRow(
-            title = stringResource(R.string.settings_gpx_access_legs),
-            checked = gpx.includeAccessLegs,
-            onCheckedChange = { on -> viewModel.updateGpx { it.copy(includeAccessLegs = on) } },
-            supportingText = stringResource(R.string.settings_gpx_access_legs_note),
+            title = stringResource(R.string.settings_export_access_legs),
+            checked = export.includeAccessLegs,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeAccessLegs = on) } },
+            supportingText = stringResource(R.string.settings_export_access_legs_note),
         )
         SwitchRow(
-            title = stringResource(R.string.settings_gpx_intermediate_stops),
-            checked = gpx.includeIntermediateStops,
-            onCheckedChange = { on -> viewModel.updateGpx { it.copy(includeIntermediateStops = on) } },
-            supportingText = stringResource(R.string.settings_gpx_intermediate_stops_note),
+            title = stringResource(R.string.settings_export_intermediate_stops),
+            checked = export.includeIntermediateStops,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeIntermediateStops = on) } },
+            supportingText = stringResource(R.string.settings_export_intermediate_stops_note),
         )
         SwitchRow(
-            title = stringResource(R.string.settings_gpx_times),
-            checked = gpx.includeTimes,
-            onCheckedChange = { on -> viewModel.updateGpx { it.copy(includeTimes = on) } },
-            supportingText = stringResource(R.string.settings_gpx_times_note),
+            title = stringResource(R.string.settings_export_times),
+            checked = export.includeTimes,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTimes = on) } },
+            supportingText = stringResource(R.string.settings_export_times_note),
         )
         // Only meaningful once something is being timestamped.
-        AnimatedVisibility(visible = gpx.includeTimes) {
+        AnimatedVisibility(visible = export.includeTimes) {
             SwitchRow(
-                title = stringResource(R.string.settings_gpx_real_times),
-                checked = gpx.useRealTimes,
-                onCheckedChange = { on -> viewModel.updateGpx { it.copy(useRealTimes = on) } },
-                supportingText = stringResource(R.string.settings_gpx_real_times_note),
+                title = stringResource(R.string.settings_export_real_times),
+                checked = export.useRealTimes,
+                onCheckedChange = { on -> viewModel.updateExport { it.copy(useRealTimes = on) } },
+                supportingText = stringResource(R.string.settings_export_real_times_note),
             )
         }
         SwitchRow(
-            title = stringResource(R.string.settings_gpx_descriptions),
-            checked = gpx.includeDescriptions,
-            onCheckedChange = { on -> viewModel.updateGpx { it.copy(includeDescriptions = on) } },
-            supportingText = stringResource(R.string.settings_gpx_descriptions_note),
+            title = stringResource(R.string.settings_export_descriptions),
+            checked = export.includeDescriptions,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeDescriptions = on) } },
+            supportingText = stringResource(R.string.settings_export_descriptions_note),
         )
     }
 }
