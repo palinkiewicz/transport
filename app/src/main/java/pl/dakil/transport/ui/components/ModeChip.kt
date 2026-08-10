@@ -32,8 +32,9 @@ fun parseRouteColor(hex: String?, fallback: Color): Color {
 /**
  * A colored line badge showing the mode icon and short line name, e.g. a bus/tram badge.
  *
- * Passing [onClick] turns the badge into a button and gives it a trailing chevron, so a chip
- * that leads somewhere (the line's full timetable) looks different from one that only labels.
+ * Passing [onClick] turns the badge into a button. The trailing chevron marks *navigation*, not
+ * clickability — a chip that leads somewhere (the line's full timetable) looks different from one
+ * that only labels, and a chip that merely toggles something in place passes [showChevron] false.
  */
 @Composable
 fun ModeChip(
@@ -45,6 +46,8 @@ fun ModeChip(
     onClick: (() -> Unit)? = null,
     /** Announced for the tap target; ignored when [onClick] is null. */
     clickLabel: String? = null,
+    /** Whether a clickable chip draws its trailing chevron; ignored when [onClick] is null. */
+    showChevron: Boolean = true,
 ) {
     val onColor = if (containerColor.luminance() > 0.5f) Color.Black else Color.White
     val shape = RoundedCornerShape(8.dp)
@@ -74,7 +77,7 @@ fun ModeChip(
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.labelLarge,
             )
-            if (onClick != null) {
+            if (onClick != null && showChevron) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,

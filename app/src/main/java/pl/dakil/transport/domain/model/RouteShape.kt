@@ -36,4 +36,11 @@ data class RouteShape(
     /** GTFS `RRGGBB` route color (no leading `#`), when the feed provides one. */
     val routeColor: String?,
     val segments: List<List<GeoPoint>>,
-)
+) {
+
+    /**
+     * Identity within one stop's route list, which is all the map's line focus needs —
+     * `RoutesRepository` dedupes the lines it returns on exactly this mode/label pair.
+     */
+    val focusKey: String get() = "${mode.name}|$lineLabel"
+}

@@ -660,6 +660,14 @@ class MapViewModel @Inject constructor(
     private val _stopRoutes = MutableStateFlow<StopRoutesUiState>(StopRoutesUiState.Hidden)
     val stopRoutes: StateFlow<StopRoutesUiState> = _stopRoutes
 
+    /**
+     * [RouteShape.focusKey] of the one line the map is drawing alone, or null for the whole
+     * network through the stop. Purely a way of reading a busy interchange — it is dropped
+     * whenever the routes themselves change, and never persisted.
+     */
+    private val _focusedRoute = MutableStateFlow<String?>(null)
+    val focusedRoute: StateFlow<String?> = _focusedRoute
+
     private var routesJob: Job? = null
 
     private var pointNameJob: Job? = null
@@ -814,8 +822,20 @@ class MapViewModel @Inject constructor(
         _vehicleDetails.value = VehicleDetailsUiState.Hidden
     }
 
+    /** Tapping the focused line again shows the whole network back; tapping another moves the focus. */
+    fun toggleRouteFocus(route: RouteShape) {
+        _focusedRoute.update { if (it == route.focusKey) null else route.focusKey }
+    }
+
+    fun clearRouteFocus() {
+        _focusedRoute.value = null
+    }
+
     private fun loadRoutes(stop: TransitLocation) {
         routesJob?.cancel()
+        // Reset here and in hideRoutes(), the only two paths that change what is drawn — that
+        // covers every caller (stop/vehicle selection, deselection) without each remembering to.
+        _focusedRoute.value = null
         _stopRoutes.value = StopRoutesUiState.Loading
         routesJob = viewModelScope.launch {
             routesRepository.routesThroughStop(stop).fold(
@@ -837,6 +857,7 @@ class MapViewModel @Inject constructor(
 
     private fun hideRoutes() {
         routesJob?.cancel()
+        _focusedRoute.value = null
         _stopRoutes.value = StopRoutesUiState.Hidden
     }
 

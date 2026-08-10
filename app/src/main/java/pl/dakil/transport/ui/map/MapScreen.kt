@@ -70,6 +70,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -193,6 +194,9 @@ private const val STOP_LABELS_MIN_ZOOM = 14f
 private const val STOPS_DEFAULT_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
 
+/** How far the stop panel's other line chips fade back while one line is focused. */
+private const val DIMMED_CHIP_ALPHA = 0.4f
+
 /**
  * Zoom at which a stop detail layer ([defaultZoom] by default) turns on, given the zoom stops
  * appear at. Lowering "Stops from zoom" drags the detail down by the same amount, keeping the
@@ -277,6 +281,9 @@ fun MapScreen(
     val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
+    // Delegated for the same reason as the rest: the routes layer reads this from inside the
+    // map content lambda, where only a State read stays live.
+    val focusedRoute by viewModel.focusedRoute.collectAsStateWithLifecycle()
     val selectedVehicle by viewModel.selectedVehicle.collectAsStateWithLifecycle()
     val vehicleDetails by viewModel.vehicleDetails.collectAsStateWithLifecycle()
     // A trip opened from a timetable. It outlives its marker: a run that is not on the road has
@@ -334,11 +341,13 @@ fun MapScreen(
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
     // panel is open — instead of leaving the app from under a full-screen selection.
     BackHandler(
-        enabled = filtersExpanded || selectedVehicle != null || pinnedTrip != null ||
-            selectedStop != null || routeDraftVisible,
+        enabled = filtersExpanded || focusedRoute != null || selectedVehicle != null ||
+            pinnedTrip != null || selectedStop != null || routeDraftVisible,
     ) {
         when {
             filtersExpanded -> filtersExpanded = false
+            // A focused line is a layer on top of the stop panel, so it peels off first.
+            focusedRoute != null -> viewModel.clearRouteFocus()
             // Stop first, then the vehicle: with both open the stop panel is on top.
             selectedStop != null -> viewModel.clearStopSelection()
             selectedVehicle != null || pinnedTrip != null -> viewModel.clearVehicleSelection()
@@ -623,8 +632,13 @@ fun MapScreen(
             } else {
                 null
             }
-            val routeShapes = ((stopRoutes as? StopRoutesUiState.Shown)?.routes ?: emptyList()) +
-                listOfNotNull(vehicleRouteShape)
+            val stopRouteShapes = (stopRoutes as? StopRoutesUiState.Shown)?.routes ?: emptyList()
+            // Focusing one line hides the rest of the network through the stop. The followed
+            // vehicle's own shape isn't part of that network, so it stays either way.
+            val shownStopRoutes = focusedRoute
+                ?.let { key -> stopRouteShapes.filter { it.focusKey == key } }
+                ?: stopRouteShapes
+            val routeShapes = shownStopRoutes + listOfNotNull(vehicleRouteShape)
             val routeFeatures = remember(routeShapes) {
                 FeatureCollection(
                     routeShapes.flatMap { route ->
@@ -969,6 +983,8 @@ fun MapScreen(
                     StopInfoPanel(
                         stop = stop,
                         routesState = stopRoutes,
+                        focusedRoute = focusedRoute,
+                        onToggleRouteFocus = { viewModel.toggleRouteFocus(it) },
                         isFavorite = favorites.containsLocation(stop),
                         onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
                         onClose = { viewModel.clearStopSelection() },
@@ -1285,6 +1301,9 @@ private fun VehicleInfoPanel(
 private fun StopInfoPanel(
     stop: TransitLocation,
     routesState: StopRoutesUiState,
+    /** [RouteShape.focusKey] of the line drawn alone, or null while the whole network is shown. */
+    focusedRoute: String?,
+    onToggleRouteFocus: (RouteShape) -> Unit,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
     onClose: () -> Unit,
@@ -1364,12 +1383,24 @@ private fun StopInfoPanel(
                     modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, end = 8.dp),
                 ) {
                     routesState.routes.forEach { route ->
+                        val isFocused = focusedRoute == route.focusKey
                         // The map keeps the feed's colours in every mode: markers and overlays have
                         // no draw order to hand a palette out along.
                         ModeChip(
                             mode = route.mode,
                             label = route.lineLabel,
                             containerColor = parseRouteColor(route.routeColor, route.mode.color),
+                            // Fading the rest is the panel's half of "only this line is drawn":
+                            // the chips still say what is being hidden.
+                            modifier = Modifier.alpha(
+                                if (focusedRoute == null || isFocused) 1f else DIMMED_CHIP_ALPHA,
+                            ),
+                            onClick = { onToggleRouteFocus(route) },
+                            clickLabel = stringResource(
+                                if (isFocused) R.string.map_line_show_all else R.string.map_line_focus,
+                            ),
+                            // The chip toggles the overlay in place; it doesn't lead anywhere.
+                            showChevron = false,
                         )
                     }
                 }

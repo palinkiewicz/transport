@@ -222,6 +222,8 @@
     <string name="map_route_draft_search">Szukaj</string>
     <string name="map_stop_lines_error">Nie udało się wczytać linii — %1$s</string>
     <string name="map_stop_lines_empty">Brak znanych linii dla tego przystanku</string>
+    <string name="map_line_focus">Pokaż tylko tę linię</string>
+    <string name="map_line_show_all">Pokaż wszystkie linie</string>
     <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
     <string name="map_vehicle_next_stop">następny: %1$s</string>
 
