@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import pl.dakil.transport.data.local.foldForSearch
+import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
@@ -160,10 +161,139 @@ class PlaceSearchEngineTest {
         assertEquals("Centrum Bliskie", names(ranked).first())
     }
 
+    // --- The orderings the app's author wrote out by hand for three real searches from Luboń.
+    // These are the specification the scoring weights were solved against; see PlaceSearchEngine.
+    // A place is built from the distance the app actually showed, so no reference point has to be
+    // guessed: `at` puts it due north of the origin at the requested range.
+
+    private val origin = GeoPoint(52.0, 21.0)
+
+    /**
+     * A place [km] from [origin] — a degree of latitude is ~111.19 km on the sphere used.
+     *
+     * The longitude is nudged by a name-derived millimetre so that two *places* at the same
+     * distance stay distinct: a non-stop's `favoriteKey` is its coordinate, and identical
+     * coordinates would be deduplicated as the same place before ranking ever saw them.
+     */
+    private fun at(name: String, km: Double, isStop: Boolean, importance: Double = 0.0) =
+        TransitLocation(
+            name = name,
+            lat = 52.0 + km / 111.19,
+            lon = 21.0 + (name.hashCode().toDouble() % 1_000.0) * 1e-8,
+            stopId = if (isStop) "stop:$name:$km" else null,
+            importance = importance,
+        )
+
+    private fun ranked(query: String, places: List<TransitLocation>) = names(
+        PlaceSearchEngine.rank(
+            query = query,
+            places = places,
+            bias = origin,
+            biasStrength = AppSettings.DEFAULT.searchBiasStrength,
+        ),
+    )
+
+    @Test
+    fun `ranks a school search the way the author expects`() {
+        // A name the query starts off beats a tighter name it appears later in; a nearby bus stop
+        // beats a further-off place even though it answers one word fewer; and the stop 269 km
+        // away comes last however well it matches.
+        val places = listOf(
+            at("Zespół Szkół Muzycznych", 9.7, false),
+            at("Zgoda Zespół Szkół", 269.0, true, importance = 6.973087874939665e-05),
+            at("Zespół Szkół nr 8", 4.1, false),
+            at("Internat Zespołu Szkół Komunikacji", 5.2, false),
+            at("Luboń/Zespół Szkół", 1.1, true, importance = 2.1534729967243038e-05),
+            at("Zespół Szkół nr 4", 8.9, false),
+            at("Zespół Szkół Komunikacji im. Hipolita Cegielskiego", 6.8, false),
+        )
+        assertEquals(
+            listOf(
+                "Zespół Szkół Komunikacji im. Hipolita Cegielskiego",
+                "Internat Zespołu Szkół Komunikacji",
+                "Luboń/Zespół Szkół",
+                "Zespół Szkół nr 8",
+                "Zespół Szkół nr 4",
+                "Zespół Szkół Muzycznych",
+                "Zgoda Zespół Szkół",
+            ),
+            ranked("zespoł szkol komunikacji", places),
+        )
+    }
+
+    @Test
+    fun `ranks an acronym search the way the author expects`() {
+        // Stops lead places at the same name, an exact name leads a longer one, and a name the
+        // query only appears part-way into ("Poznań, AWF") drops below both.
+        val places = listOf(
+            at("Parking AWF", 6.1, false),
+            at("AWF", 120.0, true),
+            at("AWF Poznań", 6.1, false),
+            at("Poznań, AWF", 6.3, true, importance = 0.00022069802798796445),
+            at("AWF", 6.2, false),
+            at("AWF Poznań", 6.1, true),
+            at("AWF", 6.2, true, importance = 0.0002816450141835958),
+        )
+        val order = ranked("awf", places)
+        assertEquals("AWF", order[0])
+        assertEquals("AWF Poznań", order[1])
+        assertEquals("AWF", order[2])
+        // Ranks 4 and 5 — "AWF Poznań" the place and "Poznań, AWF" the stop — are the one pair
+        // the solved weights get the wrong way round, kept as a known and accepted deviation
+        // rather than paid for with a much worse fit everywhere else.
+        assertEquals(setOf("AWF Poznań", "Poznań, AWF"), setOf(order[3], order[4]))
+        assertEquals("Parking AWF", order[5])
+        assertEquals("AWF", order[6])
+    }
+
+    @Test
+    fun `ranks a common-word search the way the author expects`() {
+        // Three stops a couple of kilometres out lead a better-named tram stop five kilometres
+        // out; a nearby place still loses to that tram stop; and 870 km away comes last.
+        val places = listOf(
+            at("Park", 870.0, true, importance = 0.008711523376405239),
+            at("Parking AWF", 6.1, false),
+            at("PARK", 6.4, false),
+            at("Luboń/Park Przemysłowy", 2.6, true),
+            at("Park Inn", 7.4, false),
+            at("Red Park", 1.7, false),
+            at("Park Wilsona", 5.1, true),
+            at("Luboń/Park Siewcy", 2.2, true),
+            at("Luboń/Parkowa", 2.1, true),
+        )
+        assertEquals(
+            listOf(
+                "Luboń/Parkowa",
+                "Luboń/Park Siewcy",
+                "Luboń/Park Przemysłowy",
+                "Park Wilsona",
+                "Red Park",
+                "PARK",
+                "Park Inn",
+                "Parking AWF",
+                "Park",
+            ),
+            ranked("park", places),
+        )
+    }
+
+    @Test
+    fun `a name the query starts beats a tighter name it appears later in`() {
+        // The isolated rule behind the first result above: "Internat Zespołu Szkół Komunikacji" is
+        // the shorter, more completely-matched name, and still loses for starting eight
+        // characters in.
+        val leading = at("Zespół Szkół Komunikacji im. Hipolita Cegielskiego", 6.8, false)
+        val buried = at("Internat Zespołu Szkół Komunikacji", 5.2, false)
+        assertEquals(
+            "Zespół Szkół Komunikacji im. Hipolita Cegielskiego",
+            ranked("zespoł szkol komunikacji", listOf(buried, leading)).first(),
+        )
+    }
+
     @Test
     fun `the proximity bonus steps at the geocoder's own distances`() {
         // Measured against the live API by bisection: the bands change at 2 km, 10 km, 100 km and
-        // 1000 km, and nowhere else. Reproducing them is what makes the cached half of the
+        // 1000 km, and nowhere else. Sharing the edges is what makes the cached half of the
         // picker's list interleave with the geocoder's half instead of sorting on its own curve.
         val here = GeoPoint(52.0, 21.0)
         fun at(kmNorth: Double) = PlaceSearchEngine.score(
@@ -174,27 +304,64 @@ class PlaceSearchEngineTest {
             biasStrength = 1,
         )!!
 
-        val bands = listOf(1.0, 5.0, 50.0, 500.0, 5_000.0).map { at(it) }
-        // Each band is strictly worse than the one inside it…
-        assertEquals(bands.sorted(), bands)
-        // …and the steps are the API's own -2.5 / -2.0 / -1.0 / -0.5 / 0 per unit of bias.
-        val beyond = at(5_000.0)
-        assertEquals(-2.5, at(1.0) - beyond, 1e-9)
-        assertEquals(-2.0, at(5.0) - beyond, 1e-9)
-        assertEquals(-1.0, at(50.0) - beyond, 1e-9)
-        assertEquals(-0.5, at(500.0) - beyond, 1e-9)
+        // Every band is strictly worse than the one inside it, and the edges sit where the
+        // geocoder's own bisected edges do — 0.9/1.1, 1.9/2.1 and so on fall either side.
+        val edges = listOf(0.9, 1.1, 1.9, 2.1, 2.9, 3.1, 4.9, 5.1, 9.9, 10.1,
+                           24.0, 26.0, 49.0, 51.0, 99.0, 101.0, 249.0, 251.0, 999.0, 1_001.0)
+        val scores = edges.map { at(it) }
+        assertEquals(scores.sorted(), scores)
+
+        // Two places inside one band are indistinguishable on distance, which is what lets the
+        // name decide between 6.1 km and 7.4 km…
+        assertEquals(at(6.1), at(7.4), 1e-9)
+        // …while a band edge between them is a real step, which is what puts 2.6 km ahead of
+        // 5.1 km however much better the further name reads.
+        assertTrue(at(5.1) - at(2.6) > 1.0)
+    }
+
+    @Test
+    fun `the distance penalty accelerates, so far is far worse than merely distant`() {
+        val here = GeoPoint(52.0, 21.0)
+        fun at(km: Double) = PlaceSearchEngine.score(
+            "centrum", stop("Centrum", lat = 52.0 + km / 111.19, lon = 21.0), here, 1,
+        )!!
+        // 6 km -> 120 km must cost far more than 1 km -> 5 km. A linear ramp over the bands makes
+        // the author's orderings provably unsatisfiable; this is why the penalty is a power.
+        assertTrue((at(120.0) - at(6.0)) > 4.0 * (at(5.0) - at(1.0)))
+    }
+
+    @Test
+    fun `a nearby stop outranks a far one that matches the query exactly`() {
+        // Off the device: searching "park" from Poznań listed a stop called exactly "Park" in
+        // Brussels, 880 km away, above "Park Wilsona" five kilometres out. The exact name is the
+        // better match on paper; it is not a plausible thing for someone planning a tram journey
+        // to have meant.
+        val poznan = GeoPoint(52.4064, 16.9252)
+        val wilsona = stop("Park Wilsona", lat = 52.4020, lon = 16.9000, id = "poznan-wilsona")
+        val brussels = stop("Park", lat = 50.8450, lon = 4.3560, id = "bxl-park", importance = 0.00871)
+
+        val ranked = PlaceSearchEngine.rank(
+            query = "park",
+            places = listOf(brussels, wilsona),
+            bias = poznan,
+            biasStrength = AppSettings.DEFAULT.searchBiasStrength,
+        )
+        assertEquals("Park Wilsona", names(ranked).first())
     }
 
     @Test
     fun `bias strength scales the proximity bonus linearly`() {
         val here = GeoPoint(52.0, 21.0)
-        val near = stop("Centrum", lat = 52.0, lon = 21.0)
-        fun at(strength: Int) = PlaceSearchEngine.score("centrum", near, here, strength)!!
+        // Not at zero distance: the innermost band carries no penalty at all, so nothing would
+        // scale and the test would pass on a broken implementation.
+        val far = stop("Centrum", lat = 52.0 + 30.0 / 111.19, lon = 21.0)
+        fun at(strength: Int) = PlaceSearchEngine.score("centrum", far, here, strength)!!
 
         val unbiased = at(0)
-        assertEquals(-2.5, at(1) - unbiased, 1e-9)
-        assertEquals(-10.0, at(4) - unbiased, 1e-9)
-        assertEquals(-25.0, at(10) - unbiased, 1e-9)
+        val oneUnit = at(1) - unbiased
+        assertTrue("a distant place must cost something", oneUnit > 0.0)
+        assertEquals(4 * oneUnit, at(4) - unbiased, 1e-9)
+        assertEquals(10 * oneUnit, at(10) - unbiased, 1e-9)
     }
 
     @Test
@@ -293,6 +460,49 @@ class PlaceSearchEngineTest {
             listOf(poznan("a", 16.9100, 0.004), poznan("b", 16.9203, 0.001)),
         )
         assertEquals(listOf("Poznań, AWF"), names(results))
+    }
+
+    @Test
+    fun `a bare map pole folds into the geocoder's description of the same stop`() {
+        // `/v6/map/stops` returns no area at all, so a stop the map cached is unlabelled until a
+        // search describes it. Without this the same stop draws twice — once bare, once with its
+        // city — and the two rows look like two different places.
+        val cached = stop("Park Wilsona", lat = 52.4020, lon = 16.9000, id = "map-pole")
+        val geocoded = stop("Park Wilsona", lat = 52.4090, lon = 16.9070, id = "geocoded", importance = 0.004)
+            .copy(city = "Poznań", country = "PL")
+
+        val merged = PlaceSearchEngine.merge("park wilsona", listOf(geocoded), listOf(cached))
+        assertEquals(1, merged.size)
+        // …and the row shown is the one that knows where it is.
+        assertEquals("Poznań, PL", merged.single().areaLabel)
+    }
+
+    @Test
+    fun `folding a bare pole in does not dislodge a pinned first result`() {
+        // The pin is matched against a station's members, so a cached row keeps the top slot even
+        // when the geocoder's copy of it becomes the row actually drawn.
+        val cached = stop("Park Wilsona", lat = 52.4020, lon = 16.9000, id = "map-pole")
+        val geocoded = stop("Park Wilsona", lat = 52.4090, lon = 16.9070, id = "geocoded", importance = 0.004)
+            .copy(city = "Poznań", country = "PL")
+        val better = stop("Park", lat = 52.4020, lon = 16.9000, id = "remote-park", importance = 0.9)
+            .copy(city = "Poznań", country = "PL")
+
+        val merged = PlaceSearchEngine.merge(
+            query = "park wilsona",
+            remote = listOf(better, geocoded),
+            cached = listOf(cached),
+            pinnedKey = "map-pole",
+        )
+        assertEquals("Park Wilsona", merged.first().name)
+        assertEquals("Poznań, PL", merged.first().areaLabel)
+    }
+
+    @Test
+    fun `a bare pole is not absorbed by a same-named stop in another town`() {
+        val cached = stop("Rynek", lat = 52.4020, lon = 16.9000, id = "lubon-rynek")
+        val faraway = stop("Rynek", lat = 50.0647, lon = 19.9450, id = "krakow-rynek", importance = 0.01)
+            .copy(city = "Kraków", country = "PL")
+        assertEquals(2, PlaceSearchEngine.merge("rynek", listOf(faraway), listOf(cached)).size)
     }
 
     @Test

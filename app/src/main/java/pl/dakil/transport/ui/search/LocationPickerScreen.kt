@@ -9,7 +9,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,7 +30,9 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.clickable
@@ -170,7 +174,28 @@ private fun LocationPickerList(
     onPick: (TransitLocation) -> Unit,
     onToggleFavorite: (TransitLocation) -> Unit,
 ) {
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    val listState = rememberLazyListState()
+
+    // Results do not arrive all at once: the cache answers on the keystroke and the geocoder
+    // ~300 ms later. Because the rows are keyed, LazyColumn holds its position against the item
+    // that was first visible, so rows inserted *above* it push the viewport down and the list
+    // ends up opening part-way through its own first row. Snapping back is only right while the
+    // user has not taken charge of the scroll themselves, so a deliberate drag switches it off —
+    // and a new query switches it back on.
+    var userScrolled by remember(query) { mutableStateOf(false) }
+    LaunchedEffect(listState, query) {
+        // Drags only. Watching `isScrollInProgress` would also catch the programmatic snap below
+        // and immediately disarm this.
+        listState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) userScrolled = true
+        }
+    }
+    val topKey = items.firstOrNull()?.location?.favoriteKey
+    LaunchedEffect(query, topKey, items.size) {
+        if (!userScrolled) listState.scrollToItem(0)
+    }
+
+    LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
         if (query.isBlank()) {
             currentLocation?.let { current ->
                 item(key = "current-location") {

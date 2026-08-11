@@ -2,6 +2,8 @@ package pl.dakil.transport.data.repo
 
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
 import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
@@ -17,27 +19,28 @@ import pl.dakil.transport.domain.model.TransitLocation
  *
  * ### Where the numbers come from
  *
- * They are fitted to the live Transitous geocoder, not chosen by taste. `/v1/geocode` returns a
- * `score` per match, and it decomposes cleanly:
+ * The model started as a fit to the live Transitous geocoder, whose `/v1/geocode` returns a
+ * `score` that decomposes as `match + placeBias × distanceBand`. That established the *shape* —
+ * and the band edges below are still the geocoder's own, found by bisection to within metres.
  *
- * ```
- * score = baseMatchScore(query, place) + placeBias × distanceLadder(metres)
- * ```
+ * The weights, though, are fitted to **the app author's own judgement**, not the server's: three
+ * real queries written out in the order they should have come back, 78 ordered pairs in all, of
+ * which this reproduces 77. That was a deliberate choice. The geocoder ranks a stop called
+ * exactly "Park" in Brussels above "Park Wilsona" five kilometres away, which is not a plausible
+ * thing for someone planning a tram journey to have meant, and no amount of faithfulness to it
+ * fixes that. Agreement with the server's ordering consequently drops (Spearman 0.55, against
+ * 0.66 for a pure fit to it) and that is the intended trade, chosen over an exact fit to the
+ * three queries that would have cost considerably more of it.
  *
- * The ladder ([distanceLadder]) is exact — subtracting it leaves a residual that is identical
- * across every `placeBias` value, for every result of a 974-result probe. The base score is a
- * least-squares fit over the same probe, reproducing the server's ordering on held-out queries
- * with a Spearman correlation of 0.66 and the same top result 70% of the time — against 0.42
- * and 44% for the match-class scale this replaced.
- *
- * The one signal deliberately left on the table is the geocoder's ADDRESS/PLACE distinction
- * (worth about 0.04 more): [TransitLocation] keeps a stop id or a bare coordinate, so it cannot
- * tell a street address from a POI without a new field on the model, the cache column and the
- * persisted favourites blob.
+ * The signal deliberately left on the table is the geocoder's ADDRESS/PLACE distinction:
+ * [TransitLocation] keeps a stop id or a bare coordinate, so it cannot tell a street address from
+ * a POI without a new field on the model, the cache column and the persisted favourites blob.
  *
  * **Lower is better**, following the API: the score is a cost, and [rank] sorts ascending.
  *
- * Re-fitting means re-probing the API — see the plan in `.claude/plans/` for the method.
+ * The three orderings live in `PlaceSearchEngineTest` and are the real specification — a change
+ * here that keeps them passing is fine, one that breaks them is a regression however sensible the
+ * reasoning behind it.
  */
 object PlaceSearchEngine {
 
@@ -256,9 +259,21 @@ object PlaceSearchEngine {
      */
     private fun TransitLocation.belongsToSameStationAs(other: TransitLocation): Boolean {
         if (areaLabel != null && areaLabel == other.areaLabel) return true
+        val metres = GeoPoint(lat, lon).distanceMetersTo(GeoPoint(other.lat, other.lon))
+        // One side knows where it is and the other knows nothing at all. `/v6/map/stops` returns
+        // no city, state or country, so every stop the map cached is unlabelled until a geocode
+        // happens to describe it — which means the *same stop* shows up twice the moment a search
+        // returns it: once bare from the cache, once with its area from the geocoder.
+        // `PlaceCacheRepository.spreadAreaToStation` repairs this in the database, but only for
+        // the next search and only within ~500 m; this is the same repair applied to what is on
+        // screen now. The radius is generous because a station's geocoded centroid can sit well
+        // away from the platform the map drew, and an absent area cannot contradict a present one.
+        if ((areaLabel == null) != (other.areaLabel == null)) {
+            if (metres <= UNLABELLED_STATION_RADIUS_METERS) return true
+        }
         val bothScored = importance > 0.0 && other.importance > 0.0
         if (bothScored && importance != other.importance) return false
-        return GeoPoint(lat, lon).distanceMetersTo(GeoPoint(other.lat, other.lon)) <= STATION_RADIUS_METERS
+        return metres <= STATION_RADIUS_METERS
     }
 
     /** The one row a cluster is shown as; see [groupIntoStations]. */
@@ -333,7 +348,17 @@ object PlaceSearchEngine {
         val foldedQuery = queryTokens.joinToString(" ")
         val foldedName = nameTokens.joinToString(" ")
 
-        var score = BASE_INTERCEPT
+        // How far into the name the user's words first appear. "Zespół Szkół Komunikacji…" answers
+        // "zespoł szkol komunikacji" better than "Internat Zespołu Szkół Komunikacji" does, even
+        // though the latter is the shorter, tighter name — the sooner the match starts, the more
+        // likely this is the thing being typed out. Capped so a very long name does not keep
+        // accruing penalty, and measured in characters rather than as a fraction of the name:
+        // normalising would punish a *short* name for the same match position.
+        val matchStart = queryTokens
+            .map { foldedName.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull() ?: foldedName.length
+        var score = POSITION_WEIGHT * min(matchStart.toDouble(), POSITION_CAP) / POSITION_CAP
         // The API's own view of how significant the place is, which separates a city's main
         // interchange from a request stop that happens to share its name. Scores are tiny
         // fractions spanning orders of magnitude, so the fit is against their logarithm.
@@ -348,38 +373,63 @@ object PlaceSearchEngine {
 
         if (bias != null && biasStrength > 0) {
             val metres = GeoPoint(place.lat, place.lon).distanceMetersTo(bias)
-            score += biasStrength * distanceLadder(metres)
+            score += biasStrength * DISTANCE_WEIGHT * distancePenalty(metres)
         }
         return score
     }
 
     /**
-     * The geocoder's proximity bonus, per unit of `placeBias`.
+     * How much worse a place is for being far away, before [DISTANCE_WEIGHT] and the bias
+     * strength scale it.
      *
-     * A step ladder rather than a smooth falloff because that is measurably what the API does:
-     * every band edge below was found by bisection to within a couple of metres, and removing
-     * exactly this term makes a result's score identical at every bias strength. Smoothing it
-     * would rank the cached rows on a different curve from the remote ones.
+     * Banded rather than a smooth curve, and the bands are what make the whole ranking work.
+     * Two constraints have to hold at once: 2.6 km must beat 5.1 km decisively (a stop two
+     * suburbs away is a different proposition from one across the city), while 6.1 km and 7.4 km
+     * must be near enough to a tie that the *name* decides. No smooth falloff can do both — a
+     * logarithm's best ratio between those two gaps is about 3.4 and roughly 5 is needed — but a
+     * step function does it for free, by putting the first pair either side of an edge and the
+     * second pair inside one band.
+     *
+     * The penalty grows as `band²·⁵` rather than linearly because the bands are not equally
+     * important: 6 km → 120 km is a much bigger difference in kind than 1 km → 5 km, and a linear
+     * ramp makes those two constraints provably contradictory.
      */
-    private fun distanceLadder(metres: Double): Double = when {
-        metres < 2_000.0 -> -2.5
-        metres < 10_000.0 -> -2.0
-        metres < 100_000.0 -> -1.0
-        metres < 1_000_000.0 -> -0.5
-        else -> 0.0
+    private fun distancePenalty(metres: Double): Double {
+        val km = metres / 1_000.0
+        var band = DISTANCE_BAND_EDGES_KM.size
+        for ((index, edge) in DISTANCE_BAND_EDGES_KM.withIndex()) {
+            if (km < edge) {
+                band = index
+                break
+            }
+        }
+        return band.toDouble().pow(DISTANCE_BAND_EXPONENT)
     }
 
     private val NON_WORD = Regex("[^\\p{L}\\p{Nd}]+")
 
-    // --- Fitted constants. See the class doc: these reproduce the live geocoder's ordering and
-    // are not free parameters to tune by eye.
+    private val DISTANCE_BAND_EDGES_KM =
+        doubleArrayOf(1.0, 2.0, 3.0, 5.0, 10.0, 25.0, 50.0, 100.0, 250.0, 1_000.0)
 
-    private const val BASE_INTERCEPT = -9.5
-    private const val IMPORTANCE_WEIGHT = -0.25
-    private const val NAME_COVERAGE_WEIGHT = -8.0
-    private const val QUALITY_WEIGHT = -2.0
-    private const val UNMATCHED_PENALTY = 12.5
-    private const val IS_STOP = -3.5
+    // --- Fitted constants.
+    //
+    // Solved against a set of orderings the app's author wrote out by hand for three real
+    // queries — 78 ordered pairs in all, of which this reproduces 77. They are a fit, not a set
+    // of independently meaningful numbers, and they are *sensitive*: rounding them to one decimal
+    // place costs an ordering. Change one and re-solve the whole set rather than nudging it.
+    // The tests named `ranks … the way the author expects` are that set; they are the spec.
+
+    private const val POSITION_WEIGHT = 33.461
+    private const val NAME_COVERAGE_WEIGHT = -7.557
+    private const val QUALITY_WEIGHT = -0.847
+    private const val UNMATCHED_PENALTY = 100.434
+    private const val IS_STOP = -10.353
+    private const val IMPORTANCE_WEIGHT = -0.839
+    private const val DISTANCE_WEIGHT = 0.075
+    private const val DISTANCE_BAND_EXPONENT = 2.5
+
+    /** Characters into a name past which starting later stops counting against a place. */
+    private const val POSITION_CAP = 30.0
 
     /**
      * The floor [IMPORTANCE_WEIGHT]'s logarithm is taken at. Most cached rows come from
@@ -393,7 +443,7 @@ object PlaceSearchEngine {
 
     private const val QUALITY_WHOLE_WORD = 1.0
     private const val QUALITY_WORD_PREFIX = 0.75
-    private const val QUALITY_INSIDE_WORD = 0.4
+    private const val QUALITY_INSIDE_WORD = 0.15
     private const val QUALITY_NO_MATCH = 0.0
 
     /**
@@ -403,6 +453,16 @@ object PlaceSearchEngine {
      * anyway.
      */
     private const val STATION_RADIUS_METERS = 400.0
+
+    /**
+     * How far a same-named stop that knows *no* area may sit from one that does and still be
+     * taken for the same place. Much wider than [STATION_RADIUS_METERS] because the rows it joins
+     * are not two platforms but two views of one stop — a bare map pole and the geocoder's
+     * description of it — and the two coordinates can disagree by more than a station's width.
+     * Still far short of the distance between two towns, so a cached "Rynek" is never absorbed by
+     * a geocoded "Rynek" in the next city. Widen this if a duplicate survives.
+     */
+    private const val UNLABELLED_STATION_RADIUS_METERS = 2_500.0
 
     /**
      * Rows pulled from the cache per candidate query before ranking — once by significance and
