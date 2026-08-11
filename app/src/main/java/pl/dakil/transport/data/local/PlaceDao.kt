@@ -32,19 +32,52 @@ interface PlaceDao {
     ): List<CachedPlaceEntity>
 
     /**
-     * Places whose folded name contains [pattern] (already `%…%`-wrapped and folded by the
-     * caller). Ranking happens in Kotlin; this only narrows the set, so [limit] is generous —
-     * cutting too early here would hide the row the ranker would have put first.
+     * The most significant places whose folded name contains [pattern] (already `%…%`-wrapped
+     * and folded by the caller).
+     *
+     * Ranking happens in Kotlin; this only narrows the set. The `ORDER BY` is the point: a bare
+     * `LIMIT` truncates in storage order, so on a large cache the row the ranker would have put
+     * first can be cut before it ever sees it. Importance is the best single stand-in for "worth
+     * offering" that a row carries — the local half of the pair is [searchNameNear].
      */
     @Query(
         """
         SELECT * FROM cached_place
         WHERE searchName LIKE :pattern ESCAPE '\'
           AND (:stopsOnly = 0 OR stopId IS NOT NULL)
+        ORDER BY importance DESC
         LIMIT :limit
         """,
     )
     suspend fun searchByName(pattern: String, stopsOnly: Boolean, limit: Int): List<CachedPlaceEntity>
+
+    /**
+     * Places matching [pattern] inside one non-wrapping box — the nearby half of the candidate
+     * set, so a small local stop the user actually means is never truncated away by a famous
+     * one on the other side of the continent. Uses the `(lat, lon)` index.
+     *
+     * Callers must split a box crossing the antimeridian themselves, as for [stopsInBox].
+     */
+    @Query(
+        """
+        SELECT * FROM cached_place
+        WHERE searchName LIKE :pattern ESCAPE '\'
+          AND (:stopsOnly = 0 OR stopId IS NOT NULL)
+          AND lat BETWEEN :south AND :north
+          AND lon BETWEEN :west AND :east
+        ORDER BY importance DESC
+        LIMIT :limit
+        """,
+    )
+    suspend fun searchByNameNear(
+        pattern: String,
+        stopsOnly: Boolean,
+        south: Double,
+        west: Double,
+        north: Double,
+        east: Double,
+        limit: Int,
+    ): List<CachedPlaceEntity>
 
     @Query("SELECT * FROM cached_place WHERE `key` IN (:keys)")
     suspend fun findByKeys(keys: List<String>): List<CachedPlaceEntity>

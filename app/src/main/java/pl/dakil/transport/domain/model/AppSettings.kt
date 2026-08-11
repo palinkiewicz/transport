@@ -305,18 +305,42 @@ data class AppSettings(
     val rememberMapCamera: Boolean = true,
 
     /**
-     * Whether location suggestions are re-ranked by distance from the neighbouring point on the
-     * route being built — the previous stop, or the next one when the route has nothing before
-     * it, falling back to the current position — instead of keeping the server's own ranking.
+     * Whether location suggestions are re-sorted by raw distance from the neighbouring point on
+     * the route being built — the previous stop, or the next one when the route has nothing
+     * before it, falling back to the current position.
+     *
+     * Off by default, and a niche option rather than a refinement: it discards how well anything
+     * matched, so the nearest stop containing the query wins even when the user typed another
+     * one's full name. Proximity is already part of the ranking — `PlaceSearchEngine` applies the
+     * geocoder's own distance ladder at [searchBiasStrength] — so this is only for someone who
+     * genuinely wants a nearest-first list.
+     *
+     * The `@SerialName` is deliberately not the property name: it was once on by default, and
+     * changing the default alone would have left every existing install with the old behaviour
+     * stored. Reading it under a new key retires those stored values exactly once. Renaming it
+     * again would reset everyone a second time.
      */
-    val sortSuggestionsByDistance: Boolean = true,
+    @SerialName("sortSuggestionsByDistanceV2")
+    val sortSuggestionsByDistance: Boolean = false,
+
+    /**
+     * Whether the best cached result stays pinned to the top of the picker once it appears.
+     *
+     * The cache answers on the keystroke and the geocoder ~300 ms later. Ranking both through
+     * `PlaceSearchEngine` already keeps the list from reshuffling, but the remote answer can
+     * still insert a better match above the row the user is reaching for. Pinning trades that
+     * one position for a list whose top row never moves under a finger.
+     */
+    val keepFirstCachedResult: Boolean = true,
 
     /**
      * How hard the geocoder is asked to pull its results toward the point a search is measured
      * from. [SEARCH_BIAS_NONE] leaves the server's own worldwide ranking alone; higher values
      * keep a generic query ("Park") in the user's own city, at the cost of burying a far-away
-     * place searched by its exact name. Unlike [sortSuggestionsByDistance] this shapes the
-     * request, so it decides *which* results come back rather than reordering the ones that did.
+     * place searched by its exact name.
+     *
+     * Sent to the API as `placeBias` *and* applied locally by `PlaceSearchEngine` to the cached
+     * half of the list, so both halves agree on how much proximity is worth.
      */
     val searchBiasStrength: Int = 4,
 

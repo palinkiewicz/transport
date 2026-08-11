@@ -390,8 +390,10 @@
     <string name="settings_group_search">Wyszukiwanie i wyniki</string>
     <string name="settings_connection_times">Czasy połączeń</string>
     <string name="settings_connection_times_note">Czasy na przystankach odliczają ruch pojazdu; czas od drzwi do drzwi uwzględnia dojście na obu końcach trasy, więc odliczanie wskazuje, kiedy wyjść.</string>
+    <string name="settings_keep_first_cached">Utrzymuj pierwszy wynik w miejscu</string>
+    <string name="settings_keep_first_cached_note">Zapisane miejsca pojawiają się w trakcie pisania, chwilę przed odpowiedzią serwera. Ta opcja przypina najlepsze z nich na górze listy, więc wiersz, w który celujesz, nie ucieknie spod palca.</string>
     <string name="settings_sort_by_distance">Sortuj podpowiedzi według odległości</string>
-    <string name="settings_sort_by_distance_note">Porządkuje wyniki wyszukiwania według odległości od sąsiedniego punktu trasy (lub Twojej lokalizacji, gdy go brak), zamiast według domyślnej kolejności z serwera.</string>
+    <string name="settings_sort_by_distance_note">Porządkuje wyniki wyłącznie według odległości od sąsiedniego punktu trasy (lub Twojej lokalizacji, gdy go brak). Pomija to, jak dobrze wynik pasuje do wpisanego tekstu; miejsca w pobliżu i tak są preferowane bez tej opcji.</string>
     <string name="settings_search_bias">Preferuj wyniki w pobliżu</string>
     <string name="settings_search_bias_none">Brak</string>
     <string name="settings_search_bias_note">Jak mocno wyszukiwanie ma pytać o miejsca w Twojej okolicy zamiast z całego świata. Wyższa wartość utrzymuje pospolitą nazwę w rodzaju „Park” w Twoim mieście, ale może ukryć odległe miejsce wyszukiwane po dokładnej nazwie.</string>

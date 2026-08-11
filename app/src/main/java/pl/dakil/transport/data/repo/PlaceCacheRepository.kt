@@ -14,6 +14,7 @@ import pl.dakil.transport.data.local.TileKey
 import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.data.local.toCachedPlace
 import pl.dakil.transport.data.local.toTransitLocation
+import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
 
 /** Where the stops of one area came from, so the UI can say when it is drawing stale data. */
@@ -196,11 +197,50 @@ class PlaceCacheRepository @Inject constructor(
         )
     }
 
-    /** Places whose folded name contains [foldedQuery]; ranking is the caller's job. */
-    suspend fun search(foldedQuery: String, stopsOnly: Boolean, limit: Int): List<TransitLocation> {
-        if (foldedQuery.isBlank()) return emptyList()
-        return placeDao
-            .searchByName(pattern = "%${foldedQuery.escapeLike()}%", stopsOnly = stopsOnly, limit = limit)
+    /**
+     * Candidate places for [foldedToken]; ranking is the caller's job.
+     *
+     * Two reads rather than one, because either alone loses answers the ranker needs. Ordering by
+     * importance alone buries a small local stop under famous same-named ones worldwide; ordering
+     * by proximity alone can only ever offer what the phone happens to have cached nearby. So the
+     * significant matches and the [bias]-local ones are fetched separately and unioned, each
+     * capped at [limit].
+     *
+     * [foldedToken] is one word, not the whole query: the picker searches on the query's longest
+     * (most selective) word and lets `PlaceSearchEngine` judge the rest, so a two-word query like
+     * "Park Gó" can match "N-Park Gorzów" — which a `LIKE` on the whole string never could.
+     */
+    suspend fun search(
+        foldedToken: String,
+        stopsOnly: Boolean,
+        bias: GeoPoint?,
+        limit: Int,
+    ): List<TransitLocation> {
+        if (foldedToken.isBlank()) return emptyList()
+        val pattern = "%${foldedToken.escapeLike()}%"
+        val byImportance = placeDao.searchByName(pattern = pattern, stopsOnly = stopsOnly, limit = limit)
+        val nearby = if (bias == null) {
+            emptyList()
+        } else {
+            Bbox(
+                south = (bias.lat - SEARCH_NEAR_DEGREES).coerceAtLeast(TileGrid.MIN_LATITUDE),
+                west = wrapLongitude(bias.lon - SEARCH_NEAR_DEGREES),
+                north = (bias.lat + SEARCH_NEAR_DEGREES).coerceAtMost(TileGrid.MAX_LATITUDE),
+                east = wrapLongitude(bias.lon + SEARCH_NEAR_DEGREES),
+            ).splitAtAntimeridian().flatMap { part ->
+                placeDao.searchByNameNear(
+                    pattern = pattern,
+                    stopsOnly = stopsOnly,
+                    south = part.south,
+                    west = part.west,
+                    north = part.north,
+                    east = part.east,
+                    limit = limit,
+                )
+            }
+        }
+        return (byImportance + nearby)
+            .distinctBy { it.key }
             .map { it.toTransitLocation() }
     }
 
@@ -251,7 +291,22 @@ class PlaceCacheRepository @Inject constructor(
          * radius, since this only proposes candidates that the name check then confirms.
          */
         private const val STATION_SPREAD_DEGREES = 0.0045
+
+        /**
+         * Half-width of the "nearby" candidate box, in degrees — roughly 55 km of latitude. Sized
+         * to cover the bands where the geocoder's proximity bonus actually varies: everything
+         * inside 100 km is scored differently from everything outside it, so a box about that
+         * size is what the ranker needs to see to reproduce the ordering.
+         */
+        private const val SEARCH_NEAR_DEGREES = 0.5
     }
+}
+
+/** Longitude folded back into -180..180, so a box near the antimeridian stays well-formed. */
+private fun wrapLongitude(lon: Double): Double {
+    var wrapped = (lon + 180.0) % 360.0
+    if (wrapped < 0) wrapped += 360.0
+    return wrapped - 180.0
 }
 
 /** Escapes the LIKE wildcards so a query containing `%` or `_` matches them literally. */

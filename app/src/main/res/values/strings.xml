@@ -372,8 +372,10 @@
     <string name="settings_group_search">Search &amp; results</string>
     <string name="settings_connection_times">Connection times</string>
     <string name="settings_connection_times_note">Stop times are when the vehicle moves; door to door includes the walk at each end, so the countdown tells you when to leave.</string>
+    <string name="settings_keep_first_cached">Keep the top result steady</string>
+    <string name="settings_keep_first_cached_note">Saved places appear as you type, a moment before the server answers. This keeps the best of them pinned at the top so the row you are reaching for cannot move under your finger.</string>
     <string name="settings_sort_by_distance">Sort suggestions by distance</string>
-    <string name="settings_sort_by_distance_note">Ranks place results by distance from the neighbouring point on your route — or your position when there is none — instead of the server\'s own ranking.</string>
+    <string name="settings_sort_by_distance_note">Sorts place results purely by distance from the neighbouring point on your route — or your position when there is none. This ignores how well each result matched what you typed; nearby places are already preferred without it.</string>
     <string name="settings_search_bias">Prefer nearby results</string>
     <string name="settings_search_bias_none">None</string>
     <string name="settings_search_bias_note">How strongly the search asks for places near you rather than anywhere in the world. Higher keeps a common name like “Park” in your own city, but can hide a distant place you searched for by its exact name.</string>

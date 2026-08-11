@@ -71,7 +71,7 @@ class PlaceSearchEngineTest {
     }
 
     @Test
-    fun `a name starting with the query beats one containing it`() {
+    fun `a name that is mostly the query beats one that buries it`() {
         val results = PlaceSearchEngine.rank(
             "centrum",
             listOf(stop("Metro Centrum Nauki Kopernik"), stop("Centrum")),
@@ -80,16 +80,59 @@ class PlaceSearchEngineTest {
     }
 
     @Test
-    fun `a match at a word start beats one mid-word`() {
+    fun `a query found only inside a word is not an answer`() {
+        // "kowska" is a whole word of one and a tail of the other. Matching inside a word is too
+        // weak a claim to have understood the query: on a real cache it is what turns a search
+        // into a list of unrelated stops that happen to share a syllable.
         val results = PlaceSearchEngine.rank(
             "kowska",
             listOf(stop("Ząbkowska"), stop("Kowska Brama")),
         )
-        assertEquals("Kowska Brama", names(results).first())
+        assertEquals(listOf("Kowska Brama"), names(results))
     }
 
     @Test
-    fun `at the same match class the shorter name wins`() {
+    fun `a word prefix still matches, because the user is still typing`() {
+        val results = PlaceSearchEngine.rank("centr", listOf(stop("Centrum")))
+        assertEquals(listOf("Centrum"), names(results))
+    }
+
+    @Test
+    fun `a multi-word query matches a name the words are spread across`() {
+        // The whole query is nowhere in the name as a substring — "park go" never appears in
+        // "N-Park Gorzów" — but both words do, which is what the geocoder answers to as well.
+        val results = PlaceSearchEngine.rank("Park Gó", listOf(stop("N-Park Gorzów")))
+        assertEquals(listOf("N-Park Gorzów"), names(results))
+    }
+
+    @Test
+    fun `a fully matched name outranks one that answers only part of the query`() {
+        // The geocoder does return partial matches — searching "Park Gó" near Gorzów answers with
+        // "Park 111" too — but well below the places that answered the whole query.
+        val results = PlaceSearchEngine.rank(
+            "Park Gó",
+            listOf(stop("Park 111"), stop("Park Górczyński")),
+        )
+        assertEquals("Park Górczyński", names(results).first())
+    }
+
+    @Test
+    fun `a query the cache has no real answer for returns nothing`() {
+        // The point of the coverage floor: with thousands of stops on disk, a query naming a
+        // place that is not among them must come back empty rather than listing whatever happens
+        // to share a stopword with it.
+        val cache = listOf(
+            stop("Park 111"),
+            stop("The Zoo"),
+            stop("Parking przy szpitalu"),
+            stop("Dworzec Główny"),
+        )
+        assertTrue(PlaceSearchEngine.rank("Park of the Seven Seas", cache).isEmpty())
+        assertTrue(PlaceSearchEngine.rank("Zzzz Qqqq", cache).isEmpty())
+    }
+
+    @Test
+    fun `among names matched the same way the shorter one wins`() {
         val results = PlaceSearchEngine.rank(
             "centrum",
             listOf(stop("Centrum Nauki Kopernik Przystanek"), stop("Centrum")),
@@ -104,30 +147,68 @@ class PlaceSearchEngineTest {
     }
 
     @Test
-    fun `distance only reorders places that matched the same way`() {
+    fun `the nearer of two equal matches wins`() {
         val near = stop("Centrum Bliskie", lat = 52.2300, lon = 21.0100)
         val far = stop("Centrum Dalekie", lat = 52.4000, lon = 21.4000)
-        val reference = GeoPoint(52.2300, 21.0100)
 
         val ranked = PlaceSearchEngine.rank(
             query = "centrum",
             places = listOf(far, near),
-            reference = reference,
-            distanceWeight = PlaceSearchEngine.DISTANCE_WEIGHT_WHEN_SORTING,
+            bias = GeoPoint(52.2300, 21.0100),
+            biasStrength = 4,
         )
         assertEquals("Centrum Bliskie", names(ranked).first())
+    }
 
-        // …but it must never lift a mid-name match above one the user typed the start of, however
-        // close by it happens to be.
-        val nearButBuried = stop("Metro Centrum Nauki", lat = 52.2300, lon = 21.0100)
-        val farButLeading = stop("Centrum", lat = 52.9000, lon = 22.9000)
-        val ordered = PlaceSearchEngine.rank(
+    @Test
+    fun `the proximity bonus steps at the geocoder's own distances`() {
+        // Measured against the live API by bisection: the bands change at 2 km, 10 km, 100 km and
+        // 1000 km, and nowhere else. Reproducing them is what makes the cached half of the
+        // picker's list interleave with the geocoder's half instead of sorting on its own curve.
+        val here = GeoPoint(52.0, 21.0)
+        fun at(kmNorth: Double) = PlaceSearchEngine.score(
             query = "centrum",
-            places = listOf(nearButBuried, farButLeading),
-            reference = reference,
-            distanceWeight = PlaceSearchEngine.DISTANCE_WEIGHT_WHEN_SORTING,
+            // A degree of latitude is ~111.19 km on the sphere the distance is measured on.
+            place = stop("Centrum", lat = 52.0 + kmNorth / 111.19, lon = 21.0),
+            bias = here,
+            biasStrength = 1,
+        )!!
+
+        val bands = listOf(1.0, 5.0, 50.0, 500.0, 5_000.0).map { at(it) }
+        // Each band is strictly worse than the one inside it…
+        assertEquals(bands.sorted(), bands)
+        // …and the steps are the API's own -2.5 / -2.0 / -1.0 / -0.5 / 0 per unit of bias.
+        val beyond = at(5_000.0)
+        assertEquals(-2.5, at(1.0) - beyond, 1e-9)
+        assertEquals(-2.0, at(5.0) - beyond, 1e-9)
+        assertEquals(-1.0, at(50.0) - beyond, 1e-9)
+        assertEquals(-0.5, at(500.0) - beyond, 1e-9)
+    }
+
+    @Test
+    fun `bias strength scales the proximity bonus linearly`() {
+        val here = GeoPoint(52.0, 21.0)
+        val near = stop("Centrum", lat = 52.0, lon = 21.0)
+        fun at(strength: Int) = PlaceSearchEngine.score("centrum", near, here, strength)!!
+
+        val unbiased = at(0)
+        assertEquals(-2.5, at(1) - unbiased, 1e-9)
+        assertEquals(-10.0, at(4) - unbiased, 1e-9)
+        assertEquals(-25.0, at(10) - unbiased, 1e-9)
+    }
+
+    @Test
+    fun `proximity never rescues a place that did not match`() {
+        // Distance reorders answers; it does not turn a non-answer into one, however close by.
+        val underfoot = stop("Dworzec Główny", lat = 52.0, lon = 21.0)
+        assertTrue(
+            PlaceSearchEngine.rank(
+                query = "centrum",
+                places = listOf(underfoot),
+                bias = GeoPoint(52.0, 21.0),
+                biasStrength = 10,
+            ).isEmpty(),
         )
-        assertEquals("Centrum", names(ordered).first())
     }
 
     @Test
@@ -197,6 +278,92 @@ class PlaceSearchEngineTest {
     }
 
     @Test
+    fun `stops of the same name and area are offered once`() {
+        // Off the device: searching "AWF" near Poznań listed "Poznań, AWF · Poznań, województwo
+        // wielkopolskie, PL" twice, both bus stops, both 6.3 km away. They sit further apart than
+        // the station radius and disagree on importance, so neither platform test catches them —
+        // but the two rows are typographically identical, so only one is worth offering.
+        val poznan = { id: String, lon: Double, importance: Double ->
+            stop("Poznań, AWF", lat = 52.4020, lon = lon, id = id, importance = importance)
+                .copy(city = "Poznań", state = "województwo wielkopolskie", country = "PL")
+        }
+        val results = PlaceSearchEngine.rank(
+            "awf",
+            // ~700 m apart: past STATION_RADIUS_METERS, and with importances that disagree.
+            listOf(poznan("a", 16.9100, 0.004), poznan("b", 16.9203, 0.001)),
+        )
+        assertEquals(listOf("Poznań, AWF"), names(results))
+    }
+
+    @Test
+    fun `unlabelled stops of the same name are not merged across cities`() {
+        // Map-cached poles carry no area at all. "Same missing city" is not evidence of the same
+        // city, so these must still fall through to the proximity test.
+        val poznan = stop("AWF", lat = 52.4020, lon = 16.9100, id = "poznan-awf")
+        val warszawa = stop("AWF", lat = 52.2297, lon = 21.0122, id = "warszawa-awf")
+        assertEquals(2, PlaceSearchEngine.rank("awf", listOf(poznan, warszawa)).size)
+    }
+
+    @Test
+    fun `a stop and a place of the same name stay separate rows`() {
+        // They draw with different icons — a tram and a pin — so they do not read as a repeat,
+        // and only one of them can be routed from.
+        val results = PlaceSearchEngine.rank(
+            "awf",
+            listOf(
+                stop("AWF", id = "stop-awf").copy(city = "Poznań", country = "PL"),
+                address("AWF").copy(city = "Poznań", country = "PL"),
+            ),
+        )
+        assertEquals(2, results.size)
+    }
+
+    @Test
+    fun `places of the same name and area are offered once`() {
+        // Straight from the live geocoder: searching "Centrum" near Warszawa answers with three
+        // separate PLACE results all called "Centrum" in Warszawa, up to 662 m apart. Nothing on
+        // screen distinguishes them.
+        val warsaw = { lat: Double, lon: Double ->
+            address("Centrum", lat = lat, lon = lon)
+                .copy(city = "Warszawa", state = "województwo mazowieckie", country = "PL")
+        }
+        val results = PlaceSearchEngine.rank(
+            "centrum",
+            listOf(warsaw(52.2297, 21.0122), warsaw(52.2330, 21.0180), warsaw(52.2350, 21.0100)),
+        )
+        assertEquals(listOf("Centrum"), names(results))
+    }
+
+    @Test
+    fun `same-named places far apart in one city still collapse`() {
+        // The two "Psi Park" in Warszawa sit ~12 km apart and really are different parks, but
+        // they render identically, so offering both only asks the user to guess.
+        val park = { lat: Double, lon: Double ->
+            address("Psi Park", lat = lat, lon = lon).copy(city = "Warszawa", country = "PL")
+        }
+        val results = PlaceSearchEngine.rank("psi park", listOf(park(52.15, 21.00), park(52.26, 21.05)))
+        assertEquals(1, results.size)
+    }
+
+    @Test
+    fun `the surviving row is the one nearest the user`() {
+        val near = address("Psi Park", lat = 52.2300, lon = 21.0100).copy(city = "Warszawa")
+        val far = address("Psi Park", lat = 52.3500, lon = 21.2000).copy(city = "Warszawa")
+
+        val result = PlaceSearchEngine
+            .rank("psi park", listOf(far, near), bias = GeoPoint(52.2300, 21.0100), biasStrength = 4)
+            .single()
+        assertEquals(52.2300, result.lat, 1e-9)
+    }
+
+    @Test
+    fun `same-named places in different cities stay separate`() {
+        val warsaw = address("Rynek", lat = 52.23, lon = 21.01).copy(city = "Warszawa", country = "PL")
+        val krakow = address("Rynek", lat = 50.06, lon = 19.94).copy(city = "Kraków", country = "PL")
+        assertEquals(2, PlaceSearchEngine.rank("rynek", listOf(warsaw, krakow)).size)
+    }
+
+    @Test
     fun `an address is never folded into a stop of the same name`() {
         val results = PlaceSearchEngine.rank(
             "centrum",
@@ -240,6 +407,91 @@ class PlaceSearchEngineTest {
         val major = stop("Dworzec", id = "major", lat = 52.30, lon = 21.20, importance = 0.05)
         val minor = stop("Dworzec", id = "minor", lat = 52.40, lon = 21.30, importance = 0.00001)
         assertEquals("major", PlaceSearchEngine.rank("dworzec", listOf(minor, major)).first().stopId)
+    }
+
+    @Test
+    fun `the geocoder's answer does not move the rows already on screen`() {
+        // The whole point of the rewrite. The cache answers on the keystroke; the geocoder lands
+        // ~300 ms later. If arriving results reorder what is already drawn, the row under the
+        // user's finger moves and the tap lands on the wrong place.
+        val cached = listOf(
+            stop("Dworzec Główny", id = "cached-glowny", importance = 0.02),
+            stop("Dworzec Wschodni", id = "cached-wschodni", importance = 0.01),
+            stop("Dworzec Zachodni", id = "cached-zachodni", importance = 0.005),
+        )
+        val before = names(PlaceSearchEngine.merge("dworzec", remote = emptyList(), cached = cached))
+
+        // The geocoder answers with a place the cache had never seen, plus its own copy of one it
+        // had. In result-index order it would have led the list and pushed everything down.
+        val remote = listOf(
+            stop("Dworzec Mały", id = "remote-maly", importance = 0.0001),
+            stop("Dworzec Główny", id = "cached-glowny", importance = 0.02).copy(city = "Warszawa"),
+        )
+        val after = names(PlaceSearchEngine.merge("dworzec", remote = remote, cached = cached))
+
+        // Everything that was on screen keeps its order; the newcomer is merely inserted.
+        assertEquals(before, after.filter { it in before })
+        assertTrue("the new place should appear", "Dworzec Mały" in after)
+        // …and the place both sources knew is still a single row, wearing the geocoder's area.
+        assertEquals(4, after.size)
+    }
+
+    @Test
+    fun `a pinned cached row is held at the top`() {
+        val cached = listOf(stop("Dworzec Wschodni", id = "cached-wschodni", importance = 0.001))
+        // A remote result that would otherwise outrank it outright.
+        val remote = listOf(stop("Dworzec", id = "remote-dworzec", importance = 0.9))
+
+        val unpinned = names(PlaceSearchEngine.merge("dworzec", remote, cached))
+        assertEquals("Dworzec", unpinned.first())
+
+        val pinned = names(
+            PlaceSearchEngine.merge("dworzec", remote, cached, pinnedKey = "cached-wschodni"),
+        )
+        assertEquals("Dworzec Wschodni", pinned.first())
+        // Pinning reorders, it never drops anything.
+        assertEquals(unpinned.toSet(), pinned.toSet())
+    }
+
+    @Test
+    fun `a pinned key the merge no longer holds changes nothing`() {
+        val cached = listOf(stop("Dworzec Wschodni", id = "cached-wschodni"))
+        val ordered = names(PlaceSearchEngine.merge("dworzec", emptyList(), cached))
+        assertEquals(
+            ordered,
+            names(PlaceSearchEngine.merge("dworzec", emptyList(), cached, pinnedKey = "gone")),
+        )
+    }
+
+    @Test
+    fun `a pinned cached pole is found through the station it merged into`() {
+        // The cache holds a bare platform; the geocoder returns the grouped station, which wins
+        // the representative election. The pin still has to recognise it.
+        val pole = pole("Centrum", "pl-Warszawa_centrum10", metresEast = 0.0)
+        val station = pole("Centrum", "pl-Warszawa_centrum", metresEast = 60.0)
+            .copy(city = "Warszawa")
+        val elsewhere = stop("Centrum Handlowe", id = "remote-ch", importance = 0.5)
+
+        val merged = PlaceSearchEngine.merge(
+            query = "centrum",
+            remote = listOf(elsewhere, station),
+            cached = listOf(pole),
+            pinnedKey = "pl-Warszawa_centrum10",
+        )
+        assertEquals("Centrum", merged.first().name)
+        // The row shown is the geocoder's, which is the one that knows where it is.
+        assertEquals("Warszawa", merged.first().city)
+    }
+
+    @Test
+    fun `a remote result the local matcher would reject is kept, but last`() {
+        // The geocoder knows about spellings and synonyms a stored name cannot reproduce, so its
+        // answers are never dropped — only ranked below the ones we can vouch for.
+        val remote = listOf(stop("Something Else Entirely", id = "remote-odd"))
+        val cached = listOf(stop("Dworzec Główny", id = "cached-glowny"))
+
+        val merged = names(PlaceSearchEngine.merge("dworzec", remote, cached))
+        assertEquals(listOf("Dworzec Główny", "Something Else Entirely"), merged)
     }
 
     @Test

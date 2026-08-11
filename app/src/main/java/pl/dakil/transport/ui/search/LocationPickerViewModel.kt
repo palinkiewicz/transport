@@ -30,7 +30,6 @@ import pl.dakil.transport.data.prefs.FavoritesRepository
 import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.remote.toAppError
-import pl.dakil.transport.data.local.foldForSearch
 import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.PlaceSearchEngine
@@ -209,60 +208,83 @@ class LocationPickerViewModel @Inject constructor(
     private val sortByDistance: Flow<Boolean> =
         settingsRepository.settings.map { it.sortSuggestionsByDistance }
 
+    private val keepFirstCachedResult: Flow<Boolean> =
+        settingsRepository.settings.map { it.keepFirstCachedResult }
+
     private val offlineSearchEnabled: Flow<Boolean> =
         settingsRepository.settings.map { it.offlineCache.offlineSearchEnabled }
 
     /**
      * Places already on disk that match the query, ranked locally.
      *
-     * Runs on the keystroke itself — no debounce — because it costs one indexed query and no
-     * network at all. This is what puts a plausible list under the user's finger while the
-     * geocoder is still being waited on, and the whole list when there is no connection to wait
-     * on. [suggestions] then merges in on top of it.
+     * Runs on the keystroke itself — no debounce — because it costs one disk query and no network
+     * at all. This is what puts a plausible list under the user's finger while the geocoder is
+     * still being waited on, and the whole list when there is no connection to wait on.
+     * [suggestions] then merges in on top of it.
      */
     private val cachedMatches: Flow<List<TransitLocation>> =
-        combine(_query, sortByDistance, offlineSearchEnabled, biasPosition) { query, sortByDistance, enabled, bias ->
-            CachedQuery(query, sortByDistance, enabled, bias)
+        combine(_query, offlineSearchEnabled, biasPosition, biasStrength) { query, enabled, bias, strength ->
+            CachedQuery(query, enabled, bias, strength)
         }
-            .mapLatest { (query, sortByDistance, enabled, bias) ->
-                if (!enabled || query.isBlank()) {
+            .mapLatest { (query, enabled, bias, strength) ->
+                val token = PlaceSearchEngine.candidateToken(query)
+                if (!enabled || token == null) {
                     emptyList()
                 } else {
                     val candidates = placeCacheRepository.search(
-                        foldedQuery = foldForSearch(query),
+                        foldedToken = token,
                         stopsOnly = stopsOnly,
+                        bias = bias,
                         limit = PlaceSearchEngine.CANDIDATE_LIMIT,
                     )
                     PlaceSearchEngine.rank(
                         query = query,
                         places = candidates,
-                        // The same pull the geocoder is asked for, so the two halves of the list
-                        // agree on what "near" means.
-                        reference = bias,
-                        distanceWeight = if (sortByDistance) {
-                            PlaceSearchEngine.DISTANCE_WEIGHT_WHEN_SORTING
-                        } else {
-                            0.0
-                        },
+                        // The same pull, at the same strength, the geocoder is asked for — so the
+                        // two halves of the list agree on what "near" is worth.
+                        bias = bias,
+                        biasStrength = strength,
                         limit = MAX_CACHED_SUGGESTIONS,
                     )
                 }
             }
             .onStart { emit(emptyList()) }
 
+    /**
+     * The best cached row, as the query it was found for and its key.
+     *
+     * Kept so the row that appeared on the keystroke can be held at the top when the geocoder's
+     * answer lands; carrying the query with it is what makes it expire on the next keystroke
+     * rather than pinning a stale place to a search it does not answer. A plain field because
+     * only [items]' own `combine` touches it, and that runs sequentially in one coroutine.
+     */
+    private var pinnedCachedRow: Pair<String, String>? = null
+
     /** Suggestions while typing; the favourite places when the query is blank. */
     val items: StateFlow<List<PickerItem>> =
         combine(
-            _query,
-            cachedMatches,
-            suggestions,
+            combine(_query, cachedMatches, suggestions, biasPosition, biasStrength, ::Ranking),
             favoritesRepository.favorites,
             sortByDistance,
-        ) { query, cached, suggestions, favorites, sortByDistance ->
+            keepFirstCachedResult,
+        ) { ranking, favorites, sortByDistance, keepFirstCached ->
+            val (query, cached, remote, bias, strength) = ranking
+            if (query.isNotBlank() && cached.isNotEmpty()) {
+                pinnedCachedRow = query to cached.first().favoriteKey
+            }
             val locations = if (query.isBlank()) {
                 favorites.locations
             } else {
-                mergeSuggestions(suggestions, cached)
+                PlaceSearchEngine.merge(
+                    query = query,
+                    remote = remote,
+                    cached = cached,
+                    bias = bias,
+                    biasStrength = strength,
+                    pinnedKey = pinnedCachedRow
+                        ?.takeIf { keepFirstCached && it.first == query }
+                        ?.second,
+                )
             }
                 // A starred address or map point can't stand in for a stop id.
                 .filter { !stopsOnly || it.stopId != null }
@@ -275,43 +297,15 @@ class LocationPickerViewModel @Inject constructor(
                     isFavorite = favorites.containsLocation(location),
                 )
             }
-            // Favourites are already in the order the user built them; only the geocoder's
-            // ranking is worth overriding, and only when there is a point to measure from.
+            // Favourites are already in the order the user built them, and the ranking above
+            // already prefers what is near; this is the opt-in that throws the match away and
+            // sorts on nothing but distance.
             if (sortByDistance && query.isNotBlank() && referencePosition != null) {
                 items.sortedBy { it.distanceMeters ?: Double.MAX_VALUE }
             } else {
                 items
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /**
-     * The geocoder's answers and the cache's, as one list with each station appearing once.
-     *
-     * The two sources describe the same places differently: the geocoder returns the grouped
-     * station, carrying its city and district, while the cache holds the individual platforms the
-     * map fetched, which carry neither. Concatenating them shows the same stop several times over
-     * — once from the geocoder and once per cached pole — so they are clustered together instead
-     * and each station is offered as the member that knows the most about it.
-     *
-     * Ordering keeps the geocoder in charge where it answered: it ranks against the whole world,
-     * not just what this phone has seen. Stations only the cache knows follow, in the local
-     * ranking's order — which is what is left when there is no connection at all.
-     */
-    private fun mergeSuggestions(
-        remote: List<TransitLocation>,
-        cached: List<TransitLocation>,
-    ): List<TransitLocation> {
-        if (remote.isEmpty()) return cached
-        val remoteRank = remote.withIndex().associate { (index, place) -> place.favoriteKey to index }
-        // Remote first, so where both sources hold the very same place the geocoder's copy — the
-        // one carrying the city and district — is the one kept.
-        return PlaceSearchEngine.groupIntoStations(remote + cached)
-            .sortedBy { station ->
-                station.members.minOfOrNull { remoteRank[it.favoriteKey] ?: Int.MAX_VALUE }
-                    ?: Int.MAX_VALUE
-            }
-            .map { it.place }
-    }
 
     fun onQueryChange(query: String) {
         _query.value = query
@@ -335,9 +329,23 @@ class LocationPickerViewModel @Inject constructor(
     /** The inputs [cachedMatches] re-runs on; only a name for what `combine` produces. */
     private data class CachedQuery(
         val query: String,
-        val sortByDistance: Boolean,
         val offlineSearchEnabled: Boolean,
         val bias: GeoPoint?,
+        val biasStrength: Int,
+    )
+
+    /**
+     * Everything the ranking needs, as one value.
+     *
+     * `combine` has typed overloads for at most five flows and [items] needs more than that, so
+     * the ranking inputs are combined into this first and the presentation inputs around it.
+     */
+    private data class Ranking(
+        val query: String,
+        val cached: List<TransitLocation>,
+        val remote: List<TransitLocation>,
+        val bias: GeoPoint?,
+        val biasStrength: Int,
     )
 
     private companion object {

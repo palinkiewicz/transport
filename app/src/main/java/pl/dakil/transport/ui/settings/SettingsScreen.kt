@@ -253,6 +253,12 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
             )
         }
         SwitchRow(
+            title = stringResource(R.string.settings_keep_first_cached),
+            checked = settings.keepFirstCachedResult,
+            onCheckedChange = { on -> viewModel.update { it.copy(keepFirstCachedResult = on) } },
+            supportingText = stringResource(R.string.settings_keep_first_cached_note),
+        )
+        SwitchRow(
             title = stringResource(R.string.settings_sort_by_distance),
             checked = settings.sortSuggestionsByDistance,
             onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
