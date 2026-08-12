@@ -59,6 +59,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -323,9 +324,6 @@ fun MapScreen(
     var filtersExpanded by rememberSaveable { mutableStateOf(false) }
 
     val density = LocalDensity.current
-
-    /** Measured height of the route draft bar, so the compass can sit clear of it. */
-    var routeDraftHeight by remember { mutableStateOf(0.dp) }
 
     /** Measured height of the map itself, which the vehicle panel is sized against. */
     var mapHeight by remember { mutableStateOf(0.dp) }
@@ -880,17 +878,6 @@ fun MapScreen(
             }
         }
 
-        DisappearingCompassButton(
-            cameraState = cameraState,
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.statusBars)
-                // Below the search bar (8dp gap + its 56dp height + 16dp spacing), and below
-                // the route draft bar too — measured rather than assumed, so the compass rides
-                // the bar's expand/collapse animation instead of jumping once it settles.
-                .padding(top = 80.dp + routeDraftHeight, end = 16.dp),
-        )
-
         Column(
             modifier = Modifier
                 .align(Alignment.TopStart)
@@ -903,12 +890,7 @@ fun MapScreen(
                     .fillMaxWidth()
                     .padding(start = 16.dp, top = 8.dp, end = 16.dp),
             )
-            AnimatedVisibility(
-                visible = routeDraftVisible,
-                modifier = Modifier.onSizeChanged { size ->
-                    routeDraftHeight = with(density) { size.height.toDp() }
-                },
-            ) {
+            AnimatedVisibility(visible = routeDraftVisible) {
                 MapRouteDraftBar(
                     from = routeFrom,
                     to = routeTo,
@@ -923,16 +905,41 @@ fun MapScreen(
                         .padding(start = 16.dp, top = 8.dp, end = 16.dp),
                 )
             }
-            MapFiltersMenu(
-                filters = filters,
-                expanded = filtersExpanded,
-                onExpandedChange = { filtersExpanded = it },
-                onUpdate = viewModel::updateFilters,
-                onReset = viewModel::resetFilters,
-                areaDownload = areaDownload,
-                onDownloadArea = viewModel::downloadVisibleArea,
-                modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
-            )
+            // Filter button and compass share one row: same top edge, one at each end. The
+            // compass rides the column, so it stays clear of the route draft bar without
+            // anyone having to measure it.
+            Box(modifier = Modifier.fillMaxWidth()) {
+                MapFiltersMenu(
+                    filters = filters,
+                    expanded = filtersExpanded,
+                    onExpandedChange = { filtersExpanded = it },
+                    onUpdate = viewModel::updateFilters,
+                    onReset = viewModel::resetFilters,
+                    areaDownload = areaDownload,
+                    onDownloadArea = viewModel::downloadVisibleArea,
+                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 8.dp, end = 16.dp),
+                ) {
+                    // Positioning lives on the wrapper, not on this modifier:
+                    // DisappearingCompassButton hands its own `modifier` to both the
+                    // AnimatedVisibility and the button inside it, so any padding passed here
+                    // is applied twice.
+                    DisappearingCompassButton(
+                        cameraState = cameraState,
+                        // Matches the filter button's chrome: a 48dp circle over
+                        // surface + 3dp tonal elevation, holding a 24dp glyph.
+                        colors = ButtonDefaults.elevatedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                        ),
+                        contentPadding = PaddingValues(12.dp),
+                    )
+                }
+            }
             // Only while the panel is closed: with it open the download row right below says
             // the same thing, and the chip would be repeating itself.
             AnimatedVisibility(visible = stopsOffline && !filtersExpanded) {
@@ -960,7 +967,9 @@ fun MapScreen(
                 TransitousAttributionLabel(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .padding(end = 72.dp, bottom = 20.dp),
+                        // Clears the locate-me FAB (16dp inset + 56dp) with a gap, so the
+                        // label doesn't read as part of the button.
+                        .padding(end = 84.dp, bottom = 20.dp),
                 )
 
                 FloatingActionButton(
