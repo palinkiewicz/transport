@@ -491,7 +491,7 @@ class PlaceSearchEngineTest {
             query = "park wilsona",
             remote = listOf(better, geocoded),
             cached = listOf(cached),
-            pinnedKey = "map-pole",
+            pinnedKeys = listOf("map-pole"),
         )
         assertEquals("Park Wilsona", merged.first().name)
         assertEquals("Poznań, PL", merged.first().areaLabel)
@@ -656,7 +656,7 @@ class PlaceSearchEngineTest {
         assertEquals("Dworzec", unpinned.first())
 
         val pinned = names(
-            PlaceSearchEngine.merge("dworzec", remote, cached, pinnedKey = "cached-wschodni"),
+            PlaceSearchEngine.merge("dworzec", remote, cached, pinnedKeys = listOf("cached-wschodni")),
         )
         assertEquals("Dworzec Wschodni", pinned.first())
         // Pinning reorders, it never drops anything.
@@ -669,7 +669,7 @@ class PlaceSearchEngineTest {
         val ordered = names(PlaceSearchEngine.merge("dworzec", emptyList(), cached))
         assertEquals(
             ordered,
-            names(PlaceSearchEngine.merge("dworzec", emptyList(), cached, pinnedKey = "gone")),
+            names(PlaceSearchEngine.merge("dworzec", emptyList(), cached, pinnedKeys = listOf("gone"))),
         )
     }
 
@@ -686,11 +686,51 @@ class PlaceSearchEngineTest {
             query = "centrum",
             remote = listOf(elsewhere, station),
             cached = listOf(pole),
-            pinnedKey = "pl-Warszawa_centrum10",
+            pinnedKeys = listOf("pl-Warszawa_centrum10"),
         )
         assertEquals("Centrum", merged.first().name)
         // The row shown is the geocoder's, which is the one that knows where it is.
         assertEquals("Warszawa", merged.first().city)
+    }
+
+    @Test
+    fun `several pinned rows lead in the order they were given`() {
+        // The picker pins the recently used places first and the steady cached row after them,
+        // so the order it hands over is the order the list has to open in.
+        val cached = listOf(
+            stop("Dworzec Wschodni", id = "cached-wschodni", importance = 0.001),
+            stop("Dworzec Zachodni", id = "cached-zachodni", importance = 0.001),
+        )
+        val remote = listOf(stop("Dworzec", id = "remote-dworzec", importance = 0.9))
+
+        val pinned = names(
+            PlaceSearchEngine.merge(
+                query = "dworzec",
+                remote = remote,
+                cached = cached,
+                pinnedKeys = listOf("cached-zachodni", "cached-wschodni"),
+            ),
+        )
+        assertEquals(listOf("Dworzec Zachodni", "Dworzec Wschodni", "Dworzec"), pinned)
+    }
+
+    @Test
+    fun `two pinned keys of one station pin it once`() {
+        // A recently used pole and the cached row held steady can be the same station seen twice;
+        // offering it twice would be a duplicate row, and a crash where the list keys by place.
+        val pole = pole("Centrum", "pl-Warszawa_centrum10", metresEast = 0.0)
+        val station = pole("Centrum", "pl-Warszawa_centrum", metresEast = 60.0).copy(city = "Warszawa")
+        val elsewhere = stop("Centrum Handlowe", id = "remote-ch", importance = 0.5)
+
+        val merged = names(
+            PlaceSearchEngine.merge(
+                query = "centrum",
+                remote = listOf(elsewhere, station),
+                cached = listOf(pole),
+                pinnedKeys = listOf("pl-Warszawa_centrum10", "pl-Warszawa_centrum"),
+            ),
+        )
+        assertEquals(listOf("Centrum", "Centrum Handlowe"), merged)
     }
 
     @Test

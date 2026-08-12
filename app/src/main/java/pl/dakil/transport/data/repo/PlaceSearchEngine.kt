@@ -112,10 +112,11 @@ object PlaceSearchEngine {
      * whole list the moment it arrives and moves the row under the user's finger. Scored the same
      * way, a remote answer can only insert rows around the ones already drawn.
      *
-     * [pinnedKey] is a place held at the top regardless of its score, matched against the
-     * stations' *members* because the row the picker pinned is usually a cached pole that ends up
+     * [pinnedKeys] are places held at the top regardless of their score, in the order given — the
+     * recently used ones, then the cached row the picker is keeping steady. They are matched
+     * against the stations' *members* because a pinned row is usually a cached pole that ends up
      * absorbed into a station the geocoder's own copy stands for. See
-     * `AppSettings.keepFirstCachedResult`.
+     * `AppSettings.pinRecentPlaces` and `AppSettings.keepFirstCachedResult`.
      */
     fun merge(
         query: String,
@@ -123,8 +124,25 @@ object PlaceSearchEngine {
         cached: List<TransitLocation>,
         bias: GeoPoint? = null,
         biasStrength: Int = 0,
-        pinnedKey: String? = null,
-    ): List<TransitLocation> {
+        pinnedKeys: List<String> = emptyList(),
+    ): List<TransitLocation> =
+        mergeStations(query, remote, cached, bias, biasStrength, pinnedKeys).map { it.place }
+
+    /**
+     * [merge], keeping each row's [Station.members].
+     *
+     * The picker reads them to tell whether a row *is* one of the places it pinned: the pin is
+     * matched by member key, so deciding it again from the representative alone would mark the
+     * wrong rows — a recently used pole is drawn as the geocoded station that absorbed it.
+     */
+    fun mergeStations(
+        query: String,
+        remote: List<TransitLocation>,
+        cached: List<TransitLocation>,
+        bias: GeoPoint? = null,
+        biasStrength: Int = 0,
+        pinnedKeys: List<String> = emptyList(),
+    ): List<Station> {
         // Remote first, so where both sources hold the very same place the geocoder's copy — the
         // one carrying the city and district — is the one kept.
         val ordered = groupIntoStations(remote + cached, bias)
@@ -142,13 +160,13 @@ object PlaceSearchEngine {
                     .thenBy { it.first.place.favoriteKey },
             )
             .map { it.first }
-        val pinnedIndex = pinnedKey?.let { key ->
-            ordered.indexOfFirst { station -> station.members.any { it.favoriteKey == key } }
-        } ?: -1
-        if (pinnedIndex <= 0) return ordered.map { it.place }
-        val reordered = ordered.toMutableList()
-        reordered.add(0, reordered.removeAt(pinnedIndex))
-        return reordered.map { it.place }
+        // Distinct, because two pinned keys can be two poles of one station and it must not be
+        // offered twice; the first key to reach a station decides where it sits.
+        val pinned = pinnedKeys
+            .mapNotNull { key -> ordered.firstOrNull { station -> station.members.any { it.favoriteKey == key } } }
+            .distinct()
+        if (pinned.isEmpty()) return ordered
+        return pinned + ordered.filterNot { it in pinned }
     }
 
     /**

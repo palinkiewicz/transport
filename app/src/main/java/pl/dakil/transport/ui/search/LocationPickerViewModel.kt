@@ -27,6 +27,7 @@ import kotlinx.coroutines.launch
 import pl.dakil.transport.R
 import pl.dakil.transport.data.location.LocationService
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.RecentPlacesRepository
 import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.remote.toAppError
@@ -35,6 +36,7 @@ import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.PlaceSearchEngine
 import pl.dakil.transport.domain.model.AppError
 import pl.dakil.transport.domain.model.AppSettings
+import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.ui.navigation.PickerTarget
@@ -45,12 +47,14 @@ data class PickerItem(
     /** Straight-line distance from the reference point; null when there is none to measure from. */
     val distanceMeters: Double?,
     val isFavorite: Boolean,
+    /** Whether this is a place the user picked before; drawn with a history icon. */
+    val isRecent: Boolean = false,
 )
 
 /**
  * Full-screen start/destination picker (opened from the Search screen's fields). With an
- * empty query it offers the current location and the favourite places; typing searches the
- * geocoder. The chosen location is handed back through [SearchStateHolder].
+ * empty query it offers the current location, the favourite places and the recently used ones;
+ * typing searches the geocoder. The chosen location is handed back through [SearchStateHolder].
  */
 @OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 @HiltViewModel
@@ -61,6 +65,7 @@ class LocationPickerViewModel @Inject constructor(
     private val placeCacheRepository: PlaceCacheRepository,
     locationService: LocationService,
     private val favoritesRepository: FavoritesRepository,
+    private val recentPlacesRepository: RecentPlacesRepository,
     private val searchStateHolder: SearchStateHolder,
     sessionStateRepository: SessionStateRepository,
     private val settingsRepository: SettingsRepository,
@@ -214,6 +219,24 @@ class LocationPickerViewModel @Inject constructor(
     private val offlineSearchEnabled: Flow<Boolean> =
         settingsRepository.settings.map { it.offlineCache.offlineSearchEnabled }
 
+    private val pinRecentPlaces: Flow<Boolean> =
+        settingsRepository.settings.map { it.pinRecentPlaces }
+
+    /**
+     * The places picked lately, newest first — the same history whatever field this picker is
+     * filling, and trimmed here rather than only at write time so shortening the setting takes
+     * effect at once instead of on the next pick.
+     */
+    private val recentPlaces: Flow<List<TransitLocation>> =
+        combine(
+            recentPlacesRepository.recentPlaces,
+            settingsRepository.settings.map { it.recentPlacesLimit }.distinctUntilChanged(),
+        ) { places, limit ->
+            places.take(limit)
+                // A remembered address can't stand in for a stop id, same as a starred one.
+                .filter { !stopsOnly || it.stopId != null }
+        }
+
     /**
      * Places already on disk that match the query, ranked locally.
      *
@@ -264,38 +287,73 @@ class LocationPickerViewModel @Inject constructor(
     val items: StateFlow<List<PickerItem>> =
         combine(
             combine(_query, cachedMatches, suggestions, biasPosition, biasStrength, ::Ranking),
-            favoritesRepository.favorites,
-            sortByDistance,
-            keepFirstCachedResult,
-        ) { ranking, favorites, sortByDistance, keepFirstCached ->
+            combine(
+                favoritesRepository.favorites,
+                sortByDistance,
+                keepFirstCachedResult,
+                recentPlaces,
+                pinRecentPlaces,
+                ::Presentation,
+            ),
+        ) { ranking, presentation ->
             val (query, cached, remote, bias, strength) = ranking
+            val (favorites, sortByDistance, keepFirstCached, recents, pinRecents) = presentation
             if (query.isNotBlank() && cached.isNotEmpty()) {
                 pinnedCachedRow = query to cached.first().favoriteKey
             }
-            val locations = if (query.isBlank()) {
+            val items = if (query.isBlank()) {
                 favorites.locations
+                    // A starred address or map point can't stand in for a stop id.
+                    .filter { !stopsOnly || it.stopId != null }
+                    .map { location ->
+                        PickerItem(
+                            location = location,
+                            distanceMeters = distanceOf(location),
+                            isFavorite = true,
+                            // Not marked recent even when it also is: this is the Saved section,
+                            // and its rows keep their mode icons rather than turning into clocks
+                            // as the places behind them get used.
+                            isRecent = false,
+                        )
+                    }
             } else {
-                PlaceSearchEngine.merge(
+                // Recents are local and answer on the keystroke, like the cached rows — so a
+                // pinned one is on screen from the first frame and never arrives late enough to
+                // move the row under the user's finger. Offered as a source of their own as well
+                // as pinned, or a place neither the cache nor the geocoder returned this time
+                // could not be pinned at all.
+                val recentMatches = if (pinRecents) {
+                    recents.filter { PlaceSearchEngine.score(query, it) != null }
+                } else {
+                    emptyList()
+                }
+                val recentKeys = recentMatches.map { it.favoriteKey }.toSet()
+                PlaceSearchEngine.mergeStations(
                     query = query,
                     remote = remote,
-                    cached = cached,
+                    cached = cached + recentMatches,
                     bias = bias,
                     biasStrength = strength,
-                    pinnedKey = pinnedCachedRow
-                        ?.takeIf { keepFirstCached && it.first == query }
-                        ?.second,
+                    // Recents lead: a place the user has actually been to is a stronger claim
+                    // about what they mean than the steadiness of the top cached row.
+                    pinnedKeys = recentMatches.map { it.favoriteKey } +
+                        listOfNotNull(
+                            pinnedCachedRow
+                                ?.takeIf { keepFirstCached && it.first == query }
+                                ?.second,
+                        ),
                 )
-            }
-                // A starred address or map point can't stand in for a stop id.
-                .filter { !stopsOnly || it.stopId != null }
-            val items = locations.map { location ->
-                PickerItem(
-                    location = location,
-                    distanceMeters = referencePosition?.let {
-                        GeoPoint(location.lat, location.lon).distanceMetersTo(it)
-                    },
-                    isFavorite = favorites.containsLocation(location),
-                )
+                    .filter { !stopsOnly || it.place.stopId != null }
+                    .map { station ->
+                        PickerItem(
+                            location = station.place,
+                            distanceMeters = distanceOf(station.place),
+                            isFavorite = favorites.containsLocation(station.place),
+                            // By member, not by the row drawn: a recently used pole is shown as
+                            // the geocoded station that absorbed it, which carries another key.
+                            isRecent = station.members.any { it.favoriteKey in recentKeys },
+                        )
+                    }
             }
             // Favourites are already in the order the user built them, and the ranking above
             // already prefers what is near; this is the opt-in that throws the match away and
@@ -307,6 +365,30 @@ class LocationPickerViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    /**
+     * The recently used places, for the blank-query list only — [items] carries them the rest of
+     * the time, pinned in among the results.
+     *
+     * Starred places are left out: they are already listed above under Saved, and one place drawn
+     * twice on one screen is exactly what the station grouping elsewhere exists to prevent.
+     */
+    val recentItems: StateFlow<List<PickerItem>> =
+        combine(recentPlaces, favoritesRepository.favorites) { recents, favorites ->
+            recents
+                .filterNot { favorites.containsLocation(it) }
+                .map { location ->
+                    PickerItem(
+                        location = location,
+                        distanceMeters = distanceOf(location),
+                        isFavorite = false,
+                        isRecent = true,
+                    )
+                }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private fun distanceOf(location: TransitLocation): Double? =
+        referencePosition?.let { GeoPoint(location.lat, location.lon).distanceMetersTo(it) }
+
     fun onQueryChange(query: String) {
         _query.value = query
     }
@@ -317,6 +399,7 @@ class LocationPickerViewModel @Inject constructor(
 
     /** Hands the pick back to its consumer; the screen pops itself right after. */
     fun select(location: TransitLocation) {
+        rememberPick(location)
         when (target) {
             PickerTarget.FROM -> searchStateHolder.setBeginHere(location)
             PickerTarget.TO -> searchStateHolder.setFinishHere(location)
@@ -324,6 +407,23 @@ class LocationPickerViewModel @Inject constructor(
             PickerTarget.STOP -> searchStateHolder.setDepartureStop(location)
             PickerTarget.MAP -> searchStateHolder.setMapLocation(location)
         }
+    }
+
+    /**
+     * Files the pick under the recent places.
+     *
+     * This is the one place a pick is recorded, and it is deliberately every target: the history
+     * is shared, so a stop chosen as a destination here is offered back when a start is being
+     * picked there. The current-position row is the exception — it is a snapshot of where the
+     * phone was just now, and offering it back tomorrow would be a stale coordinate wearing the
+     * words "Your location".
+     *
+     * The write is fire-and-forget inside the repository rather than launched here, because this
+     * runs on the tap that pops the screen and takes this ViewModel's scope with it.
+     */
+    private fun rememberPick(location: TransitLocation) {
+        if (location.favoriteKey == currentLocation?.favoriteKey) return
+        recentPlacesRepository.record(location)
     }
 
     /** The inputs [cachedMatches] re-runs on; only a name for what `combine` produces. */
@@ -346,6 +446,15 @@ class LocationPickerViewModel @Inject constructor(
         val remote: List<TransitLocation>,
         val bias: GeoPoint?,
         val biasStrength: Int,
+    )
+
+    /** Everything [items] needs that is not part of the ranking; see [Ranking] for why. */
+    private data class Presentation(
+        val favorites: Favorites,
+        val sortByDistance: Boolean,
+        val keepFirstCachedResult: Boolean,
+        val recents: List<TransitLocation>,
+        val pinRecentPlaces: Boolean,
     )
 
     private companion object {

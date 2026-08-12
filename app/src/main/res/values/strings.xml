@@ -20,6 +20,7 @@
     <string name="action_collapse">Collapse</string>
     <string name="badge_modified">Modified</string>
     <string name="label_place">Place</string>
+    <string name="label_recent">Recently used</string>
 
     <!-- Value formatting. Keep the placeholders; reorder them freely. -->
     <string name="format_distance_meters">%1$d m</string>
@@ -241,6 +242,7 @@
     <string name="picker_stops_only_note">Only transit stops can be routed through.</string>
     <string name="picker_current_location">Current location</string>
     <string name="picker_saved_header">Saved</string>
+    <string name="picker_recent_header">Recent</string>
     <string name="location_your_location">Your location</string>
 
     <!-- Connections search form -->
@@ -371,6 +373,11 @@
     <string name="settings_group_search">Search &amp; results</string>
     <string name="settings_connection_times">Connection times</string>
     <string name="settings_connection_times_note">Stop times are when the vehicle moves; door to door includes the walk at each end, so the countdown tells you when to leave.</string>
+    <string name="settings_recent_places">Remember recent places</string>
+    <string name="settings_recent_places_off">Off</string>
+    <string name="settings_recent_places_note">How many places you have picked are offered back under your saved ones. One list shared by every field — a stop used as a destination is offered when you pick a start. Set to Off to remember none and forget the ones already kept.</string>
+    <string name="settings_pin_recent_places">Pin recent places in results</string>
+    <string name="settings_pin_recent_places_note">Holds a recently used place at the top while you type, ahead of anything the ranking would put there. Somewhere you have already been is usually what a half-typed name means.</string>
     <string name="settings_keep_first_cached">Keep the top result steady</string>
     <string name="settings_keep_first_cached_note">Saved places appear as you type, a moment before the server answers. This keeps the best of them pinned at the top so the row you are reaching for cannot move under your finger.</string>
     <string name="settings_sort_by_distance">Sort suggestions by distance</string>

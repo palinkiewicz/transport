@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -25,6 +26,10 @@ import pl.dakil.transport.domain.model.TransportMode
  * Shared list row for a [TransitLocation] (location picker, favourites): mode icon for stops /
  * place mark otherwise, name with optional distance from the user, area subtitle, and an
  * optional trailing control (typically a [FavoriteButton]).
+ *
+ * [isRecent] swaps the leading icon for a history one. It replaces the mode icon rather than
+ * sitting beside it: what makes the row worth a glance is that this is somewhere the user has
+ * already been, and the mode is still readable from the name and the area below it.
  */
 @Composable
 fun LocationListItem(
@@ -32,6 +37,7 @@ fun LocationListItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     distanceMeters: Double? = null,
+    isRecent: Boolean = false,
     trailingContent: @Composable (() -> Unit)? = null,
 ) {
     ListItem(
@@ -61,8 +67,16 @@ fun LocationListItem(
         leadingContent = {
             val mode = if (location.stopId != null) location.primaryMode ?: TransportMode.OTHER else null
             Icon(
-                imageVector = mode?.icon ?: Icons.Default.Place,
-                contentDescription = stringResource(mode?.labelRes ?: R.string.label_place),
+                imageVector = when {
+                    isRecent -> Icons.Default.History
+                    else -> mode?.icon ?: Icons.Default.Place
+                },
+                contentDescription = stringResource(
+                    when {
+                        isRecent -> R.string.label_recent
+                        else -> mode?.labelRes ?: R.string.label_place
+                    },
+                ),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         },

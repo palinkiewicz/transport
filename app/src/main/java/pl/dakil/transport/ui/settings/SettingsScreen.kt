@@ -252,6 +252,27 @@ private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsView
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        IntSliderRow(
+            title = stringResource(R.string.settings_recent_places),
+            value = settings.recentPlacesLimit,
+            onValueCommit = { count -> viewModel.update { it.copy(recentPlacesLimit = count) } },
+            min = AppSettings.RECENT_PLACES_OFF,
+            max = AppSettings.RECENT_PLACES_MAX,
+            valueLabel = { count ->
+                if (count <= AppSettings.RECENT_PLACES_OFF) {
+                    stringResource(R.string.settings_recent_places_off)
+                } else {
+                    count.toString()
+                }
+            },
+            supportingText = stringResource(R.string.settings_recent_places_note),
+        )
+        SwitchRow(
+            title = stringResource(R.string.settings_pin_recent_places),
+            checked = settings.pinRecentPlaces,
+            onCheckedChange = { on -> viewModel.update { it.copy(pinRecentPlaces = on) } },
+            supportingText = stringResource(R.string.settings_pin_recent_places_note),
+        )
         SwitchRow(
             title = stringResource(R.string.settings_keep_first_cached),
             checked = settings.keepFirstCachedResult,

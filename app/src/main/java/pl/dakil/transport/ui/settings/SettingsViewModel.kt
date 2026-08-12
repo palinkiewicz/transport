@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.FavoritesRepository
+import pl.dakil.transport.data.prefs.RecentPlacesRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
 import pl.dakil.transport.data.repo.CacheStats
 import pl.dakil.transport.data.repo.PlaceCacheRepository
@@ -24,6 +25,7 @@ class SettingsViewModel @Inject constructor(
     private val placeCacheRepository: PlaceCacheRepository,
     private val savedItineraryRepository: SavedItineraryRepository,
     private val favoritesRepository: FavoritesRepository,
+    private val recentPlacesRepository: RecentPlacesRepository,
 ) : ViewModel() {
 
     // Held locally (seeded from disk once) rather than read straight from the repository flow,
@@ -71,9 +73,15 @@ class SettingsViewModel @Inject constructor(
             ).distinct()
 
     fun update(transform: (AppSettings) -> AppSettings) {
-        val updated = transform(_settings.value)
+        val previous = _settings.value
+        val updated = transform(previous)
         _settings.value = updated
         viewModelScope.launch { settingsRepository.save(updated) }
+        // Lowering the cap on remembered places has to forget the ones past it, here rather than
+        // whenever the picker next happens to run: "Off" is a request to be left with nothing.
+        if (updated.recentPlacesLimit < previous.recentPlacesLimit) {
+            recentPlacesRepository.trimToLimit(updated.recentPlacesLimit)
+        }
     }
 
     fun updateMotion(transform: (VehicleMotionSettings) -> VehicleMotionSettings) =

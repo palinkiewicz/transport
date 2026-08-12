@@ -324,6 +324,26 @@ data class AppSettings(
     val sortSuggestionsByDistance: Boolean = false,
 
     /**
+     * How many recently picked places the location picker remembers and offers back, newest
+     * first — one history shared by every field, see [RecentPlaces].
+     *
+     * [RECENT_PLACES_OFF] turns the whole feature off: nothing is listed, nothing is pinned, and
+     * the next pick clears what was already stored rather than leaving a forgotten history on
+     * disk.
+     */
+    val recentPlacesLimit: Int = 10,
+
+    /**
+     * Whether a recently used place is held at the top of the results when it matches what is
+     * being typed, ahead of whatever the ranking would otherwise have put there.
+     *
+     * On by default: a place picked before is a far stronger signal about what the user means
+     * than a name match is. It is a separate switch from [keepFirstCachedResult] because it
+     * changes *which* row leads, not merely whether the leading row stays put.
+     */
+    val pinRecentPlaces: Boolean = true,
+
+    /**
      * Whether the best cached result stays pinned to the top of the picker once it appears.
      *
      * The cache answers on the keystroke and the geocoder ~300 ms later. Ranking both through
@@ -397,5 +417,9 @@ data class AppSettings(
         /** [searchBiasStrength] range; 1 is the geocoder's own default, i.e. no added pull. */
         const val SEARCH_BIAS_NONE = 1
         const val SEARCH_BIAS_MAX = 10
+
+        /** [recentPlacesLimit] range; zero remembers nothing at all. */
+        const val RECENT_PLACES_OFF = 0
+        const val RECENT_PLACES_MAX = 25
     }
 }

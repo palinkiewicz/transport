@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyItemScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -52,8 +53,9 @@ import pl.dakil.transport.ui.navigation.PickerTarget
 
 /**
  * Full-screen location search (Google-Maps-style): a search field on top, and below it either
- * the geocoder suggestions for the query, or — while the query is empty — the current location
- * and the favourite places. Selection is returned via [SearchStateHolder]; see the ViewModel.
+ * the geocoder suggestions for the query, or — while the query is empty — the current location,
+ * the favourite places and the recently used ones. Selection is returned via [SearchStateHolder];
+ * see the ViewModel.
  */
 @Composable
 fun LocationPickerScreen(
@@ -62,6 +64,7 @@ fun LocationPickerScreen(
 ) {
     val query by viewModel.query.collectAsStateWithLifecycle()
     val items by viewModel.items.collectAsStateWithLifecycle()
+    val recentItems by viewModel.recentItems.collectAsStateWithLifecycle()
     val searchError by viewModel.searchError.collectAsStateWithLifecycle()
     val focusRequester = remember { FocusRequester() }
 
@@ -158,6 +161,7 @@ fun LocationPickerScreen(
             LocationPickerList(
                 query = query,
                 items = items,
+                recentItems = recentItems,
                 currentLocation = viewModel.currentLocation,
                 onPick = ::pick,
                 onToggleFavorite = viewModel::toggleFavorite,
@@ -170,6 +174,7 @@ fun LocationPickerScreen(
 private fun LocationPickerList(
     query: String,
     items: List<PickerItem>,
+    recentItems: List<PickerItem>,
     currentLocation: TransitLocation?,
     onPick: (TransitLocation) -> Unit,
     onToggleFavorite: (TransitLocation) -> Unit,
@@ -217,14 +222,7 @@ private fun LocationPickerList(
             }
             if (items.isNotEmpty()) {
                 item(key = "favourites-header") {
-                    Text(
-                        text = stringResource(R.string.picker_saved_header),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier
-                            .padding(start = 16.dp, top = 16.dp, bottom = 4.dp)
-                            .animateItem(),
-                    )
+                    SectionHeader(stringResource(R.string.picker_saved_header))
                 }
             }
         }
@@ -233,19 +231,57 @@ private fun LocationPickerList(
             count = items.size,
             key = { index -> items[index].location.favoriteKey },
         ) { index ->
-            val item = items[index]
-            LocationListItem(
-                location = item.location,
-                onClick = { onPick(item.location) },
-                distanceMeters = item.distanceMeters,
-                trailingContent = {
-                    FavoriteButton(
-                        isFavorite = item.isFavorite,
-                        onToggle = { onToggleFavorite(item.location) },
-                    )
-                },
-                modifier = Modifier.animateItem(),
-            )
+            PickerRow(items[index], onPick = onPick, onToggleFavorite = onToggleFavorite)
+        }
+
+        // Only with an empty query: while typing, a recently used place is pinned in among the
+        // results instead (see the ViewModel), because a second list of them below the matches
+        // would be answering a question the user has stopped asking.
+        if (query.isBlank() && recentItems.isNotEmpty()) {
+            item(key = "recent-header") {
+                SectionHeader(stringResource(R.string.picker_recent_header))
+            }
+            items(
+                count = recentItems.size,
+                // Prefixed: a place can be both starred and recent, and two rows keyed alike
+                // crashes LazyColumn.
+                key = { index -> "recent-${recentItems[index].location.favoriteKey}" },
+            ) { index ->
+                PickerRow(recentItems[index], onPick = onPick, onToggleFavorite = onToggleFavorite)
+            }
         }
     }
+}
+
+@Composable
+private fun LazyItemScope.PickerRow(
+    item: PickerItem,
+    onPick: (TransitLocation) -> Unit,
+    onToggleFavorite: (TransitLocation) -> Unit,
+) {
+    LocationListItem(
+        location = item.location,
+        onClick = { onPick(item.location) },
+        distanceMeters = item.distanceMeters,
+        isRecent = item.isRecent,
+        trailingContent = {
+            FavoriteButton(
+                isFavorite = item.isFavorite,
+                onToggle = { onToggleFavorite(item.location) },
+            )
+        },
+        modifier = Modifier.animateItem(),
+    )
+}
+
+@Composable
+private fun LazyItemScope.SectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .padding(start = 16.dp, top = 16.dp, bottom = 4.dp)
+            .animateItem(),
+    )
 }
