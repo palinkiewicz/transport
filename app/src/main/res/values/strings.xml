@@ -58,7 +58,6 @@
         <item quantity="one">%1$d transfer</item>
         <item quantity="other">%1$d transfers</item>
     </plurals>
-    <string name="transfers_direct">direct</string>
     <plurals name="plural_stops">
         <item quantity="one">%1$d stop</item>
         <item quantity="other">%1$d stops</item>
@@ -285,8 +284,8 @@
     <string name="results_empty_title">No connections found</string>
     <string name="results_empty_body">Nothing runs between these places at this time. Try another departure time, or relax the advanced search options.</string>
     <string name="results_empty_action">Search again</string>
-    <!-- Door-to-door line on a result card: "08:10 → 08:52 · Home → Office" -->
-    <string name="results_door_to_door_row">%1$s → %2$s · %3$s → %4$s</string>
+    <!-- Summary on a result card: "42 min · 08:10 – 08:52" -->
+    <string name="results_duration_span">%1$s · %2$s – %3$s</string>
     <string name="results_show_previous">Show previous</string>
     <string name="results_show_next">Show next</string>
     <string name="results_departing_now">Departing now</string>

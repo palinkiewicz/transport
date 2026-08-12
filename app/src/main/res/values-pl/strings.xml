@@ -60,7 +60,6 @@
         <item quantity="many">%1$d przesiadek</item>
         <item quantity="other">%1$d przesiadki</item>
     </plurals>
-    <string name="transfers_direct">bezpośrednio</string>
     <plurals name="plural_stops">
         <item quantity="one">%1$d przystanek</item>
         <item quantity="few">%1$d przystanki</item>
@@ -303,8 +302,8 @@
     <string name="results_empty_title">Nie znaleziono połączeń</string>
     <string name="results_empty_body">W tym czasie nic nie kursuje między tymi miejscami. Spróbuj wybrać inną godzinę odjazdu lub zmień zaawansowane opcje wyszukiwania.</string>
     <string name="results_empty_action">Szukaj ponownie</string>
-    <!-- Door-to-door line on a result card: "08:10 → 08:52 · Home → Office" -->
-    <string name="results_door_to_door_row">%1$s → %2$s · %3$s → %4$s</string>
+    <!-- Summary on a result card: "42 min · 08:10 – 08:52" -->
+    <string name="results_duration_span">%1$s · %2$s – %3$s</string>
     <string name="results_show_previous">Pokaż wcześniejsze</string>
     <string name="results_show_next">Pokaż późniejsze</string>
     <string name="results_departing_now">Odjazd teraz</string>

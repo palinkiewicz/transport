@@ -44,7 +44,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.Duration
@@ -201,13 +200,9 @@ private fun JourneyCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Two separate questions. The countdown only changes when there is a walk *before*
-            // boarding — that is what moves the moment you have to set off. The extra line is
-            // worth showing whenever either end differs, since walking to the destination
-            // changes when you actually arrive.
+            // The countdown only changes when there is a walk *before* boarding — that is what
+            // moves the moment you have to set off.
             val leaving = timesMode.includesDoorToDoor && journey.startTime != journey.departureTime
-            val showDoorToDoor = timesMode.includesDoorToDoor &&
-                (journey.startTime != journey.departureTime || journey.endTime != journey.arrivalTime)
             val countdownFrom = if (leaving) journey.startTime else journey.departureTime
             val minutesUntilDeparture = Duration.between(OffsetDateTime.now(), countdownFrom).toMinutes()
             Row(
@@ -221,15 +216,22 @@ private fun JourneyCard(
                     fontWeight = FontWeight.Bold,
                     color = if (minutesUntilDeparture < 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )
+                // Duration and span are the *same* journey read two ways, so both follow the
+                // mode: with the walk at either end folded in, or purely the vehicle's own run.
+                // The transfer count used to sit here; the line chips below already show it.
+                val cardTimeFormatter = rememberTimeFormatter()
+                val doorToDoor = timesMode.includesDoorToDoor
                 Text(
-                    text = run {
-                        val seconds = if (timesMode == ConnectionTimesMode.DOOR_TO_DOOR) {
-                            journey.duration.toLong()
-                        } else {
-                            journey.transitDurationSeconds
-                        }
-                        "${formatDuration(seconds)} · ${transfersLabel(journey.transfers)}"
-                    },
+                    text = stringResource(
+                        R.string.results_duration_span,
+                        formatDuration(
+                            if (doorToDoor) journey.duration.toLong() else journey.transitDurationSeconds,
+                        ),
+                        (if (doorToDoor) journey.startTime else journey.departureTime)
+                            .format(cardTimeFormatter),
+                        (if (doorToDoor) journey.endTime else journey.arrivalTime)
+                            .format(cardTimeFormatter),
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -271,9 +273,6 @@ private fun JourneyCard(
                 StopTimeRow(stopName = fromName, time = journey.startTime, scheduledTime = null)
                 StopTimeRow(stopName = toName, time = journey.endTime, scheduledTime = null)
             } else {
-                if (timesMode == ConnectionTimesMode.BOTH && showDoorToDoor) {
-                    DoorToDoorRow(journey, fromName, toName)
-                }
                 StopTimeRow(
                     stopName = if (isDirect) fromName else journey.firstStopName,
                     time = journey.departureTime,
@@ -340,29 +339,6 @@ private fun AccessLegDistance(leg: JourneyLeg) {
     }
 }
 
-/**
- * The whole trip end to end, walk included — the line that answers "when do I leave and when
- * am I there", above the stop times that answer "when does the vehicle go".
- */
-@Composable
-private fun DoorToDoorRow(journey: Journey, fromName: String, toName: String) {
-    val cardTimeFormatter = rememberTimeFormatter()
-    Text(
-        text = stringResource(
-            R.string.results_door_to_door_row,
-            journey.startTime.format(cardTimeFormatter),
-            journey.endTime.format(cardTimeFormatter),
-            fromName,
-            toName,
-        ),
-        style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth(),
-    )
-}
-
 /** [scheduledTime] null means there is no schedule to compare against; the time is drawn plainly. */
 @Composable
 private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: OffsetDateTime?) {
@@ -384,14 +360,6 @@ private fun StopTimeRow(stopName: String, time: OffsetDateTime, scheduledTime: O
         }
     }
 }
-
-@Composable
-private fun transfersLabel(transfers: Int): String =
-    if (transfers == 0) {
-        stringResource(R.string.transfers_direct)
-    } else {
-        pluralStringResource(R.plurals.plural_transfers, transfers, transfers)
-    }
 
 private const val MINUTES_PER_DAY = 24 * 60
 
