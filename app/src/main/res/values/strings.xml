@@ -424,7 +424,13 @@
     <string name="settings_export_descriptions">Include line details</string>
     <string name="settings_export_descriptions_note">Adds the line, direction, platform and operator to each waypoint and track.</string>
 
+    <string name="map_theme_system">System</string>
+    <string name="map_theme_light">Light</string>
+    <string name="map_theme_dark">Dark</string>
+
     <string name="settings_group_map_detail">Map detail</string>
+    <string name="settings_map_theme">Map colours</string>
+    <string name="settings_map_theme_note">Applies to every map in the app. Separate from the app\'s own light or dark colours — System keeps the two together.</string>
     <string name="settings_stops_from_zoom">Stops from zoom</string>
     <string name="settings_stops_from_zoom_note">Lower shows stops earlier when zooming out, at the cost of a denser map and larger responses.</string>
     <string name="settings_vehicles_from_zoom">Vehicles from zoom</string>

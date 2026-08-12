@@ -4,6 +4,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -168,7 +169,13 @@ fun RouteMap(
     styleViewModel: MapStyleViewModel = hiltViewModel(),
     bottomOverlay: @Composable ColumnScope.() -> Unit = {},
 ) {
+    // Only a composable can read the device's dark-mode setting, which MapTheme.SYSTEM needs.
+    val systemInDarkTheme = isSystemInDarkTheme()
+    LaunchedEffect(systemInDarkTheme) { styleViewModel.setSystemInDarkTheme(systemInDarkTheme) }
     val styleJson by styleViewModel.styleJson.collectAsStateWithLifecycle()
+    // Delegated, not captured: the map content lambda is composed once, so reading this at the
+    // use site inside it is what keeps the labels following the colourway.
+    val darkMap by styleViewModel.darkMap.collectAsStateWithLifecycle()
 
     val allPoints = remember(lines) { lines.flatMap { it.points } }
     val cameraState = rememberCameraState(
@@ -384,8 +391,8 @@ fun RouteMap(
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),
-                    // Fixed dark gray: the base map is light regardless of app theme.
-                    textColor = const(Color(0xFF424242)),
+                    // Keyed to the basemap, not the app theme — see mapLabelColor.
+                    textColor = const(mapLabelColor(darkMap == true)),
                 )
             }
         }

@@ -81,6 +81,7 @@ import pl.dakil.transport.domain.model.DefaultTab
 import pl.dakil.transport.domain.model.ExportDelivery
 import pl.dakil.transport.domain.model.ExportFileName
 import pl.dakil.transport.domain.model.LineColorMode
+import pl.dakil.transport.domain.model.MapTheme
 import pl.dakil.transport.domain.model.OfflineCacheSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.ui.components.IntSliderRow
@@ -614,6 +615,20 @@ private fun DataRefreshGroup(settings: AppSettings, viewModel: SettingsViewModel
 @Composable
 private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) {
     SettingsGroup(title = stringResource(R.string.settings_group_map_detail), icon = Icons.Default.Layers) {
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(stringResource(R.string.settings_map_theme), style = MaterialTheme.typography.titleSmall)
+            SingleChoiceToggleFlow(
+                options = MapTheme.entries,
+                selected = settings.mapTheme,
+                onSelect = { theme -> viewModel.update { it.copy(mapTheme = theme) } },
+                label = { stringResource(it.labelRes) },
+            )
+            Text(
+                text = stringResource(R.string.settings_map_theme_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         LabeledSliderRow(
             title = stringResource(R.string.settings_stops_from_zoom),
             value = settings.stopsMinZoom,

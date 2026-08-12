@@ -1,6 +1,7 @@
 package pl.dakil.transport.ui.map
 
 import android.Manifest
+import android.app.Activity
 import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -11,6 +12,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -59,6 +61,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -80,6 +83,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
@@ -88,6 +92,7 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.time.Duration.Companion.milliseconds
@@ -259,6 +264,7 @@ fun MapScreen(
     onNavigateToConnections: () -> Unit,
     onOpenLocationSearch: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
+    styleViewModel: MapStyleViewModel = hiltViewModel(),
 ) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
@@ -278,7 +284,15 @@ fun MapScreen(
             viewModel.consumeAreaDownload()
         }
     }
-    val styleJson by viewModel.styleJson.collectAsStateWithLifecycle()
+    // Only a composable can answer what the device's dark-mode setting is, and MapTheme.SYSTEM
+    // needs it; everything downstream of the answer is derived in the view model.
+    val systemInDarkTheme = isSystemInDarkTheme()
+    LaunchedEffect(systemInDarkTheme) { styleViewModel.setSystemInDarkTheme(systemInDarkTheme) }
+    val styleJson by styleViewModel.styleJson.collectAsStateWithLifecycle()
+    // Delegated for the same reason as the layer state below: the map content lambda is composed
+    // once, so a captured value would freeze the labels at whichever colourway loaded first.
+    val darkMap by styleViewModel.darkMap.collectAsStateWithLifecycle()
+    MapStatusBarIcons(darkMap)
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
     // Delegated for the same reason as the rest: the routes layer reads this from inside the
@@ -813,9 +827,9 @@ fun MapScreen(
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),
-                    // Fixed dark gray: the base map is light regardless of app theme, and
-                    // theme-derived grays wash out against it in dark mode.
-                    textColor = const(Color(0xFF424242)),
+                    // Keyed to the basemap, not the app theme: the two are separate settings,
+                    // and a label only has to stay legible against what is drawn under it.
+                    textColor = const(mapLabelColor(darkMap == true)),
                 )
                 // Vehicles stack above stops: they move, so they should never hide under pins.
                 CircleLayer(
@@ -854,7 +868,7 @@ fun MapScreen(
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),
                     textAnchor = const(SymbolAnchor.Top),
-                    textColor = const(Color(0xFF424242)),
+                    textColor = const(mapLabelColor(darkMap == true)),
                 )
             }
             if (locationState != null) {
@@ -1049,6 +1063,29 @@ fun MapScreen(
  * opens the full-screen [pl.dakil.transport.ui.search.LocationPickerScreen], whose pick
  * flows back to the map as a selection + camera move.
  */
+/**
+ * Contrasts the status bar's icons against the basemap for as long as the map is open: dark
+ * icons over the light map, light icons over the dark one.
+ *
+ * This screen is the one place the map itself is what the status bar sits against — every other
+ * destination puts a top app bar there — so the clock and signal icons have to follow the
+ * basemap rather than the app theme that `enableEdgeToEdge` set at startup. The previous
+ * appearance is put back on leaving, so nothing else is affected. Null means the colourway is
+ * not resolved yet: nothing to contrast against, so nothing is touched.
+ */
+@Composable
+private fun MapStatusBarIcons(darkMap: Boolean?) {
+    val view = LocalView.current
+    if (view.isInEditMode || darkMap == null) return
+    val window = (view.context as? Activity)?.window ?: return
+    DisposableEffect(view, window, darkMap) {
+        val controller = WindowCompat.getInsetsController(window, view)
+        val previous = controller.isAppearanceLightStatusBars
+        controller.isAppearanceLightStatusBars = !darkMap
+        onDispose { controller.isAppearanceLightStatusBars = previous }
+    }
+}
+
 /**
  * Says the stops on screen came from the phone rather than the network.
  *

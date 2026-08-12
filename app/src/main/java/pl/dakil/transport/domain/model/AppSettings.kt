@@ -156,6 +156,28 @@ enum class ConnectionTimesMode(@param:StringRes val labelRes: Int) {
 }
 
 /**
+ * Which of the two bundled basemap styles the map draws with.
+ *
+ * Deliberately its own setting rather than a read of the app theme: the map is a picture of the
+ * world rather than a surface of the UI, and wanting a dark app at night is not the same wish as
+ * wanting a dark map in daylight. [SYSTEM] is what makes the two agree by default.
+ */
+@Serializable
+enum class MapTheme(@param:StringRes val labelRes: Int) {
+    SYSTEM(R.string.map_theme_system),
+    LIGHT(R.string.map_theme_light),
+    DARK(R.string.map_theme_dark),
+    ;
+
+    /** Resolved against the device's current setting, which only [SYSTEM] consults. */
+    fun isDark(systemInDarkTheme: Boolean): Boolean = when (this) {
+        SYSTEM -> systemInDarkTheme
+        LIGHT -> false
+        DARK -> true
+    }
+}
+
+/**
  * Where a line's colour comes from on the list screens. The map always uses the server's colours:
  * markers and route overlays have no "next line" order to hand a palette out along.
  */
@@ -291,6 +313,9 @@ data class AppSettings(
 
     /** Stop markers are not fetched or drawn below this zoom level. */
     val stopsMinZoom: Float = 13.0f,
+
+    /** Which of the bundled basemap styles every map in the app draws with. */
+    val mapTheme: MapTheme = MapTheme.SYSTEM,
 
     /** Which tab the app opens on. */
     val defaultTab: DefaultTab = DefaultTab.MAP,

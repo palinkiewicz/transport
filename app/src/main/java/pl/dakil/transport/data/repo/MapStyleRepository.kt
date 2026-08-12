@@ -5,6 +5,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,6 +22,11 @@ import kotlinx.serialization.json.jsonPrimitive
 // Custom Google-Maps-like restyle of OSM Liberty, exported from Maputnik. Re-exports can be
 // dropped in as-is: everything environment-specific is patched at load time below.
 private const val STYLE_ASSET = "gmaps_style.json"
+
+// The same style recoloured to Google Maps' own "Dark" palette. Layer ids, filters, zoom stops
+// and layer order are identical to the light asset — only colours differ — so everything patched
+// below, and every app layer anchored into it, applies unchanged to both.
+private const val DARK_STYLE_ASSET = "gmaps_style_dark.json"
 
 // The Maputnik export points its vector source at MapTiler with a placeholder demo key; the app
 // uses OpenFreeMap's tiles instead (same OpenMapTiles schema, no key needed).
@@ -44,21 +51,35 @@ class MapStyleRepository @Inject constructor(
     private val json: Json,
 ) {
 
+    // Parsing and re-encoding four thousand lines of JSON is not something to redo every time
+    // the user flips the setting back, so each variant is kept once it has been built.
+    private val patched = mutableMapOf<String, String>()
+    private val mutex = Mutex()
+
     /**
-     * Loads the bundled map style and patches it for use in the app: vector tiles repointed to
-     * OpenFreeMap, transit stops removed from the POI layers (the app draws its own stop
-     * markers), and unavailable fontstacks replaced.
+     * Loads the bundled map style — [dark] picks between the two colourways — and patches it for
+     * use in the app: vector tiles repointed to OpenFreeMap, transit stops removed from the POI
+     * layers (the app draws its own stop markers), and unavailable fontstacks replaced.
      */
-    suspend fun transitFreeGmapsStyle(): String = withContext(Dispatchers.IO) {
-        val body = context.assets.open(STYLE_ASSET).bufferedReader().use { it.readText() }
+    suspend fun transitFreeGmapsStyle(dark: Boolean): String = withContext(Dispatchers.IO) {
+        val asset = if (dark) DARK_STYLE_ASSET else STYLE_ASSET
+        mutex.withLock {
+            patched.getOrPut(asset) { patchStyle(asset) }
+        }
+    }
+
+    private fun patchStyle(asset: String): String {
+        val body = context.assets.open(asset).bufferedReader().use { it.readText() }
         val style = json.parseToJsonElement(body).jsonObject
         val layers = style.getValue("layers").jsonArray.map { layer -> patchLayer(layer.jsonObject) }
-        val patched = JsonObject(
-            style +
-                ("sources" to patchSources(style.getValue("sources").jsonObject)) +
-                ("layers" to JsonArray(layers)),
+        return json.encodeToString(
+            JsonObject.serializer(),
+            JsonObject(
+                style +
+                    ("sources" to patchSources(style.getValue("sources").jsonObject)) +
+                    ("layers" to JsonArray(layers)),
+            ),
         )
-        json.encodeToString(JsonObject.serializer(), patched)
     }
 
     private fun patchSources(sources: JsonObject): JsonObject {

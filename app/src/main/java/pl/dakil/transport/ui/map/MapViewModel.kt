@@ -38,7 +38,6 @@ import pl.dakil.transport.data.repo.GeocodeRepository
 import pl.dakil.transport.data.local.Bbox
 import pl.dakil.transport.data.local.TileGrid
 import pl.dakil.transport.data.repo.CacheMaintenance
-import pl.dakil.transport.data.repo.MapStyleRepository
 import pl.dakil.transport.data.repo.PlaceCacheRepository
 import pl.dakil.transport.data.repo.RoutesRepository
 import pl.dakil.transport.data.repo.VehiclesRepository
@@ -172,7 +171,6 @@ class MapViewModel @Inject constructor(
     private val geocodeRepository: GeocodeRepository,
     private val routesRepository: RoutesRepository,
     private val vehiclesRepository: VehiclesRepository,
-    private val mapStyleRepository: MapStyleRepository,
     private val filtersRepository: MapFiltersRepository,
     private val favoritesRepository: FavoritesRepository,
     private val searchStateHolder: SearchStateHolder,
@@ -225,13 +223,6 @@ class MapViewModel @Inject constructor(
     private val _initialCamera = MutableStateFlow<MapCamera?>(null)
     val initialCamera: StateFlow<MapCamera?> = _initialCamera
 
-    /**
-     * Patched bundled style JSON (base transit stop icons removed, sources repointed);
-     * null only for the brief moment the asset is being read.
-     */
-    private val _styleJson = MutableStateFlow<String?>(null)
-    val styleJson: StateFlow<String?> = _styleJson
-
     // Kept locally (seeded from disk once) rather than read through the repository flow, so
     // rapid toggling in the filter menu never races the DataStore write round-trip.
     private val _filters = MutableStateFlow(MapFilters.DEFAULT)
@@ -244,9 +235,6 @@ class MapViewModel @Inject constructor(
     val cameraTarget: StateFlow<GeoPoint?> = _cameraTarget
 
     init {
-        viewModelScope.launch {
-            _styleJson.value = mapStyleRepository.transitFreeGmapsStyle()
-        }
         viewModelScope.launch {
             val remember = settingsRepository.settings.first().rememberMapCamera
             _initialCamera.value = sessionStateRepository.state.first().mapCamera

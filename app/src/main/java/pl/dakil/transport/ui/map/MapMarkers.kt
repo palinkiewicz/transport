@@ -75,8 +75,19 @@ internal fun markerIconKey(mode: TransportMode): String = when (mode) {
     else -> "bus"
 }
 
-/** Stroke ringing every stop pin, on both maps. */
+/** Stroke ringing every stop pin, on both maps. Mid-gray reads on either basemap colourway. */
 internal val MARKER_STROKE_COLOR = Color(0xFF9E9E9E)
+
+/**
+ * Colour of the stop and vehicle name labels drawn beside a marker.
+ *
+ * Fixed values rather than theme-derived ones: what a label has to stay legible against is the
+ * basemap under it, not the app's surfaces — the two are separate choices (see
+ * [pl.dakil.transport.domain.model.MapTheme]), so a dark app over a light map would otherwise
+ * write pale grey onto near-white. The pair matches the basemap's own place labels.
+ */
+internal fun mapLabelColor(darkMap: Boolean): Color =
+    if (darkMap) Color(0xFFE3E3E3) else Color(0xFF424242)
 
 /**
  * The white mode glyph drawn inside a marker, switched on the feature's `icon` property.

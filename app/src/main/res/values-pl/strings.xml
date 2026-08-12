@@ -442,7 +442,13 @@
     <string name="settings_export_descriptions">Dołącz szczegóły linii</string>
     <string name="settings_export_descriptions_note">Dodaje linię, kierunek, peron i przewoźnika do każdego punktu trasy i śladu.</string>
 
+    <string name="map_theme_system">Systemowy</string>
+    <string name="map_theme_light">Jasny</string>
+    <string name="map_theme_dark">Ciemny</string>
+
     <string name="settings_group_map_detail">Szczegółowość mapy</string>
+    <string name="settings_map_theme">Kolory mapy</string>
+    <string name="settings_map_theme_note">Dotyczy każdej mapy w aplikacji. Niezależne od jasnego lub ciemnego motywu samej aplikacji — opcja Systemowy utrzymuje oba zgodnie.</string>
     <string name="settings_stops_from_zoom">Przystanki od poziomu przybliżenia</string>
     <string name="settings_stops_from_zoom_note">Niższa wartość pokazuje przystanki przy mniejszym zbliżeniu mapy, kosztem większego zagęszczenia ikon i większych odpowiedzi z serwera.</string>
     <string name="settings_vehicles_from_zoom">Pojazdy od poziomu przybliżenia</string>
