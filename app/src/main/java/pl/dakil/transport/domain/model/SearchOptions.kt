@@ -1,6 +1,7 @@
 package pl.dakil.transport.domain.model
 
 import androidx.annotation.StringRes
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import pl.dakil.transport.R
 
@@ -59,6 +60,16 @@ enum class RentalPropulsionType(@param:StringRes val labelRes: Int) {
     HYDROGEN_FUEL_CELL(R.string.rental_propulsion_hydrogen),
 }
 
+/**
+ * How the transfer count is constrained, derived from [SearchOptions.maxTransfers]. UI-only:
+ * the number itself is what gets persisted and sent.
+ */
+enum class TransfersMode(@param:StringRes val labelRes: Int) {
+    ANY(R.string.transfers_any),
+    NONE(R.string.transfers_none),
+    LIMIT(R.string.transfers_limit),
+}
+
 /** Which street leg of a journey a [StreetLegOptions] instance configures. */
 enum class LegContext(@param:StringRes val labelRes: Int) {
     DIRECT(R.string.leg_context_direct),
@@ -87,7 +98,13 @@ data class StreetLegOptions(
  */
 @Serializable
 data class SearchOptions(
-    val maxTransfers: Int = 12,
+    /**
+     * null = no limit (the param is omitted), 0 = direct runs only, n = at most n transfers.
+     * The serial name is deliberately not `maxTransfers`: that key holds the old mandatory
+     * `Int` cap of 12, and decoding it would give every existing install a limit it never
+     * chose. Unknown keys are ignored, so the stored value is simply dropped.
+     */
+    @SerialName("maxTransfersLimit") val maxTransfers: Int? = null,
     val arriveBy: Boolean = false,
     // Routing
     val transitCategories: Set<TransitFilterCategory> = TransitFilterCategory.entries.toSet(),
@@ -124,6 +141,13 @@ data class SearchOptions(
     val departuresRadiusMeters: Int = 300,
 ) {
     val isDefault: Boolean get() = this == DEFAULT
+
+    val transfersMode: TransfersMode
+        get() = when (maxTransfers) {
+            null -> TransfersMode.ANY
+            0 -> TransfersMode.NONE
+            else -> TransfersMode.LIMIT
+        }
 
     fun legOptions(context: LegContext): StreetLegOptions = when (context) {
         LegContext.DIRECT -> direct

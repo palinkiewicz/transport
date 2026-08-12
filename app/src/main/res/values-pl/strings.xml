@@ -18,7 +18,6 @@
     <string name="action_select_none">Brak</string>
     <string name="action_expand">Rozwiń</string>
     <string name="action_collapse">Zwiń</string>
-    <string name="badge_modified">Zmieniono</string>
     <string name="label_place">Miejsce</string>
     <string name="label_recent">Ostatnio używane</string>
 
@@ -499,7 +498,8 @@
     <string name="advanced_options_title">Zaawansowane</string>
     <string name="advanced_options_about">O opcjach: %1$s</string>
 
-    <string name="advanced_group_routing">Planowanie trasy</string>
+    <string name="advanced_group_transfers">Przesiadki</string>
+    <string name="advanced_group_pace">Prędkość i czas</string>
     <string name="advanced_group_accessibility">Dostępność i ruch pieszy/drogowy</string>
     <string name="advanced_group_street_legs">Trasy bezpośrednie oraz dojście/dojazd</string>
     <string name="advanced_group_results">Wyniki</string>
@@ -515,6 +515,7 @@
     <string name="advanced_routed_transfers">Przesiadki według sieci ulic</string>
     <string name="advanced_routed_transfers_note">Obliczaj przesiadki na podstawie sieci ulic zamiast wstępnie przeliczonych danych</string>
 
+    <string name="advanced_pedestrian_profile">Profil pieszego</string>
     <string name="advanced_custom_walking_speed">Niestandardowa prędkość marszu</string>
     <string name="advanced_walking_speed">Prędkość marszu</string>
     <string name="advanced_custom_cycling_speed">Niestandardowa prędkość jazdy rowerem</string>
@@ -548,6 +549,7 @@
     <string name="advanced_departures_radius_note">Promień dotyczy wyszukiwania wokół współrzędnych (miejsce bez ID przystanku).</string>
 
     <!-- Advanced options: the explanations behind each group's info button -->
+    <string name="info_max_transfers">Ogranicza liczbę zmian pojazdu w podróży. Bez limitu decyduje serwer; brak przesiadek zwraca tylko połączenia bezpośrednie.</string>
     <string name="info_transit_modes">Rodzaje transportu publicznego używane w podróży. Odznaczenie kategorii wyklucza wszystkie jej linie; brak zaznaczenia spowoduje brak wyszukanych połączeń.</string>
     <string name="info_min_transfer_time">Minimalny czas zarezerwowany na każdą przesiadkę między pojazdami.</string>
     <string name="info_extra_transfer_buffer">Dodatkowy zapas czasu dodawany do wymaganego czasu przesiadki.</string>
@@ -555,7 +557,6 @@
     <string name="info_limit_travel_time">Ogranicza całkowity czas podróży. Uwaga: zbyt niski limit może ukryć optymalne trasy (np. z mniejszą liczbą przesiadek) i spowolnić wyszukiwanie.</string>
     <string name="info_routed_transfers">Oblicza przesiadki na podstawie sieci ulic zamiast wstępnie przeliczonych danych — jest to dokładniejsze, ale wolniejsze.</string>
 
-    <string name="info_pedestrian_profile_title">Pieszo / Wózek inwalidzki</string>
     <string name="info_pedestrian_profile">Profil dostępności używany dla przesiadek oraz pierwszego i ostatniego odcinka. Profil dla wózków preferuje trasy bez schodów i barier.</string>
     <string name="info_walking_speed">Średnia prędkość marszu używana do wyznaczania trasy pieszej. Standardowe tempo marszu to około 1,2 m/s.</string>
     <string name="info_cycling_speed">Średnia prędkość jazdy rowerem. Spokojne tempo to około 4 m/s.</string>
@@ -583,6 +584,9 @@
     <string name="info_departures_radius">Promień wokół wybranych współrzędnych, z którego zbierane są przystanki. Dotyczy tylko sytuacji, gdy wybrane miejsce nie jest przystankiem.</string>
 
     <!-- Search option enum values -->
+    <string name="transfers_any">Dowolna liczba</string>
+    <string name="transfers_none">Bez przesiadek</string>
+    <string name="transfers_limit">Maksymalnie</string>
     <string name="pedestrian_profile_foot">Pieszo</string>
     <string name="pedestrian_profile_wheelchair">Wózek inwalidzki</string>
     <string name="elevation_costs_none">Brak</string>

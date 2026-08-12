@@ -14,13 +14,18 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DepartureBoard
+import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.TripOrigin
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -42,6 +47,7 @@ fun DeparturesSearchScreen(
     viewModel: DeparturesSearchViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var openSheet by rememberSaveable { mutableStateOf<SearchOptionsSheet?>(null) }
 
     Scaffold(
         // See ConnectionsSearchScreen: the app-level bottom bar already clears the bottom inset.
@@ -106,6 +112,19 @@ fun DeparturesSearchScreen(
                 showResetToNow = isAwayFromNow(uiState.dateTime),
             )
 
+            SearchOptionsBar {
+                SearchOptionsButton(
+                    icon = Icons.Default.DirectionsTransit,
+                    title = stringResource(R.string.advanced_transit_modes),
+                    onClick = { openSheet = SearchOptionsSheet.DEPARTURES_MODES },
+                )
+                SearchOptionsButton(
+                    icon = Icons.Default.Tune,
+                    title = stringResource(R.string.advanced_options_title),
+                    onClick = { openSheet = SearchOptionsSheet.DEPARTURES_BOARD },
+                )
+            }
+
             SearchButton(
                 onClick = {
                     val stop = uiState.stop ?: return@SearchButton
@@ -121,11 +140,13 @@ fun DeparturesSearchScreen(
                 },
                 enabled = uiState.canSearch,
             )
-
-            DeparturesAdvancedOptions(
-                options = uiState.options,
-                onUpdate = viewModel::updateOptions,
-            )
         }
     }
+
+    SearchOptionsSheetHost(
+        sheet = openSheet,
+        options = uiState.options,
+        onUpdate = viewModel::updateOptions,
+        onDismiss = { openSheet = null },
+    )
 }

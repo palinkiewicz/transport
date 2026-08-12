@@ -18,7 +18,6 @@
     <string name="action_select_none">None</string>
     <string name="action_expand">Expand</string>
     <string name="action_collapse">Collapse</string>
-    <string name="badge_modified">Modified</string>
     <string name="label_place">Place</string>
     <string name="label_recent">Recently used</string>
 
@@ -481,7 +480,8 @@
     <string name="advanced_options_title">Advanced options</string>
     <string name="advanced_options_about">About %1$s options</string>
 
-    <string name="advanced_group_routing">Routing</string>
+    <string name="advanced_group_transfers">Transfers</string>
+    <string name="advanced_group_pace">Pace &amp; time</string>
     <string name="advanced_group_accessibility">Accessibility &amp; street</string>
     <string name="advanced_group_street_legs">Direct &amp; first/last mile</string>
     <string name="advanced_group_results">Results</string>
@@ -497,6 +497,7 @@
     <string name="advanced_routed_transfers">Routed transfers</string>
     <string name="advanced_routed_transfers_note">Compute transfers on the street network instead of using precomputed ones</string>
 
+    <string name="advanced_pedestrian_profile">Pedestrian profile</string>
     <string name="advanced_custom_walking_speed">Custom walking speed</string>
     <string name="advanced_walking_speed">Walking speed</string>
     <string name="advanced_custom_cycling_speed">Custom cycling speed</string>
@@ -530,6 +531,7 @@
     <string name="advanced_departures_radius_note">Radius applies when searching around coordinates (a place without a stop id).</string>
 
     <!-- Advanced options: the explanations behind each group's info button -->
+    <string name="info_max_transfers">Caps how many times the journey may change vehicles. Without a limit the server decides; direct only returns journeys with no change at all.</string>
     <string name="info_transit_modes">Kinds of transit the journey may use. Deselecting a category excludes all its lines; with nothing selected no transit connections are computed.</string>
     <string name="info_min_transfer_time">Minimum time reserved for every transfer between vehicles.</string>
     <string name="info_extra_transfer_buffer">Additional safety margin added on top of each transfer\'s required time.</string>
@@ -537,7 +539,6 @@
     <string name="info_limit_travel_time">Caps the total journey duration. Warning: a low cap can hide otherwise optimal journeys (e.g. ones with fewer transfers) and slow the search down.</string>
     <string name="info_routed_transfers">Computes transfers on the street network instead of using precomputed ones — more precise, but slower.</string>
 
-    <string name="info_pedestrian_profile_title">On foot / Wheelchair</string>
     <string name="info_pedestrian_profile">Accessibility profile used for transfers and the first/last mile. Wheelchair prefers step-free paths.</string>
     <string name="info_walking_speed">Average walking speed used for street routing. Typical walking pace is about 1.2 m/s.</string>
     <string name="info_cycling_speed">Average cycling speed used for bike routing. A relaxed pace is around 4 m/s.</string>
@@ -565,6 +566,9 @@
     <string name="info_departures_radius">How far around the chosen coordinates stops are collected. Only applies when the picked place is not a stop itself.</string>
 
     <!-- Search option enum values -->
+    <string name="transfers_any">Any number</string>
+    <string name="transfers_none">No transfers</string>
+    <string name="transfers_limit">At most</string>
     <string name="pedestrian_profile_foot">On foot</string>
     <string name="pedestrian_profile_wheelchair">Wheelchair</string>
     <string name="elevation_costs_none">None</string>

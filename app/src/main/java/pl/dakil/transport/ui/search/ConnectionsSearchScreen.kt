@@ -14,12 +14,17 @@ import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
+import androidx.compose.material.icons.filled.ChangeCircle
+import androidx.compose.material.icons.filled.DirectionsTransit
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material.icons.filled.TripOrigin
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -32,6 +37,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -39,7 +47,6 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.R
-import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
 import pl.dakil.transport.ui.navigation.ResultsRoute
 
@@ -56,6 +63,7 @@ fun ConnectionsSearchScreen(
     viewModel: ConnectionsSearchViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    var openSheet by rememberSaveable { mutableStateOf<SearchOptionsSheet?>(null) }
 
     Scaffold(
         // No TopAppBar here, so this screen owns the top/horizontal system bar insets itself.
@@ -125,13 +133,36 @@ fun ConnectionsSearchScreen(
                 showResetToNow = isAwayFromNow(uiState.dateTime),
             )
 
-            IntSliderRow(
-                title = stringResource(R.string.connections_max_transfers),
-                value = uiState.options.maxTransfers,
-                onValueCommit = { transfers -> viewModel.updateOptions { it.copy(maxTransfers = transfers) } },
-                min = 0,
-                max = 12,
-            )
+            SearchOptionsBar {
+                SearchOptionsButton(
+                    icon = Icons.Default.ChangeCircle,
+                    title = stringResource(R.string.advanced_group_transfers),
+                    onClick = { openSheet = SearchOptionsSheet.TRANSFERS },
+                    // The only option worth reading without opening its sheet: how many
+                    // transfers the results may have. Null means no limit, so no badge.
+                    badge = uiState.options.maxTransfers?.toString(),
+                )
+                SearchOptionsButton(
+                    icon = Icons.Default.DirectionsTransit,
+                    title = stringResource(R.string.advanced_transit_modes),
+                    onClick = { openSheet = SearchOptionsSheet.TRANSIT_MODES },
+                )
+                SearchOptionsButton(
+                    icon = Icons.AutoMirrored.Filled.DirectionsWalk,
+                    title = stringResource(R.string.advanced_group_street_legs),
+                    onClick = { openSheet = SearchOptionsSheet.STREET_LEGS },
+                )
+                SearchOptionsButton(
+                    icon = Icons.Default.Speed,
+                    title = stringResource(R.string.advanced_group_pace),
+                    onClick = { openSheet = SearchOptionsSheet.PACE },
+                )
+                SearchOptionsButton(
+                    icon = Icons.Default.Tune,
+                    title = stringResource(R.string.advanced_options_title),
+                    onClick = { openSheet = SearchOptionsSheet.ADVANCED },
+                )
+            }
 
             SearchButton(
                 onClick = {
@@ -154,13 +185,15 @@ fun ConnectionsSearchScreen(
                 },
                 enabled = uiState.canSearch,
             )
-
-            ConnectionsAdvancedOptions(
-                options = uiState.options,
-                onUpdate = viewModel::updateOptions,
-            )
         }
     }
+
+    SearchOptionsSheetHost(
+        sheet = openSheet,
+        options = uiState.options,
+        onUpdate = viewModel::updateOptions,
+        onDismiss = { openSheet = null },
+    )
 }
 
 /**
