@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -51,14 +52,20 @@ import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Subway
 import androidx.compose.material.icons.filled.Train
 import androidx.compose.material.icons.filled.Tram
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.BottomSheetScaffold
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
+import androidx.compose.material3.rememberBottomSheetScaffoldState
+import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -260,7 +267,7 @@ private fun CameraProjection.targetCentering(vehicle: GeoPoint, panelHeight: Dp)
     return positionFromScreenLocation(DpOffset(onScreen.x, onScreen.y + panelHeight / 2))
 }
 
-@OptIn(kotlinx.coroutines.FlowPreview::class)
+@OptIn(kotlinx.coroutines.FlowPreview::class, ExperimentalMaterial3Api::class)
 @Composable
 fun MapScreen(
     onOpenTimetable: (DepartureBoardRoute) -> Unit,
@@ -338,9 +345,10 @@ fun MapScreen(
     var mapHeight by remember { mutableStateOf(0.dp) }
 
     /**
-     * The part of the map the vehicle panel hides. Its ceiling, not its measured height: the
-     * panel grows as the trip's details land, and following a live height would shunt the map
-     * mid-follow every time it did.
+     * Ceiling on the vehicle sheet, so the map keeps the bigger share of the screen and a long
+     * run's timetable scrolls inside the sheet instead of growing it. Also what the camera aims
+     * around: a ceiling rather than the sheet's measured height, since the panel grows as the
+     * trip's details land and following a live height would shunt the map mid-follow.
      */
     val vehiclePanelHeight = mapHeight * VEHICLE_PANEL_MAX_MAP_FRACTION
 
@@ -358,6 +366,67 @@ fun MapScreen(
             onNavigateToConnections()
         }
     }
+
+    // The two info panels are one *standard* (non-modal) M3 bottom sheet: no scrim, so the map
+    // behind it stays pannable and tappable, and the scaffold only spans the area the nav host
+    // gave this screen, so the bottom bar keeps its place under it. The drag handle, the
+    // partial→expanded snapping, the fling physics and the nested scroll into the timetable are
+    // all the framework's.
+    //
+    // A pinned trip heads the panel itself while its run is off the road: there is no marker to
+    // read the line from, and the trip is still what the panel is about.
+    val panelLine = selectedVehicle?.panelLine() ?: pinnedTrip?.panelLine()
+    // The sheet gives way to the stop panel rather than stacking with it: tapping a stop of the
+    // followed run keeps the vehicle selected, so the two can be open at once.
+    val sheetContentKind = when {
+        selectedStop != null -> SheetContentKind.STOP
+        panelLine != null -> SheetContentKind.VEHICLE
+        else -> null
+    }
+    // Both keep showing their last subject while the sheet animates out after deselection.
+    var displayedStop by remember { mutableStateOf<TransitLocation?>(null) }
+    selectedStop?.let { displayedStop = it }
+    var displayedLine by remember { mutableStateOf<VehiclePanelLine?>(null) }
+    panelLine?.let { displayedLine = it }
+    // What the sheet is *drawing*, which lags the selection by one animation: swapping the body
+    // at the moment of deselection would show the next panel's content sliding out.
+    var displayedKind by remember { mutableStateOf<SheetContentKind?>(null) }
+    sheetContentKind?.let { displayedKind = it }
+
+    val sheetState = rememberStandardBottomSheetState(
+        initialValue = SheetValue.Hidden,
+        skipHiddenState = false,
+        // The sheet has one open height and no second one to drag to: these panels are as tall as
+        // what they have to say, and an expanded state on content that cannot fill the screen just
+        // snaps to a taller box padded with nothing. The handle stays because a sheet has one —
+        // it is what makes it draggable, and dragging it *down* still dismisses.
+        confirmValueChange = { it != SheetValue.Expanded },
+    )
+    val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
+    LaunchedEffect(sheetContentKind) {
+        if (sheetContentKind == null) sheetState.hide() else sheetState.partialExpand()
+    }
+    // Swiping the sheet away is a deselection like any other — the halo and route overlay go with
+    // it. Only the settled state counts, or a drag past the threshold would deselect mid-gesture.
+    LaunchedEffect(sheetState) {
+        snapshotFlow { sheetState.currentValue }
+            .collect { if (it == SheetValue.Hidden) viewModel.clearSelection() }
+    }
+    /**
+     * How tall the sheet's body measures — its own content, handle included, since the scaffold's
+     * handle slot is empty and the body draws one.
+     *
+     * The open height is the *content's*, so the sheet wraps what it holds instead of resting at a
+     * guessed constant: a stop with four rows of line chips and one with none are different
+     * heights, and neither should show a gap or a cut-off row. It is a measurement fed back as a
+     * layout input, which is safe here only because the body wraps its own content (the vehicle's
+     * timetable scrolls inside a ceiling) and so cannot grow to fill whatever it is given.
+     */
+    var sheetContentHeight by remember { mutableStateOf(0.dp) }
+    val sheetHeight by animateDpAsState(
+        targetValue = if (sheetContentKind == null) 0.dp else sheetContentHeight,
+        label = "sheetHeight",
+    )
 
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
     // panel is open — instead of leaving the app from under a full-screen selection.
@@ -567,6 +636,74 @@ fun MapScreen(
         }
     }
 
+
+    BottomSheetScaffold(
+        scaffoldState = scaffoldState,
+        sheetPeekHeight = sheetHeight,
+        // The scaffold is a frame around the map, not a surface of its own; anything it painted
+        // would sit between the map and the sheet.
+        containerColor = Color.Transparent,
+        // The handle is drawn by the body instead of the scaffold's slot, so one measurement
+        // covers the whole sheet and the peek height it feeds needs no constant added to it.
+        sheetDragHandle = null,
+        sheetContent = {
+            Column(
+                modifier = Modifier.onSizeChanged { size ->
+                    sheetContentHeight = with(density) { size.height.toDp() }
+                },
+            ) {
+            BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
+            when (displayedKind) {
+                SheetContentKind.STOP -> displayedStop?.let { stop ->
+                    StopInfoPanel(
+                        stop = stop,
+                        routesState = stopRoutes,
+                        focusedRoute = focusedRoute,
+                        onToggleRouteFocus = { viewModel.toggleRouteFocus(it) },
+                        isFavorite = favorites.containsLocation(stop),
+                        onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
+                        onClose = { viewModel.clearStopSelection() },
+                        onOpenTimetable = {
+                            viewModel.clearSelection()
+                            onOpenTimetable(
+                                DepartureBoardRoute(
+                                    stopName = stop.name,
+                                    lat = stop.lat,
+                                    lon = stop.lon,
+                                    stopId = stop.stopId,
+                                    timeIso = null,
+                                ),
+                            )
+                        },
+                        onBeginHere = { pickRouteEndpoint(isStart = true, stop = stop) },
+                        onFinishHere = { pickRouteEndpoint(isStart = false, stop = stop) },
+                    )
+                }
+                SheetContentKind.VEHICLE -> displayedLine?.let { line ->
+                    // Where the vehicle is actually going. `/map/trips` only knows the next
+                    // stop, so the destination comes from the trip details fetched on
+                    // selection; until they land there is nothing truthful to show.
+                    val destination = (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.headsign
+                    val favoriteLine = line.favoriteLine(destination)
+                    VehicleInfoPanel(
+                        line = line,
+                        destination = destination,
+                        detailsState = vehicleDetails,
+                        // Starring is held back until the destination is known: the favourite's
+                        // key is built from it, and a wrong key saves a duplicate line.
+                        isFavorite = favoriteLine
+                            ?.takeIf { vehicleDetails !is VehicleDetailsUiState.Loading }
+                            ?.let(favorites::containsLine),
+                        onToggleFavorite = { favoriteLine?.let(viewModel::toggleFavoriteLine) },
+                        onClose = { viewModel.clearVehicleSelection() },
+                        maxHeight = vehiclePanelHeight,
+                    )
+                }
+                null -> {}
+            }
+            }
+        },
+    ) { _ ->
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -968,10 +1105,11 @@ fun MapScreen(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                // Ornaments sit on top of the sheet, so opening it lifts them instead of the
+                // sheet covering them — the same animated height the sheet itself opens to.
+                .padding(bottom = sheetHeight),
         ) {
-            // Map ornaments live above the stop panel so opening it lifts them instead of
-            // covering them.
             Box(modifier = Modifier.fillMaxWidth()) {
                 // Basemap credits and the Transitous sources link in one control. The end
                 // padding clears the locate-me FAB below (16dp inset + its 56dp) and then some,
@@ -1006,79 +1144,13 @@ fun MapScreen(
                     Icon(Icons.Default.MyLocation, contentDescription = stringResource(R.string.map_locate_me))
                 }
             }
-
-            // Keeps showing the last stop while the panel animates out after deselection.
-            var displayedStop by remember { mutableStateOf<TransitLocation?>(null) }
-            selectedStop?.let { displayedStop = it }
-            AnimatedVisibility(
-                visible = selectedStop != null,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            ) {
-                displayedStop?.let { stop ->
-                    StopInfoPanel(
-                        stop = stop,
-                        routesState = stopRoutes,
-                        focusedRoute = focusedRoute,
-                        onToggleRouteFocus = { viewModel.toggleRouteFocus(it) },
-                        isFavorite = favorites.containsLocation(stop),
-                        onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
-                        onClose = { viewModel.clearStopSelection() },
-                        onOpenTimetable = {
-                            viewModel.clearSelection()
-                            onOpenTimetable(
-                                DepartureBoardRoute(
-                                    stopName = stop.name,
-                                    lat = stop.lat,
-                                    lon = stop.lon,
-                                    stopId = stop.stopId,
-                                    timeIso = null,
-                                ),
-                            )
-                        },
-                        onBeginHere = { pickRouteEndpoint(isStart = true, stop = stop) },
-                        onFinishHere = { pickRouteEndpoint(isStart = false, stop = stop) },
-                    )
-                }
-            }
-
-            // Same animate-out pattern for the vehicle panel. It gives way to the stop panel
-            // rather than stacking with it: tapping a stop of the followed run keeps the
-            // vehicle selected, so the two can now be open at once.
-            // A pinned trip heads the panel itself while its run is off the road: there is no
-            // marker to read the line from, and the trip is still what the panel is about.
-            val panelLine = selectedVehicle?.panelLine() ?: pinnedTrip?.panelLine()
-            var displayedLine by remember { mutableStateOf<VehiclePanelLine?>(null) }
-            panelLine?.let { displayedLine = it }
-            AnimatedVisibility(
-                visible = panelLine != null && selectedStop == null,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-            ) {
-                displayedLine?.let { line ->
-                    // Where the vehicle is actually going. `/map/trips` only knows the next
-                    // stop, so the destination comes from the trip details fetched on
-                    // selection; until they land there is nothing truthful to show.
-                    val destination = (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.headsign
-                    val favoriteLine = line.favoriteLine(destination)
-                    VehicleInfoPanel(
-                        line = line,
-                        destination = destination,
-                        detailsState = vehicleDetails,
-                        // Starring is held back until the destination is known: the favourite's
-                        // key is built from it, and a wrong key saves a duplicate line.
-                        isFavorite = favoriteLine
-                            ?.takeIf { vehicleDetails !is VehicleDetailsUiState.Loading }
-                            ?.let(favorites::containsLine),
-                        onToggleFavorite = { favoriteLine?.let(viewModel::toggleFavoriteLine) },
-                        onClose = { viewModel.clearVehicleSelection() },
-                        maxHeight = vehiclePanelHeight,
-                    )
-                }
-            }
         }
     }
+    }
 }
+
+/** Which of the two info panels the map's bottom sheet is showing. */
+private enum class SheetContentKind { STOP, VEHICLE }
 
 /**
  * M3-search-bar-styled field overlaying the top of the map. Not a real input: tapping it
@@ -1210,11 +1282,12 @@ private fun PendingMapTrip.panelLine() = VehiclePanelLine(
 )
 
 /**
- * Inline info panel for a tapped vehicle, mirroring [StopInfoPanel]. Shows the trip's
- * attributes and its timetable as they load ([detailsState]).
+ * Body of the map's bottom sheet for a tapped vehicle, mirroring [StopInfoPanel]. Shows the
+ * trip's attributes and its timetable as they load ([detailsState]).
  *
- * The panel is capped at half the screen so the map above it stays usable; the header stays
- * put and only the timetable scrolls, which is also why it is not draggable/expandable.
+ * No surface of its own: it is sheet content, so the container and the handle belong to the sheet,
+ * and the sheet opens to exactly as tall as this measures. [maxHeight] is what stops a forty-stop
+ * run from making that the whole screen — past it the timetable scrolls inside the sheet.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1227,23 +1300,17 @@ private fun VehicleInfoPanel(
     isFavorite: Boolean?,
     onToggleFavorite: () -> Unit,
     onClose: () -> Unit,
-    /** Ceiling on the whole panel, so the map keeps the bigger share of the screen. */
+    /** Ceiling on the panel, so a long run's timetable scrolls rather than growing the sheet. */
     maxHeight: Dp,
 ) {
     val timetable = (detailsState as? VehicleDetailsUiState.Shown)?.details?.timetable.orEmpty()
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp,
+    Column(
+        modifier = Modifier
+            .heightIn(max = maxHeight)
+            // The timetable runs to the panel's edge: its rows carry their own padding, and
+            // a gap below the last visible one reads as the list having stopped scrolling.
+            .padding(start = 16.dp, end = 8.dp, bottom = if (timetable.isEmpty()) 12.dp else 0.dp),
     ) {
-        Column(
-            modifier = Modifier
-                .heightIn(max = maxHeight)
-                // The timetable runs to the panel's edge: its rows carry their own padding, and
-                // a gap below the last visible one reads as the list having stopped scrolling.
-                .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = if (timetable.isEmpty()) 12.dp else 0.dp),
-        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Same colored-circle look as the vehicle's marker on the map.
                 Box(
@@ -1348,12 +1415,11 @@ private fun VehicleInfoPanel(
                 }
             }
         }
-    }
 }
 
 /**
- * Inline (non-modal) info panel for a tapped stop, docked to the bottom of the map so the
- * map above it stays fully interactive while it is open.
+ * Body of the map's bottom sheet for a tapped stop. The sheet is a *standard* one, so the map
+ * above it stays fully interactive while it is open — see [MapScreen] for the container.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1370,13 +1436,7 @@ private fun StopInfoPanel(
     onBeginHere: () -> Unit,
     onFinishHere: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp,
-    ) {
-        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 12.dp)) {
+    Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, bottom = 12.dp)) {
             // A plain place or a point picked on the map is not served by any mode, so it gets
             // a map pin rather than a (meaningless, always-bus) vehicle icon, and none of the
             // stop-specific content: no lines, no timetable.
@@ -1495,7 +1555,6 @@ private fun StopInfoPanel(
                 PanelActionButton(stringResource(R.string.map_action_finish_here), Icons.Default.Flag, onFinishHere)
             }
         }
-    }
 }
 
 @Composable
