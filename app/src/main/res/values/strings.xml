@@ -198,7 +198,8 @@
     <!-- Map screen -->
     <string name="map_search_placeholder">Search stops &amp; places</string>
     <string name="map_locate_me">Locate me</string>
-    <string name="map_attribution">Data: transitous.org</string>
+    <string name="map_attribution">Transit data: %1$s</string>
+    <string name="map_attribution_sources">Data sources</string>
     <string name="map_action_timetable">Timetable</string>
     <string name="map_action_begin_here">Begin here</string>
     <string name="map_action_finish_here">Finish here</string>

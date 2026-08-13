@@ -139,7 +139,6 @@ import org.maplibre.compose.map.MapOptions
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.OrnamentOptions
 import org.maplibre.compose.material3.DisappearingCompassButton
-import org.maplibre.compose.material3.ExpandingAttributionButton
 import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
@@ -955,21 +954,16 @@ fun MapScreen(
             // Map ornaments live above the stop panel so opening it lifts them instead of
             // covering them.
             Box(modifier = Modifier.fillMaxWidth()) {
-                ExpandingAttributionButton(
+                // Basemap credits and the Transitous sources link in one control. The end
+                // padding clears the locate-me FAB below (16dp inset + its 56dp) and then some,
+                // so the expanded credits wrap beside the button instead of under it.
+                MapAttributionButton(
                     cameraState = cameraState,
                     styleState = styleState,
+                    darkMap = darkMap == true,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
-                        .padding(8.dp),
-                    contentAlignment = Alignment.BottomStart,
-                )
-
-                TransitousAttributionLabel(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        // Clears the locate-me FAB (16dp inset + 56dp) with a gap, so the
-                        // label doesn't read as part of the button.
-                        .padding(end = 84.dp, bottom = 20.dp),
+                        .padding(start = 8.dp, bottom = 8.dp, end = 84.dp),
                 )
 
                 FloatingActionButton(

@@ -210,7 +210,8 @@
     <!-- Map screen -->
     <string name="map_search_placeholder">Znajdź miejsce</string>
     <string name="map_locate_me">Moja lokalizacja</string>
-    <string name="map_attribution">Dane: transitous.org</string>
+    <string name="map_attribution">Dane transportowe: %1$s</string>
+    <string name="map_attribution_sources">Źródła danych</string>
     <string name="map_action_timetable">Rozkład jazdy</string>
     <string name="map_action_begin_here">Rozpocznij tutaj</string>
     <string name="map_action_finish_here">Zakończ tutaj</string>

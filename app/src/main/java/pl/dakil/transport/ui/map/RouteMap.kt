@@ -1,7 +1,5 @@
 package pl.dakil.transport.ui.map
 
-import android.content.Intent
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -56,7 +54,6 @@ import org.maplibre.compose.layers.SymbolLayer
 import org.maplibre.compose.map.MapOptions
 import org.maplibre.compose.map.MaplibreMap
 import org.maplibre.compose.map.OrnamentOptions
-import org.maplibre.compose.material3.ExpandingAttributionButton
 import org.maplibre.compose.sources.GeoJsonData
 import org.maplibre.compose.sources.rememberGeoJsonSource
 import org.maplibre.compose.style.BaseStyle
@@ -403,46 +400,16 @@ fun RouteMap(
                 .fillMaxWidth(),
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
-                ExpandingAttributionButton(
+                MapAttributionButton(
                     cameraState = cameraState,
                     styleState = styleState,
+                    darkMap = darkMap == true,
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .padding(8.dp),
-                    contentAlignment = Alignment.BottomStart,
-                )
-                TransitousAttributionLabel(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 8.dp, bottom = 8.dp),
                 )
             }
             bottomOverlay()
         }
     }
-}
-
-/**
- * Transitous API usage guidelines require a visible link to the data sources wherever its
- * data is shown on a map.
- */
-@Composable
-fun TransitousAttributionLabel(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    Text(
-        text = stringResource(R.string.map_attribution),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurface,
-        modifier = modifier
-            .background(
-                MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                RoundedCornerShape(4.dp),
-            )
-            .clickable {
-                context.startActivity(
-                    Intent(Intent.ACTION_VIEW, Uri.parse("https://transitous.org/sources/")),
-                )
-            }
-            .padding(horizontal = 6.dp, vertical = 2.dp),
-    )
 }
