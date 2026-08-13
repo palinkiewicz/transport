@@ -12,13 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -168,41 +165,6 @@ fun SwitchRow(
             }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-/**
- * A vertical single-select list of radio rows. Unlike [SingleChoiceConnectedRow] each option
- * gets a full line, so it suits a handful of choices whose labels are sentences rather than
- * one-word segments — and it reads as an either/or list even when one choice reveals a control
- * of its own underneath.
- */
-@Composable
-fun <T> SingleChoiceRadioColumn(
-    options: List<T>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    label: @Composable (T) -> String,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier.selectableGroup()) {
-        options.forEach { option ->
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = option == selected,
-                        role = Role.RadioButton,
-                        onClick = { onSelect(option) },
-                    )
-                    .padding(vertical = 4.dp),
-            ) {
-                RadioButton(selected = option == selected, onClick = null)
-                Spacer(Modifier.width(12.dp))
-                Text(label(option), style = MaterialTheme.typography.bodyLarge)
-            }
-        }
     }
 }
 

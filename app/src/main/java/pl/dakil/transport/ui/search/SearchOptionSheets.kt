@@ -30,7 +30,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -38,7 +37,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.ElevationCosts
 import pl.dakil.transport.domain.model.LegContext
@@ -53,7 +51,6 @@ import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
 import pl.dakil.transport.ui.components.MultiChoiceToggleFlow
 import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
-import pl.dakil.transport.ui.components.SingleChoiceRadioColumn
 import pl.dakil.transport.ui.components.SwitchRow
 
 /** Which options sheet a search form currently has open; null when none is. */
@@ -198,8 +195,8 @@ private fun SearchOptions.resetDeparturesBoard(): SearchOptions = SearchOptions.
 
 /**
  * Renders whichever options [sheet] the search form has open, or nothing when it has none.
- * Changes flow as transforms through [onUpdate] and are persisted by the caller; the sheets
- * are edited live, so the OK button only closes.
+ * Changes flow as transforms through [onUpdate] and are persisted by the caller; the sheets are
+ * edited live, so there is nothing to confirm — dismissing is the only way out and needs no button.
  */
 @Composable
 fun SearchOptionsSheetHost(
@@ -287,8 +284,8 @@ fun SearchOptionsSheetHost(
 }
 
 /**
- * The shell every options sheet shares: a title with the group's Reset and info actions, the
- * scrolling options themselves, and the OK button that closes.
+ * The shell every options sheet shares: a title with the group's Reset and info actions, and the
+ * scrolling options themselves.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -302,18 +299,10 @@ private fun OptionsSheet(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val scope = rememberCoroutineScope()
     val modified = remember(options, reset) { options.reset() != options }
 
-    fun close() {
-        // Let the sheet slide away before it leaves the composition, or OK snaps it shut.
-        scope.launch { sheetState.hide() }.invokeOnCompletion {
-            if (!sheetState.isVisible) onDismiss()
-        }
-    }
-
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.padding(start = 24.dp, end = 12.dp, bottom = 12.dp)) {
+        Column(modifier = Modifier.padding(start = 24.dp, end = 12.dp, bottom = 24.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
@@ -333,9 +322,6 @@ private fun OptionsSheet(
                     .padding(end = 12.dp, top = 4.dp, bottom = 8.dp),
                 content = content,
             )
-            TextButton(onClick = ::close, modifier = Modifier.align(Alignment.End)) {
-                Text(stringResource(R.string.action_ok))
-            }
         }
     }
 }
@@ -440,7 +426,7 @@ private fun TransfersSheet(options: SearchOptions, onUpdate: ((SearchOptions) ->
     // mode is picked, before any transfer count has been chosen.
     val limit = options.maxTransfers?.takeIf { it > 0 } ?: 1
 
-    SingleChoiceRadioColumn(
+    SingleChoiceConnectedRow(
         options = TransfersMode.entries,
         selected = options.transfersMode,
         onSelect = { mode ->
