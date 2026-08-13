@@ -155,9 +155,17 @@ fun AppNavHost(
                     TripScreen(
                         onBack = { navController.popBackStack() },
                         onOpenDepartures = { route -> navController.navigate(route) },
-                        // The trip itself was already handed to the map by the screen; showing
-                        // the tab is all that is left, and it is the tab's own map that shows it.
-                        onShowOnMap = { navController.navigateToMapRoot() },
+                        // The trip itself was already handed to the map by the screen; putting a
+                        // map on top is all that is left.
+                        //
+                        // A plain push, deliberately not [navigateToTab]: the map is normally
+                        // already on this stack a few entries down (map → stop → timetable →
+                        // trip), and switching to it there would mean popping the screens the
+                        // user came through, so back could no longer retrace them — and going
+                        // round the loop again (a stop on the shown route → its timetable → its
+                        // trip → the map again) would keep throwing that history away. Pushing
+                        // instead means back walks the whole way out, one screen at a time.
+                        onShowOnMap = { navController.navigate(MapRoute) },
                     )
                 }
             }
@@ -176,24 +184,4 @@ private fun NavHostController.navigateToTab(route: Any) {
         launchSingleTop = true
         restoreState = true
     }
-}
-
-/**
- * Opens the map tab *showing the map*, for "show on map" — which is usually tapped from a screen
- * the map itself opened (stop → timetable → trip), so the map is already on this stack a few
- * entries down.
- *
- * Deliberately not [navigateToTab]: a non-inclusive `popUpTo(startDestination) { saveState }` files
- * the popped entries under the destination being navigated to as well, so `restoreState` puts the
- * very screens that were just popped straight back on top and the map never appears. Those screens
- * are exactly what has to go here, hence no save/restore — and [clearBackStack] drops any stack an
- * earlier bottom-bar switch had saved for the tab, or the next switch back would restore it over
- * the map.
- */
-private fun NavHostController.navigateToMapRoot() {
-    navigate(MapRoute) {
-        popUpTo(graph.findStartDestination().id)
-        launchSingleTop = true
-    }
-    clearBackStack<MapRoute>()
 }

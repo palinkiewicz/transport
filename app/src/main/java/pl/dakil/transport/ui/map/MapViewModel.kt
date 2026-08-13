@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -290,6 +291,9 @@ class MapViewModel @Inject constructor(
      */
     private val _pinnedTrip = MutableStateFlow<PendingMapTrip?>(null)
     val pinnedTrip: StateFlow<PendingMapTrip?> = _pinnedTrip
+
+    /** Whether this map is the one on screen — see [consumePendingSignals], which maintains it. */
+    private val screenVisible = MutableStateFlow(false)
 
     /** Whether selecting a vehicle narrows the map to that run alone. */
     private val focusSelectedVehicle: StateFlow<Boolean> = settings
@@ -772,6 +776,10 @@ class MapViewModel @Inject constructor(
         pinnedTripJob = viewModelScope.launch {
             var between = trip.between
             while (true) {
+                // Held while another screen is on top of this map: "show on map" stacks maps, and
+                // every one left behind would otherwise keep asking a shared API about a run
+                // nobody is watching. Coming back re-fetches straight away.
+                screenVisible.first { it }
                 val motion = motionSettings.value
                 val segments = vehiclesRepository
                     .segmentsForTrip(trip.tripId, between, motion.fetchWindowSeconds.toLong())
@@ -903,24 +911,32 @@ class MapViewModel @Inject constructor(
     }
 
     /**
-     * A location picked for the map — by the location picker, or by another app sharing a point.
+     * Takes the one-shot signals [SearchStateHolder] raises for the map — a trip to follow, and a
+     * location picked for it by the location picker or handed over by another app — for as long as
+     * the screen that called this is the one on screen, which it reports by keeping the call
+     * running (see [MapScreen]).
      *
-     * Deliberately the *last* thing in the class rather than sitting with the other init blocks
-     * up top: a location already waiting when the map opens (which is how a shared point
-     * arrives) makes this collector run [selectStop] synchronously during construction, so every
-     * field that touches — the selection, the routes panel, the followed run — has to be
-     * initialized by the time this line runs. Kotlin initializes in declaration order.
+     * Deliberately gated on that rather than collected from `init`: "show on map" pushes a
+     * *second* map on top of the stack, so the maps underneath are still alive with their view
+     * models, and an init-time collector on the one being left behind would take the signal and
+     * clear it — before the map that is about to be shown even exists, which left that map blank.
+     * Only one map entry is resumed at a time, so this hands each signal to the map the user is
+     * actually looking at. It doubles as the map's "am I visible" flag, which is what pauses the
+     * followed run's fetch loop in [selectPinnedTrip].
+     *
+     * Runs until cancelled.
      */
-    init {
-        viewModelScope.launch {
-            searchStateHolder.pendingMapTrip.collect { trip ->
-                if (trip != null) {
-                    searchStateHolder.pendingMapTrip.value = null
-                    selectPinnedTrip(trip)
+    suspend fun consumePendingSignals(): Unit = coroutineScope {
+        screenVisible.value = true
+        try {
+            launch {
+                searchStateHolder.pendingMapTrip.collect { trip ->
+                    if (trip != null) {
+                        searchStateHolder.pendingMapTrip.value = null
+                        selectPinnedTrip(trip)
+                    }
                 }
             }
-        }
-        viewModelScope.launch {
             searchStateHolder.pendingMapLocation.collect { location ->
                 if (location != null) {
                     searchStateHolder.pendingMapLocation.value = null
@@ -928,6 +944,8 @@ class MapViewModel @Inject constructor(
                     _cameraTarget.value = GeoPoint(lat = location.lat, lon = location.lon)
                 }
             }
+        } finally {
+            screenVisible.value = false
         }
     }
 

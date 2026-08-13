@@ -95,7 +95,10 @@ import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
@@ -274,6 +277,13 @@ fun MapScreen(
     val areaDownload by viewModel.areaDownload.collectAsStateWithLifecycle()
     val stopsOffline by viewModel.stopsOffline.collectAsStateWithLifecycle()
 
+    // Only while this map is the resumed one: "show on map" pushes another map on top of the
+    // stack, and the trip it hands over belongs to that one, not to the maps left underneath.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(viewModel, lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.consumePendingSignals() }
+    }
+
     // The outcome is a passing acknowledgement, not state to sit in the panel forever.
     LaunchedEffect(areaDownload) {
         if (areaDownload is AreaDownloadState.Done ||
@@ -351,9 +361,18 @@ fun MapScreen(
 
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
     // panel is open — instead of leaving the app from under a full-screen selection.
+    //
+    // A run handed over by "show on map" ([pinnedTrip]) is the exception, and deliberately so:
+    // that map was *pushed* to show this run (see AppNavHost), so it is not a layer the user
+    // opened on top of the map, it is what the screen is for. Peeling it off would strand them on
+    // a blank map and cost a back press on the way out of every lap of stop → timetable → trip →
+    // map, so back leaves the screen instead and lands on the timetable it came from. Everything
+    // the user did open here still peels first — including a *different* vehicle tapped on this
+    // map, which clears the handed-over run and so is no longer one.
     BackHandler(
-        enabled = filtersExpanded || focusedRoute != null || selectedVehicle != null ||
-            pinnedTrip != null || selectedStop != null || routeDraftVisible,
+        enabled = filtersExpanded || focusedRoute != null ||
+            (selectedVehicle != null && pinnedTrip == null) ||
+            selectedStop != null || routeDraftVisible,
     ) {
         when {
             filtersExpanded -> filtersExpanded = false
@@ -361,7 +380,7 @@ fun MapScreen(
             focusedRoute != null -> viewModel.clearRouteFocus()
             // Stop first, then the vehicle: with both open the stop panel is on top.
             selectedStop != null -> viewModel.clearStopSelection()
-            selectedVehicle != null || pinnedTrip != null -> viewModel.clearVehicleSelection()
+            selectedVehicle != null && pinnedTrip == null -> viewModel.clearVehicleSelection()
             // Abandoning the draft leaves the picks in the search form; only the bar goes away.
             else -> viewModel.hideRouteDraft()
         }
