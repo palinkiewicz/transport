@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import pl.dakil.transport.data.prefs.SessionStateRepository
 import pl.dakil.transport.data.prefs.SettingsRepository
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.SessionState
 import pl.dakil.transport.domain.model.TransitLocation
@@ -29,11 +30,11 @@ import pl.dakil.transport.domain.model.ViaPoint
  * — the Map's "Begin here"/"Finish here", the Favourites list, and the full-screen location
  * picker all write straight into these flows instead of passing nav arguments around.
  *
- * [pendingMapLocation] and [pendingMapTrip] are the exceptions and work as one-shot signals: they
- * flow the other way, towards [pl.dakil.transport.ui.map.MapViewModel] — a `MAP`-target pick to be
- * selected and centred on, and a trip opened from a timetable to be followed — which consumes and
- * clears them. They are also the fields never persisted: a signal that outlived the process would
- * fire at the wrong moment.
+ * [pendingMapLocation], [pendingMapTrip] and [pendingMapJourney] are the exceptions and work as
+ * one-shot signals: they flow the other way, towards [pl.dakil.transport.ui.map.MapViewModel] — a
+ * `MAP`-target pick to be selected and centred on, a line to be followed, an itinerary to be drawn
+ * — which consumes and clears them. They are also the fields never persisted: a signal that
+ * outlived the process would fire at the wrong moment.
  */
 @OptIn(FlowPreview::class)
 @Singleton
@@ -64,6 +65,9 @@ class SearchStateHolder @Inject constructor(
 
     /** A trip to follow on the map, raised wherever a line is tapped to be seen on one. */
     val pendingMapTrip = MutableStateFlow<PendingMapTrip?>(null)
+
+    /** An itinerary to draw on the map, raised by the itinerary screen's map action. */
+    val pendingMapJourney = MutableStateFlow<PendingMapJourney?>(null)
 
     /**
      * Raised when another app hands over a point, and consumed by the nav host to open the Map
@@ -145,6 +149,11 @@ class SearchStateHolder @Inject constructor(
      */
     fun setMapTrip(trip: PendingMapTrip) {
         pendingMapTrip.value = trip
+    }
+
+    /** An itinerary the user asked to see on the map. Pushed onto the map like [setMapTrip]. */
+    fun setMapJourney(journey: PendingMapJourney) {
+        pendingMapJourney.value = journey
     }
 
     /** Reverses the whole route, intermediate stops included — they are held in travel order. */

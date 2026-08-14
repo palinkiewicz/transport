@@ -310,7 +310,6 @@
 
     <!-- Itinerary -->
     <string name="itinerary_title">Itinerary</string>
-    <string name="itinerary_show_as_list">Show as list</string>
     <string name="itinerary_open_trip">Show the line\'s timetable</string>
     <string name="itinerary_show_on_map">Show on map</string>
     <string name="itinerary_unavailable_title">Itinerary not available</string>

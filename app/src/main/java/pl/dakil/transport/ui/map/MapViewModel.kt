@@ -49,6 +49,7 @@ import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.MapCamera
 import pl.dakil.transport.domain.model.MapFilters
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
@@ -300,8 +301,22 @@ class MapViewModel @Inject constructor(
     private val _pinnedTripLive = MutableStateFlow<Boolean?>(null)
     val pinnedTripLive: StateFlow<Boolean?> = _pinnedTripLive
 
+    /**
+     * The itinerary this map was opened to draw, for as long as it stays open. While it is set the
+     * map is that journey and nothing else: the viewport's own stops and its vehicle fetches stand
+     * down (see [stops] and the fetch gate below), the filter menu goes away, and the sheet holds
+     * the itinerary instead of a stop or a run. Closing it takes the user back to the list.
+     */
+    private val _pinnedJourney = MutableStateFlow<PendingMapJourney?>(null)
+    val pinnedJourney: StateFlow<PendingMapJourney?> = _pinnedJourney
+
     /** Whether this map is the one on screen — see [consumePendingSignals], which maintains it. */
     private val screenVisible = MutableStateFlow(false)
+
+    /** Whether an itinerary drawn on the map labels the stops it boards and alights at. */
+    val showItineraryStopNames: StateFlow<Boolean> = settings
+        .map { it.showItineraryStopNames }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings.DEFAULT.showItineraryStopNames)
 
     /** Whether selecting a vehicle narrows the map to that run alone. */
     private val focusSelectedVehicle: StateFlow<Boolean> = settings
@@ -486,10 +501,16 @@ class MapViewModel @Inject constructor(
      * while a vehicle is selected (see [focusedTripStops]). The trip's stops deliberately skip
      * [MapFilters.matchesStop] — they belong to the run the user is following, so a filter that
      * hides their mode would empty the very route being watched.
+     *
+     * An itinerary on the map draws none of these: it brings its own stops, the handful worth
+     * marking, and the rest of the network would only clutter the route it is there to show.
      */
     val stops: StateFlow<List<TransitLocation>> =
-        combine(allStops, filters, focusedTripStops) { stops, filters, tripStops ->
-            tripStops.ifEmpty { stops.filter(filters::matchesStop) }
+        combine(allStops, filters, focusedTripStops, pinnedJourney) { stops, filters, tripStops, journey ->
+            when {
+                journey != null -> emptyList()
+                else -> tripStops.ifEmpty { stops.filter(filters::matchesStop) }
+            }
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -508,11 +529,14 @@ class MapViewModel @Inject constructor(
 
     // Fetching is gated only on "any vehicle category on" (not the specific categories/data
     // source), so tweaking filters refines the already-fetched segments instantly instead of
-    // hitting the shared Transitous API again.
+    // hitting the shared Transitous API again. An itinerary on the map switches it off outright:
+    // no marker is drawn there, so polling a shared API for them would be pure waste.
     private val vehicleFetches: Flow<Unit> =
         combine(
             viewport,
-            filters.map { it.vehicleCategories.isNotEmpty() }.distinctUntilChanged(),
+            combine(filters, pinnedJourney) { filters, journey ->
+                filters.vehicleCategories.isNotEmpty() && journey == null
+            }.distinctUntilChanged(),
             motionSettings,
         ) { vp, enabled, motion ->
             vp?.takeIf { enabled && it.zoom >= motion.minZoom } to motion
@@ -841,6 +865,16 @@ class MapViewModel @Inject constructor(
         _vehicleDetails.value = VehicleDetailsUiState.Hidden
     }
 
+    /**
+     * Draws an itinerary handed over by its screen. Everything else the map might be showing goes:
+     * this map was pushed for the journey, and its route is the only thing on it.
+     */
+    fun selectPinnedJourney(journey: PendingMapJourney) {
+        clearVehicleSelection()
+        clearStopSelection()
+        _pinnedJourney.value = journey
+    }
+
     /** Tapping the focused line again shows the whole network back; tapping another moves the focus. */
     fun toggleRouteFocus(route: RouteShape) {
         _focusedRoute.update { if (it == route.focusKey) null else route.focusKey }
@@ -934,8 +968,9 @@ class MapViewModel @Inject constructor(
     }
 
     /**
-     * Takes the one-shot signals [SearchStateHolder] raises for the map — a trip to follow, and a
-     * location picked for it by the location picker or handed over by another app — for as long as
+     * Takes the one-shot signals [SearchStateHolder] raises for the map — a trip to follow, an
+     * itinerary to draw, and a location picked for it by the location picker or handed over by
+     * another app — for as long as
      * the screen that called this is the one on screen, which it reports by keeping the call
      * running (see [MapScreen]).
      *
@@ -957,6 +992,14 @@ class MapViewModel @Inject constructor(
                     if (trip != null) {
                         searchStateHolder.pendingMapTrip.value = null
                         selectPinnedTrip(trip)
+                    }
+                }
+            }
+            launch {
+                searchStateHolder.pendingMapJourney.collect { journey ->
+                    if (journey != null) {
+                        searchStateHolder.pendingMapJourney.value = null
+                        selectPinnedJourney(journey)
                     }
                 }
             }

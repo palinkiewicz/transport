@@ -330,7 +330,6 @@
 
     <!-- Itinerary -->
     <string name="itinerary_title">Plan podróży</string>
-    <string name="itinerary_show_as_list">Pokaż jako listę</string>
     <string name="itinerary_open_trip">Pokaż rozkład linii</string>
     <string name="itinerary_show_on_map">Pokaż na mapie</string>
     <string name="itinerary_unavailable_title">Plan podróży jest niedostępny</string>

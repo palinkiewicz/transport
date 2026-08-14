@@ -5,6 +5,19 @@ import kotlinx.serialization.Serializable
 @Serializable
 object MapRoute
 
+/**
+ * A map *pushed* to show one subject — a run handed over from a departure board or a saved line, an
+ * itinerary handed over from its screen.
+ *
+ * A destination of its own rather than a second [MapRoute], because the two would share a
+ * destination id: `popUpTo(MapRoute)` — what every bottom-bar tap does, the Map tab included — stops
+ * at the *topmost* match, which would be this one, so tapping Map while looking at a pushed map
+ * would pop nothing and land back on it. Separating them is what lets the Map tab always mean "the
+ * plain map".
+ */
+@Serializable
+object ShownOnMapRoute
+
 /** Connections (A → B) search form. Bottom-bar tab. */
 @Serializable
 object ConnectionsRoute

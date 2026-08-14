@@ -9,6 +9,7 @@ import java.time.OffsetDateTime
 import pl.dakil.transport.R
 import pl.dakil.transport.ui.components.rememberDateFormatter
 import pl.dakil.transport.ui.components.rememberTimeFormatter
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 
 /**
@@ -22,6 +23,7 @@ import pl.dakil.transport.domain.model.PendingMapTrip
 fun SavedItineraryScreen(
     onBack: () -> Unit,
     onOpenTrip: (PendingMapTrip) -> Unit,
+    onShowOnMap: (PendingMapJourney) -> Unit,
     viewModel: SavedItineraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -36,6 +38,7 @@ fun SavedItineraryScreen(
             toName = "",
             onBack = onBack,
             onOpenTrip = onOpenTrip,
+            onShowOnMap = onShowOnMap,
         )
         is SavedItineraryUiState.Shown -> ItineraryScreen(
             journey = current.journey,
@@ -43,6 +46,7 @@ fun SavedItineraryScreen(
             toName = current.saved.toName,
             onBack = onBack,
             onOpenTrip = onOpenTrip,
+            onShowOnMap = onShowOnMap,
             savedNote = savedNote(current),
             // Only worth offering where trying again could change something.
             onRetryRefresh = viewModel::retry

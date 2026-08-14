@@ -19,6 +19,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.ui.components.LocalLineColorSettings
 import pl.dakil.transport.ui.saved.SavedScreen
@@ -70,7 +71,13 @@ fun AppNavHost(
      */
     val showTripOnMap = { trip: PendingMapTrip ->
         showOnMapViewModel.showTrip(trip)
-        navController.navigate(MapRoute)
+        navController.navigate(ShownOnMapRoute)
+    }
+
+    /** An itinerary is shown on a pushed map the same way, and closing its pane pops back here. */
+    val showJourneyOnMap = { journey: PendingMapJourney ->
+        showOnMapViewModel.showJourney(journey)
+        navController.navigate(ShownOnMapRoute)
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -92,15 +99,21 @@ fun AppNavHost(
                 startDestination = startRoute,
                 modifier = Modifier.padding(innerPadding),
             ) {
-                composable<MapRoute> {
+                // The tab's map and a pushed one are the same screen behind two destinations, so
+                // they are declared from one lambda rather than twice over.
+                val mapScreen: @Composable () -> Unit = {
                     MapScreen(
                         onOpenTimetable = { route -> navController.navigate(route) },
                         onNavigateToConnections = { navController.navigateToTab(ConnectionsRoute) },
                         onOpenLocationSearch = {
                             navController.navigate(LocationPickerRoute(PickerTarget.MAP))
                         },
+                        onOpenTrip = showTripOnMap,
+                        onCloseJourney = { navController.popBackStack() },
                     )
                 }
+                composable<MapRoute> { mapScreen() }
+                composable<ShownOnMapRoute> { mapScreen() }
                 composable<ConnectionsRoute> {
                     ConnectionsSearchScreen(
                         onSearch = { route -> navController.navigate(route) },
@@ -151,6 +164,7 @@ fun AppNavHost(
                             toName = resultsViewModel.toName,
                             onBack = { navController.popBackStack() },
                             onOpenTrip = showTripOnMap,
+                            onShowOnMap = showJourneyOnMap,
                             endpoints = resultsViewModel.fromPlace to resultsViewModel.toPlace,
                         )
                     }
@@ -159,6 +173,7 @@ fun AppNavHost(
                     SavedItineraryScreen(
                         onBack = { navController.popBackStack() },
                         onOpenTrip = showTripOnMap,
+                        onShowOnMap = showJourneyOnMap,
                     )
                 }
                 composable<DepartureBoardRoute> {
@@ -173,14 +188,22 @@ fun AppNavHost(
 }
 
 /**
- * Switches to a bottom-bar tab the same way the bar itself does, so the tab's saved state (and
- * with it its already-created ViewModel) is restored rather than a second copy being stacked
- * on top — two live copies of a search ViewModel would race for the shared picked locations.
+ * Switches to a bottom-bar tab, which is also what the bar itself calls: everything above the graph's
+ * start destination is popped and the tab is landed on at its own root. `launchSingleTop` is what
+ * keeps one entry per tab, so a tab can never end up with two live ViewModels racing for the
+ * locations they share.
+ *
+ * Deliberately **without** `saveState`/`restoreState`. They look like the way to keep a tab's pushed
+ * screens across a switch, and they file the popped entries under the destination being navigated
+ * *to* — which is the graph's start destination, i.e. whichever tab the user starts on. Every switch
+ * therefore saved a foreign tab's screens under that tab's id, and the next tap on it restored them:
+ * tapping Map landed on a departure board, or on Connections, and a Map tap from a map pushed to
+ * show a run or an itinerary put that very map straight back and so appeared to do nothing at all.
+ * A tab tap is a request to be *at* that tab, so this lands there and the stack it left goes.
  */
-private fun NavHostController.navigateToTab(route: Any) {
+internal fun NavHostController.navigateToTab(route: Any) {
     navigate(route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
+        popUpTo(graph.findStartDestination().id)
         launchSingleTop = true
-        restoreState = true
     }
 }

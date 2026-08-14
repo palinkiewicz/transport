@@ -76,6 +76,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -170,6 +171,7 @@ import org.maplibre.spatialk.geojson.Position
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.GeoPoint
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
@@ -183,6 +185,7 @@ import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.components.rememberTickingNow
 import pl.dakil.transport.ui.components.tripTimetable
+import pl.dakil.transport.ui.itinerary.JourneyMapPane
 import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.theme.SettledMotionScheme
@@ -317,6 +320,13 @@ fun MapScreen(
     onOpenTimetable: (DepartureBoardRoute) -> Unit,
     onNavigateToConnections: () -> Unit,
     onOpenLocationSearch: () -> Unit,
+    /** Shows one line of a drawn itinerary on a map of its own, the way every other screen does. */
+    onOpenTrip: (PendingMapTrip) -> Unit,
+    /**
+     * Leaves a map opened to draw an itinerary — closing its pane is done with it, and this map was
+     * pushed for nothing else, so it goes back to the list it came from.
+     */
+    onCloseJourney: () -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
     styleViewModel: MapStyleViewModel = hiltViewModel(),
 ) {
@@ -363,6 +373,10 @@ fun MapScreen(
     // A trip opened from a timetable. It outlives its marker: a run that is not on the road has
     // no vehicle to draw, and only its route and stops are shown.
     val pinnedTrip by viewModel.pinnedTrip.collectAsStateWithLifecycle()
+    // An itinerary this map was pushed to draw. While it is set the map is that journey and
+    // nothing else — see the ViewModel, which stands the viewport's own stops and vehicles down.
+    val pinnedJourney by viewModel.pinnedJourney.collectAsStateWithLifecycle()
+    val showItineraryStopNames by viewModel.showItineraryStopNames.collectAsStateWithLifecycle()
     // Null until the run's own timetable has said whether it is on the road at all.
     val pinnedTripLive by viewModel.pinnedTripLive.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
@@ -422,7 +436,12 @@ fun MapScreen(
     val panelLine = selectedVehicle?.panelLine() ?: pinnedTrip?.panelLine()
     // The sheet gives way to the stop panel rather than stacking with it: tapping a stop of the
     // followed run keeps the vehicle selected, so the two can be open at once.
+    val journeyOverlay = pinnedJourney?.let { rememberJourneyOverlay(it) }
+    /** The journey stop the map is pointing at, tapped here or picked in the pane. */
+    var journeyStopId by remember(pinnedJourney) { mutableStateOf(pinnedJourney?.selectedStopId) }
     val sheetContentKind = when {
+        // First: a map showing an itinerary shows nothing else, so nothing can take the sheet.
+        pinnedJourney != null -> SheetContentKind.JOURNEY
         selectedStop != null -> SheetContentKind.STOP
         panelLine != null -> SheetContentKind.VEHICLE
         else -> null
@@ -453,6 +472,9 @@ fun MapScreen(
      */
     var vehicleNaturalHeight by remember { mutableStateOf(0.dp) }
 
+    /** How tall the itinerary pane measures. Like the stop panel, it wraps what it has to say. */
+    var journeyPanelHeight by remember { mutableStateOf(0.dp) }
+
     // Only a run whose timetable outgrows the collapsed panel has anywhere to expand *to*; letting
     // a three-stop run be dragged to full screen would just uncover blank surface.
     val sheetExpandable = displayedKind == SheetContentKind.VEHICLE &&
@@ -460,6 +482,7 @@ fun MapScreen(
     val panelHeight = when (displayedKind) {
         SheetContentKind.STOP -> stopPanelHeight
         SheetContentKind.VEHICLE -> minOf(vehicleNaturalHeight, vehiclePanelHeight)
+        SheetContentKind.JOURNEY -> journeyPanelHeight
         null -> 0.dp
     }
 
@@ -481,9 +504,13 @@ fun MapScreen(
     }
     // Swiping the sheet away is a deselection like any other — the halo and route overlay go with
     // it. Only the settled state counts, or a drag past the threshold would deselect mid-gesture.
+    // An itinerary's pane is the screen rather than a layer on it, so dismissing that leaves.
+    val closeSheet by rememberUpdatedState {
+        if (pinnedJourney != null) onCloseJourney() else viewModel.clearSelection()
+    }
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.currentValue }
-            .collect { if (it == SheetValue.Hidden) viewModel.clearSelection() }
+            .collect { if (it == SheetValue.Hidden) closeSheet() }
     }
     /** Where the sheet rests: the open panel plus the handle above it, animated as it grows. */
     val sheetHeight by animateDpAsState(
@@ -642,8 +669,54 @@ fun MapScreen(
         )
     }
 
+    // An itinerary is framed whole, in the part of the map its pane leaves visible: the route is
+    // what this map was pushed for, and its shape is the first thing to read. Keyed on the journey
+    // and on the pane having been measured, so it happens once per opening and never fights the
+    // user's own panning afterwards.
+    LaunchedEffect(pinnedJourney, journeyPanelHeight > 0.dp) {
+        val bounds = journeyOverlay?.lines?.flatMap { it.points }?.boundingBox()
+            ?: return@LaunchedEffect
+        if (journeyPanelHeight <= 0.dp) return@LaunchedEffect
+        pendingLocateMe = false
+        cameraState.animateTo(
+            boundingBox = bounds,
+            // Clear of the pane below and the search bar above, so the whole route stays visible.
+            padding = PaddingValues(
+                start = 32.dp,
+                top = 96.dp,
+                end = 32.dp,
+                bottom = DRAG_HANDLE_HEIGHT + journeyPanelHeight + 32.dp,
+            ),
+            duration = FOLLOW_CENTER_DURATION,
+        )
+    }
+
+    // A waypoint picked in the pane (or tapped on the route) is lifted into view exactly like a
+    // selected stop — same centring, same duration — rather than being left wherever it happened
+    // to sit. Skipped for the stop the map was opened on: framing the whole route comes first.
+    LaunchedEffect(journeyStopId) {
+        val point = journeyStopId
+            ?.takeIf { it != pinnedJourney?.selectedStopId }
+            ?.let { id -> journeyOverlay?.points?.firstOrNull { it.id == id } }
+            ?: return@LaunchedEffect
+        val panelHeight = snapshotFlow { journeyPanelHeight }.first { it > 0.dp }
+        val projection = cameraState.awaitProjection()
+        pendingLocateMe = false
+        cameraState.animateTo(
+            cameraState.position.copy(
+                target = projection.targetCentering(point.point, DRAG_HANDLE_HEIGHT + panelHeight),
+            ),
+            duration = FOLLOW_CENTER_DURATION,
+        )
+    }
+
     // The map click callback below is captured once by MaplibreMap and never refreshed, so it
     // must read current data through State objects rather than capture the values directly.
+    // Same reason as the rest of this block: the map content lambda captures values once, so the
+    // itinerary's geometry has to be read through State to reach the layers at all.
+    val currentJourneyOverlay by rememberUpdatedState(journeyOverlay)
+    val currentJourneyStopId by rememberUpdatedState(journeyStopId)
+    val currentShowStopNames by rememberUpdatedState(showItineraryStopNames)
     val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy { it.favoriteKey } })
     val vehiclesById by rememberUpdatedState(remember(vehicles) { vehicles.associateBy { it.id } })
     val currentSelectedStop by rememberUpdatedState(selectedStop)
@@ -818,6 +891,7 @@ fun MapScreen(
                                 when (displayedKind) {
                                     SheetContentKind.STOP -> viewModel.clearStopSelection()
                                     SheetContentKind.VEHICLE -> viewModel.clearVehicleSelection()
+                                    SheetContentKind.JOURNEY -> onCloseJourney()
                                     null -> {}
                                 }
                             },
@@ -891,6 +965,19 @@ fun MapScreen(
                         },
                     )
                 }
+                // No lingering copy of this one while the sheet animates out, unlike the two
+                // above: closing it leaves the screen, so there is no map left to animate over.
+                SheetContentKind.JOURNEY -> if (pinnedJourney != null && journeyOverlay != null) {
+                    JourneyMapPane(
+                        pinned = requireNotNull(pinnedJourney),
+                        colors = journeyOverlay.colors,
+                        stops = journeyOverlay.stops,
+                        selectedStopId = journeyStopId,
+                        onWaypointClick = { id -> journeyStopId = id },
+                        onOpenTrip = onOpenTrip,
+                        onHeightChange = { height -> journeyPanelHeight = height },
+                    )
+                }
                 null -> {}
             }
             }
@@ -932,6 +1019,18 @@ fun MapScreen(
                                 Float.MAX_VALUE
                             }
                         }?.id?.content
+                    // A map drawing an itinerary has only its own stops to hit: everything else
+                    // is stood down, and a tap that opened a stop panel over the pane would be
+                    // showing something this map was not opened for.
+                    if (currentJourneyOverlay != null) {
+                        val hit = nearestFeatureId("journey-points")
+                        return@MaplibreMap if (hit == null && currentJourneyStopId == null) {
+                            ClickResult.Pass
+                        } else {
+                            journeyStopId = hit
+                            ClickResult.Consume
+                        }
+                    }
                     // Vehicles render above stops, so they win the tap too.
                     val vehicle = nearestFeatureId("transport-vehicles")?.let { vehiclesById[it] }
                     val stop = if (vehicle == null) nearestFeatureId("transport-stops")?.let { stopsById[it] } else null
@@ -956,9 +1055,15 @@ fun MapScreen(
             // Long press picks a bare coordinate anywhere on the map — including places with no
             // stop nearby — so it deliberately ignores whatever feature sits under the finger.
             onMapLongClick = { position, _ ->
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                viewModel.selectPoint(position.latitude, position.longitude)
-                ClickResult.Consume
+                // Not on an itinerary's map: a picked point there would open a panel over the one
+                // thing that map exists to show.
+                if (currentJourneyOverlay != null) {
+                    ClickResult.Pass
+                } else {
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.selectPoint(position.latitude, position.longitude)
+                    ClickResult.Consume
+                }
             },
         ) {
             // This content lambda is composed once by the library and never swapped for an
@@ -1215,6 +1320,124 @@ fun MapScreen(
                     textAnchor = const(SymbolAnchor.Top),
                     textColor = const(mapLabelColor(darkMap == true)),
                 )
+                // The itinerary, when this map was pushed to draw one. Its layers stay declared
+                // either way and simply carry no features otherwise — a layer set that came and
+                // went would have to be added to the style at exactly the right moment.
+                val journeyLines = currentJourneyOverlay?.lines.orEmpty()
+                fun journeyLineFeatures(dashed: Boolean) = FeatureCollection(
+                    journeyLines.filter { it.dashed == dashed }.map { line ->
+                        Feature<LineString, JsonObject?>(
+                            geometry = LineString(
+                                line.points.map { Position(latitude = it.lat, longitude = it.lon) },
+                            ),
+                            properties = JsonObject(
+                                mapOf("color" to JsonPrimitive(line.color.toHexString())),
+                            ),
+                        )
+                    },
+                )
+                // dasharray isn't data-driven in MapLibre, so walking legs need their own layer.
+                val journeyDashedSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(
+                        remember(journeyLines) { journeyLineFeatures(dashed = true) },
+                    ),
+                )
+                val journeySolidSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(
+                        remember(journeyLines) { journeyLineFeatures(dashed = false) },
+                    ),
+                )
+                val journeyPoints = currentJourneyOverlay?.points.orEmpty()
+                val journeyPointFeatures = remember(journeyPoints, currentJourneyStopId, currentShowStopNames) {
+                    FeatureCollection(
+                        journeyPoints.map { point ->
+                            Feature<Point, JsonObject?>(
+                                id = JsonPrimitive(point.id),
+                                geometry = Point(
+                                    Position(latitude = point.point.lat, longitude = point.point.lon),
+                                ),
+                                properties = JsonObject(
+                                    mapOf(
+                                        "kind" to JsonPrimitive(if (point.terminus) "terminus" else "via"),
+                                        "name" to JsonPrimitive(
+                                            point.name.takeIf { currentShowStopNames }.orEmpty(),
+                                        ),
+                                        "color" to JsonPrimitive(
+                                            point.color?.toHexString() ?: markerColorHex(point.mode),
+                                        ),
+                                        "icon" to JsonPrimitive(markerIconKey(point.mode)),
+                                        "selected" to JsonPrimitive(point.id == currentJourneyStopId),
+                                    ),
+                                ),
+                            )
+                        },
+                    )
+                }
+                val journeyPointsSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(journeyPointFeatures),
+                )
+                val journeyLineWidth = interpolate(
+                    linear(),
+                    zoom(),
+                    11 to const(3.dp),
+                    16 to const(6.dp),
+                )
+                LineLayer(
+                    id = "journey-lines-dashed",
+                    source = journeyDashedSource,
+                    color = feature["color"].convertToColor(),
+                    width = journeyLineWidth,
+                    opacity = const(0.8f),
+                    // Near-zero dash + round cap renders Google-Maps-like walking dots.
+                    dasharray = const(listOf(0.1, 1.8)),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
+                LineLayer(
+                    id = "journey-lines",
+                    source = journeySolidSource,
+                    color = feature["color"].convertToColor(),
+                    width = journeyLineWidth,
+                    opacity = const(0.8f),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
+                CircleLayer(
+                    id = "journey-points",
+                    source = journeyPointsSource,
+                    // Sized for a route overview rather than a zoom-dependent map: these are the
+                    // few places the journey acts at, and they are what it is read for.
+                    radius = switch(
+                        input = feature["kind"].asString(),
+                        case("terminus", const(11.dp)),
+                        fallback = const(9.dp),
+                    ),
+                    color = feature["color"].convertToColor(),
+                    strokeColor = const(MARKER_STROKE_COLOR),
+                    // The selected stop grows a heavier ring rather than changing colour, so it
+                    // reads as the same marker being pointed at.
+                    strokeWidth = switch(
+                        input = feature["selected"].asString(),
+                        case("true", const(3.dp)),
+                        fallback = const(1.dp),
+                    ),
+                )
+                SymbolLayer(
+                    id = "journey-point-icons",
+                    source = journeyPointsSource,
+                    iconImage = markerIconImage,
+                    iconAllowOverlap = const(true),
+                )
+                SymbolLayer(
+                    id = "journey-point-labels",
+                    source = journeyPointsSource,
+                    textField = format(span(feature["name"].asString())),
+                    textFont = const(listOf("Roboto Regular")),
+                    textSize = const(0.75f.em),
+                    textOffset = offset(0f.em, 1.4f.em),
+                    textAnchor = const(SymbolAnchor.Top),
+                    textColor = const(mapLabelColor(darkMap == true)),
+                )
             }
             if (locationState != null) {
                 LocationPuck(
@@ -1231,13 +1454,18 @@ fun MapScreen(
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .fillMaxWidth(),
         ) {
-            MapSearchBar(
-                onClick = onOpenLocationSearch,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 16.dp, top = 8.dp, end = 16.dp),
-            )
-            AnimatedVisibility(visible = routeDraftVisible) {
+            // Nothing that starts a search of its own over an itinerary: this map is that
+            // journey, and a picked place would fly the camera off it and open a panel the
+            // journey's own pane is holding.
+            if (pinnedJourney == null) {
+                MapSearchBar(
+                    onClick = onOpenLocationSearch,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, top = 8.dp, end = 16.dp),
+                )
+            }
+            AnimatedVisibility(visible = routeDraftVisible && pinnedJourney == null) {
                 MapRouteDraftBar(
                     from = routeFrom,
                     to = routeTo,
@@ -1256,16 +1484,20 @@ fun MapScreen(
             // compass rides the column, so it stays clear of the route draft bar without
             // anyone having to measure it.
             Box(modifier = Modifier.fillMaxWidth()) {
-                MapFiltersMenu(
-                    filters = filters,
-                    expanded = filtersExpanded,
-                    onExpandedChange = { filtersExpanded = it },
-                    onUpdate = viewModel::updateFilters,
-                    onReset = viewModel::resetFilters,
-                    areaDownload = areaDownload,
-                    onDownloadArea = viewModel::downloadVisibleArea,
-                    modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
-                )
+                // No filters over an itinerary: the map is drawing one journey, and none of what
+                // they filter — the viewport's stops, its vehicles — is on it to be filtered.
+                if (pinnedJourney == null) {
+                    MapFiltersMenu(
+                        filters = filters,
+                        expanded = filtersExpanded,
+                        onExpandedChange = { filtersExpanded = it },
+                        onUpdate = viewModel::updateFilters,
+                        onReset = viewModel::resetFilters,
+                        areaDownload = areaDownload,
+                        onDownloadArea = viewModel::downloadVisibleArea,
+                        modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp),
+                    )
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -1289,7 +1521,7 @@ fun MapScreen(
             }
             // Only while the panel is closed: with it open the download row right below says
             // the same thing, and the chip would be repeating itself.
-            AnimatedVisibility(visible = stopsOffline && !filtersExpanded) {
+            AnimatedVisibility(visible = stopsOffline && !filtersExpanded && pinnedJourney == null) {
                 OfflineChip(modifier = Modifier.padding(start = 16.dp, top = 8.dp, end = 72.dp))
             }
         }
@@ -1342,8 +1574,8 @@ fun MapScreen(
     }
 }
 
-/** Which of the two info panels the map's bottom sheet is showing. */
-private enum class SheetContentKind { STOP, VEHICLE }
+/** Which of the panels the map's bottom sheet is showing. */
+private enum class SheetContentKind { STOP, VEHICLE, JOURNEY }
 
 /**
  * M3-search-bar-styled field overlaying the top of the map. Not a real input: tapping it
@@ -1719,7 +1951,7 @@ private fun VehicleTimetable(
     // of the run it is at, and whatever the user scrolled to was them reading the *open* sheet.
     // Only settled collapses count — the drag's own target flips as it crosses the threshold, and
     // scrolling the list then would move it under the finger.
-    var recentres by remember(tripKey) { mutableStateOf(0) }
+    var recentres by remember(tripKey) { mutableIntStateOf(0) }
     LaunchedEffect(tripKey) {
         snapshotFlow { collapsed() }
             .drop(1)

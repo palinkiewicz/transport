@@ -16,7 +16,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import pl.dakil.transport.R
@@ -35,9 +34,13 @@ private val bottomBarDestinations = listOf(
     BottomBarDestination(SettingsRoute, R.string.tab_settings, Icons.Default.Settings),
 )
 
-/** True for the top-level destinations that show the bottom bar. */
+/**
+ * True for the destinations that show the bottom bar: the tabs, and a map pushed to show a run or an
+ * itinerary — that is still a map, and the Map tab is how the user leaves it for the plain one.
+ */
 fun isBottomBarDestination(destination: androidx.navigation.NavDestination): Boolean =
-    bottomBarDestinations.any { destination.hasRoute(it.route::class) }
+    bottomBarDestinations.any { destination.hasRoute(it.route::class) } ||
+        destination.hasRoute(ShownOnMapRoute::class)
 
 @Composable
 fun TransportBottomBar(navController: NavHostController) {
@@ -47,16 +50,13 @@ fun TransportBottomBar(navController: NavHostController) {
     NavigationBar {
         bottomBarDestinations.forEach { destination ->
             NavigationBarItem(
-                selected = currentDestination?.hasRoute(destination.route::class) == true,
-                onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
-                        }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                },
+                // A pushed map marks the Map tab as the one being looked at, so tapping it reads as
+                // going back to the plain map rather than as opening something new.
+                selected = currentDestination?.hasRoute(destination.route::class) == true ||
+                    (destination.route == MapRoute && currentDestination?.hasRoute(ShownOnMapRoute::class) == true),
+                // One implementation for the bar and for the screens that switch tabs
+                // themselves — see [navigateToTab] for why nothing is saved or restored.
+                onClick = { navController.navigateToTab(destination.route) },
                 icon = {
                     Icon(destination.icon, contentDescription = stringResource(destination.labelRes))
                 },

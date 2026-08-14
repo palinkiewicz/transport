@@ -30,7 +30,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.CloudDownload
@@ -88,6 +87,7 @@ import pl.dakil.transport.domain.model.ExportDelivery
 import pl.dakil.transport.domain.model.ExportFormat
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.PendingMapJourney
 import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.SavedItinerary
 import pl.dakil.transport.domain.model.TransitLocation
@@ -98,131 +98,11 @@ import pl.dakil.transport.ui.components.formatDistance
 import pl.dakil.transport.ui.components.formatDuration
 import pl.dakil.transport.ui.components.InlineRealTimeText
 import pl.dakil.transport.ui.components.LineColors
-import pl.dakil.transport.ui.components.LineColorRequest
-import pl.dakil.transport.ui.components.rememberLineColors
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.rememberTimeFormatter
-import pl.dakil.transport.ui.map.RouteMap
-import pl.dakil.transport.ui.map.RouteMapPoint
-import pl.dakil.transport.ui.map.rememberJourneyRouteLines
-
-/** A stop the itinerary names in both views, so a tap in one can point at it in the other. */
-private data class ItineraryStop(
-    val id: String,
-    val name: String,
-    val point: GeoPoint,
-    val time: OffsetDateTime,
-    val scheduledTime: OffsetDateTime,
-    val mode: TransportMode,
-    /** Which transit leg this stop belongs to, i.e. its slot in the journey's palette order. */
-    val colorIndex: Int,
-    val terminus: Boolean,
-    /** True for a boarding stop; false where the journey gets off. */
-    val boarding: Boolean,
-)
-
-/**
- * One line of the map pane's condensed itinerary: a place the traveller has to act at, with
- * the time they get there and the time they leave again. A same-stop transfer collapses into
- * a single line carrying both; a transfer that walks between two stops stays two lines,
- * because it really is two places.
- */
-private data class ItineraryWaypoint(
-    /** Map point ids this line stands for — more than one when two stops were merged. */
-    val ids: List<String>,
-    val name: String,
-    val arrival: OffsetDateTime?,
-    val scheduledArrival: OffsetDateTime?,
-    val departure: OffsetDateTime?,
-    val scheduledDeparture: OffsetDateTime?,
-    val mode: TransportMode,
-    val colorIndex: Int,
-)
-
-/**
- * [stops] — which alternate board, alight, board, alight — folded into the pane's lines.
- * Consecutive alight/board pairs at the same named stop become one line showing both times.
- */
-private fun waypoints(stops: List<ItineraryStop>): List<ItineraryWaypoint> {
-    fun ItineraryStop.asWaypoint() = ItineraryWaypoint(
-        ids = listOf(id),
-        name = name,
-        arrival = time.takeIf { !boarding },
-        scheduledArrival = scheduledTime.takeIf { !boarding },
-        departure = time.takeIf { boarding },
-        scheduledDeparture = scheduledTime.takeIf { boarding },
-        mode = mode,
-        colorIndex = colorIndex,
-    )
-
-    val result = mutableListOf<ItineraryWaypoint>()
-    var index = 0
-    while (index < stops.size) {
-        val stop = stops[index]
-        val next = stops.getOrNull(index + 1)
-        if (!stop.boarding && next != null && next.boarding && next.name == stop.name) {
-            result += ItineraryWaypoint(
-                ids = listOf(stop.id, next.id),
-                name = stop.name,
-                arrival = stop.time,
-                scheduledArrival = stop.scheduledTime,
-                departure = next.time,
-                scheduledDeparture = next.scheduledTime,
-                // The line you leave on is the one that matters at a transfer.
-                mode = next.mode,
-                colorIndex = next.colorIndex,
-            )
-            index += 2
-        } else {
-            result += stop.asWaypoint()
-            index++
-        }
-    }
-    return result
-}
-
-/**
- * The stops where the journey boards and alights, in order. Intermediate stops are left out on
- * purpose: they are pass-throughs, and labelling every one of them buries the map in text.
- * Coordinates come from the leg geometry — [JourneyLeg] carries no endpoint coordinates of its
- * own, and its path ends are exactly those points.
- */
-private fun journeyStops(journey: Journey, fromName: String, toName: String): List<ItineraryStop> {
-    val transitIndices = journey.legs.indices.filter { journey.legs[it].isTransit }
-    return transitIndices.flatMapIndexed { order, index ->
-        val leg = journey.legs[index]
-        if (leg.path.size < 2) return@flatMapIndexed emptyList()
-        listOf(
-            ItineraryStop(
-                id = stopId(index, from = true),
-                name = if (index == 0) fromName else leg.fromName,
-                point = leg.path.first(),
-                time = leg.startTime,
-                scheduledTime = leg.scheduledStartTime,
-                mode = leg.mode,
-                colorIndex = order,
-                terminus = order == 0,
-                boarding = true,
-            ),
-            ItineraryStop(
-                id = stopId(index, from = false),
-                name = if (index == journey.legs.lastIndex) toName else leg.toName,
-                point = leg.path.last(),
-                time = leg.endTime,
-                scheduledTime = leg.scheduledEndTime,
-                mode = leg.mode,
-                colorIndex = order,
-                terminus = order == transitIndices.lastIndex,
-                boarding = false,
-            ),
-        )
-    }
-}
-
-/** Shared between the list rows and the map features so a tap in either resolves in the other. */
-private fun stopId(legIndex: Int, from: Boolean): String = "leg-$legIndex-${if (from) "from" else "to"}"
+import pl.dakil.transport.ui.map.hasDrawableGeometry
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -232,6 +112,12 @@ fun ItineraryScreen(
     toName: String,
     onBack: () -> Unit,
     onOpenTrip: (PendingMapTrip) -> Unit,
+    /**
+     * Shows this journey on the Map screen, optionally opened focused on one of its stops. The map
+     * is a pushed destination rather than a mode of this screen: one map implementation draws every
+     * route the app shows, and back from it lands here.
+     */
+    onShowOnMap: (PendingMapJourney) -> Unit,
     /**
      * The endpoints this journey was planned between. Given, the screen offers a star that pins
      * the whole journey for offline use; the saved-itinerary screen passes null because a
@@ -244,44 +130,27 @@ fun ItineraryScreen(
     onRetryRefresh: (() -> Unit)? = null,
     viewModel: ItineraryViewModel = hiltViewModel(),
 ) {
-    var showMap by rememberSaveable { mutableStateOf(false) }
-    var selectedStopId by rememberSaveable { mutableStateOf<String?>(null) }
-    val showStopNames by viewModel.showStopNames.collectAsStateWithLifecycle()
     // Only offer the map when the journey actually carries drawable leg geometry.
-    val canShowMap = journey?.legs?.any { it.path.size >= 2 } == true
-    if (!canShowMap && showMap) showMap = false
-
+    val canShowMap = journey?.hasDrawableGeometry() == true
     val stops = remember(journey, fromName, toName) {
         journey?.let { journeyStops(it, fromName, toName) }.orEmpty()
     }
+    val colors = rememberJourneyColors(journey)
+    val export = rememberItineraryExport(journey, fromName, toName, colors.legColors, viewModel)
 
-    // One journey is one sequence, so its transit legs are each other's neighbours. The list, the
-    // map pane, the route overlay and the exported file all read from this one resolution.
-    val lineColors = rememberLineColors(
-        journey?.legs.orEmpty().filter { it.isTransit }.map { leg ->
-            LineColorRequest(leg.routeColor, leg.mode.color)
-        },
-    )
-    // Walk legs take no palette slot, so a leg's row index is not its slot in the palette order.
-    val transitOrder = remember(journey) {
-        journey?.legs.orEmpty().withIndex()
-            .filter { (_, leg) -> leg.isTransit }
-            .mapIndexed { order, (index, _) -> index to order }
-            .toMap()
+    /** Opens the map on this journey, focused on [stopId] where a stop's row asked for it. */
+    fun showOnMap(stopId: String? = null) {
+        if (journey == null) return
+        onShowOnMap(
+            PendingMapJourney(
+                journey = journey,
+                fromName = fromName,
+                toName = toName,
+                endpoints = endpoints,
+                selectedStopId = stopId,
+            ),
+        )
     }
-
-    /**
-     * The colour each leg ended up with, indexed like [Journey.legs] and null where a leg has no
-     * badge to take one from. Resolving once and passing it on is what stops the overlay and the
-     * exported file re-deriving colours of their own and disagreeing with what is on screen.
-     */
-    val legColors = remember(journey, lineColors, transitOrder) {
-        journey?.legs.orEmpty().mapIndexed { index, leg ->
-            transitOrder[index]?.let { order -> lineColors.at(order, leg.mode.color) }
-        }
-    }
-
-    val export = rememberItineraryExport(journey, fromName, toName, legColors, viewModel)
 
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
     Scaffold(
@@ -308,15 +177,8 @@ fun ItineraryScreen(
                         ExportMenuButton(onPick = export.start)
                     }
                     if (canShowMap) {
-                        IconButton(onClick = { showMap = !showMap }) {
-                            if (showMap) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.List,
-                                    contentDescription = stringResource(R.string.itinerary_show_as_list),
-                                )
-                            } else {
-                                Icon(Icons.Default.Map, contentDescription = stringResource(R.string.itinerary_show_on_map))
-                            }
+                        IconButton(onClick = { showOnMap() }) {
+                            Icon(Icons.Default.Map, contentDescription = stringResource(R.string.itinerary_show_on_map))
                         }
                     }
                 },
@@ -328,19 +190,6 @@ fun ItineraryScreen(
             journey == null -> EmptyBox(
                 title = stringResource(R.string.itinerary_unavailable_title),
                 description = stringResource(R.string.itinerary_unavailable_body),
-                modifier = Modifier.padding(innerPadding),
-            )
-            showMap -> ItineraryMap(
-                journey = journey,
-                fromName = fromName,
-                toName = toName,
-                stops = stops,
-                lineColors = lineColors,
-                legColors = legColors,
-                selectedStopId = selectedStopId,
-                showStopNames = showStopNames,
-                onStopClick = { selectedStopId = it },
-                onOpenTrip = onOpenTrip,
                 modifier = Modifier.padding(innerPadding),
             )
             else -> LazyColumn(
@@ -367,18 +216,13 @@ fun ItineraryScreen(
                         toNameOverride = if (index == journey.legs.lastIndex) toName else null,
                         // Tapping a stop in the list is a request to see where it is; only
                         // stops the map can actually point at are tappable.
-                        lineColors = lineColors,
-                        colorIndex = transitOrder[index],
+                        lineColors = colors.lineColors,
+                        colorIndex = colors.transitOrder[index],
                         onOpenTrip = onOpenTrip,
                         onStopClick = if (!canShowMap) {
                             null
                         } else {
-                            { id: String ->
-                                if (stops.any { it.id == id }) {
-                                    selectedStopId = id
-                                    showMap = true
-                                }
-                            }
+                            { id: String -> if (stops.any { it.id == id }) showOnMap(id) }
                         },
                     )
                 }
@@ -387,426 +231,6 @@ fun ItineraryScreen(
     }
 
     ItineraryExportDialogs(export)
-}
-
-/**
- * The top bar's export button: a menu of the formats the journey can leave as, because which one
- * is right depends on where the file is going and there is nothing to guess from.
- */
-@Composable
-private fun ExportMenuButton(onPick: (ExportFormat) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        IconButton(onClick = { open = true }) {
-            Icon(Icons.Default.Share, contentDescription = stringResource(R.string.export_action))
-        }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            ExportFormat.entries.forEach { format ->
-                DropdownMenuItem(
-                    text = { Text(stringResource(format.labelRes)) },
-                    onClick = {
-                        open = false
-                        onPick(format)
-                    },
-                )
-            }
-        }
-    }
-}
-
-/** What the top bar's export button does, and the state its dialogs read. */
-private class ItineraryExport(
-    val start: (ExportFormat) -> Unit,
-    val share: () -> Unit,
-    val save: () -> Unit,
-    /** True while the "share or save?" sheet is up — only ever with [ExportDelivery.ASK]. */
-    val choosing: Boolean,
-    val onDismissChoice: () -> Unit,
-    val failed: Boolean,
-    val onDismissFailure: () -> Unit,
-)
-
-/**
- * Wires the picked format to the delivery the user chose in settings: straight to the share sheet,
- * straight to the document picker, or a sheet asking which. Everything user-visible in the file
- * itself is resolved here and handed to the writer as [ExportLabels] — the writer sits below the
- * Compose layer and has no resources of its own.
- */
-@Composable
-private fun rememberItineraryExport(
-    journey: Journey?,
-    fromName: String,
-    toName: String,
-    /** Per-leg colours from the itinerary list, so the file opens in the colours it was seen in. */
-    legColors: List<Color?>,
-    viewModel: ItineraryViewModel,
-): ItineraryExport {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val settings by viewModel.export.collectAsStateWithLifecycle()
-    val labels = rememberExportLabels(fromName, toName, journey, legColors)
-    val subject = stringResource(R.string.export_subject, fromName, toName)
-    val chooserTitle = stringResource(R.string.export_action)
-
-    var choosing by remember { mutableStateOf(false) }
-    var failed by remember { mutableStateOf(false) }
-    /** The format the menu picked, held while the sheet or the document picker is up. */
-    var format by remember { mutableStateOf(ExportFormat.entries.first()) }
-
-    // One launcher per format: `CreateDocument` freezes its mime type at construction, and the
-    // picker suggesting the wrong type is what makes a saved file open in the wrong app.
-    val saveLaunchers = ExportFormat.entries.associateWith { launcherFormat ->
-        rememberLauncherForActivityResult(
-            ActivityResultContracts.CreateDocument(launcherFormat.mimeType),
-        ) { uri ->
-            // A null uri is the user backing out of the picker, not a failure.
-            if (uri != null && journey != null) {
-                scope.launch {
-                    failed = viewModel.exportTo(uri, launcherFormat, journey, labels).isFailure
-                }
-            }
-        }
-    }
-
-    val shareAs = { chosen: ExportFormat ->
-        choosing = false
-        if (journey != null) {
-            scope.launch {
-                val fileName = viewModel.fileNameFor(journey, chosen, fromName, toName)
-                viewModel.exportToCache(journey, chosen, fileName, labels)
-                    .onSuccess { uri ->
-                        val send = Intent(Intent.ACTION_SEND).apply {
-                            type = chosen.mimeType
-                            putExtra(Intent.EXTRA_STREAM, uri)
-                            putExtra(Intent.EXTRA_SUBJECT, subject)
-                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }
-                        context.startActivity(
-                            Intent.createChooser(send, chooserTitle)
-                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-                        )
-                    }
-                    .onFailure { failed = true }
-            }
-            Unit
-        }
-    }
-
-    val saveAs = { chosen: ExportFormat ->
-        choosing = false
-        if (journey != null) {
-            saveLaunchers.getValue(chosen)
-                .launch(viewModel.fileNameFor(journey, chosen, fromName, toName))
-        }
-        Unit
-    }
-
-    return ItineraryExport(
-        start = { picked ->
-            // Remembered for the "share or save?" sheet, which answers after this returns.
-            format = picked
-            when (settings.delivery) {
-                ExportDelivery.SHARE -> shareAs(picked)
-                ExportDelivery.SAVE -> saveAs(picked)
-                ExportDelivery.ASK -> choosing = true
-            }
-        },
-        share = { shareAs(format) },
-        save = { saveAs(format) },
-        choosing = choosing,
-        onDismissChoice = { choosing = false },
-        failed = failed,
-        onDismissFailure = { failed = false },
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ItineraryExportDialogs(export: ItineraryExport) {
-    if (export.choosing) {
-        ModalBottomSheet(onDismissRequest = export.onDismissChoice) {
-            Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                Text(
-                    text = stringResource(R.string.export_choose),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
-                )
-                ExportChoiceRow(Icons.Default.Share, stringResource(R.string.export_share), export.share)
-                ExportChoiceRow(Icons.Default.Save, stringResource(R.string.export_save), export.save)
-            }
-        }
-    }
-    if (export.failed) {
-        AlertDialog(
-            onDismissRequest = export.onDismissFailure,
-            title = { Text(stringResource(R.string.export_failed_title)) },
-            text = { Text(stringResource(R.string.export_failed_body)) },
-            confirmButton = {
-                TextButton(onClick = export.onDismissFailure) { Text(stringResource(R.string.action_ok)) }
-            },
-        )
-    }
-}
-
-@Composable
-private fun ExportChoiceRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-    ) {
-        Icon(icon, contentDescription = null)
-        Text(label, style = MaterialTheme.typography.bodyLarge)
-    }
-}
-
-/**
- * The app-authored text that ends up inside the exported file, plus the colour each leg is drawn
- * in. Mode names come from the same `labelRes` the rest of the UI reads. The two parameterized
- * labels are read here as their raw patterns and filled in later, because the writer calls them
- * from a plain lambda that cannot be composable — and resolving them off `LocalContext` instead
- * would skip the resource system's configuration handling.
- */
-@Composable
-private fun rememberExportLabels(
-    fromName: String,
-    toName: String,
-    journey: Journey?,
-    legColors: List<Color?>,
-): ExportLabels {
-    val appName = stringResource(R.string.app_name)
-    val documentName = stringResource(R.string.format_route_arrow, fromName, toName)
-    val modeNames = TransportMode.entries.associateWith { stringResource(it.labelRes) }
-    val board = stringResource(R.string.export_waypoint_board)
-    val transfer = stringResource(R.string.export_waypoint_transfer)
-    val alight = stringResource(R.string.export_waypoint_alight)
-    val separator = stringResource(R.string.export_desc_separator)
-    val stopsFolder = stringResource(R.string.export_folder_stops)
-    val routeFolder = stringResource(R.string.export_folder_route)
-    val trackPattern = stringResource(R.string.format_track_short)
-    val towardsPattern = stringResource(R.string.format_towards)
-    val legs = journey?.legs.orEmpty()
-    return remember(documentName, modeNames, board, transfer, alight, separator, legs, legColors) {
-        ExportLabels(
-            documentName = documentName,
-            originName = fromName,
-            destinationName = toName,
-            creator = "$appName ${BuildConfig.VERSION_NAME}",
-            accessLegName = { leg -> modeNames[leg.mode] ?: leg.mode.name },
-            board = board,
-            transfer = transfer,
-            alight = alight,
-            descSeparator = separator,
-            stopsFolder = stopsFolder,
-            routeFolder = routeFolder,
-            track = { track -> String.format(Locale.getDefault(), trackPattern, track) },
-            towards = { headsign -> String.format(Locale.getDefault(), towardsPattern, headsign) },
-            // By identity: two legs of one journey can be equal by value (the same line ridden
-            // twice), and they still deserve the colour their own position earned.
-            legColor = { leg ->
-                legColors.getOrNull(legs.indexOfFirst { it === leg })?.toRouteHex()
-            },
-        )
-    }
-}
-
-/** A resolved colour as the GTFS-shaped `RRGGBB` the export and the feed both speak. */
-private fun Color.toRouteHex(): String = String.format(Locale.US, "%06X", toArgb() and 0xFFFFFF)
-
-/**
- * The journey drawn on the app's base map (leg colors matching the list view), with a docked
- * bottom pane carrying the at-a-glance summary and the sequence of lines to ride.
- */
-@Composable
-private fun ItineraryMap(
-    journey: Journey,
-    fromName: String,
-    toName: String,
-    stops: List<ItineraryStop>,
-    lineColors: LineColors,
-    /** Per-leg colours from the itinerary list, so the overlay draws the journey it does. */
-    legColors: List<Color?>,
-    selectedStopId: String?,
-    showStopNames: Boolean,
-    onStopClick: (String?) -> Unit,
-    onOpenTrip: (PendingMapTrip) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val lines = rememberJourneyRouteLines(journey, legColors)
-    val points = remember(stops, lineColors) {
-        stops.map {
-            RouteMapPoint(
-                id = it.id,
-                point = it.point,
-                name = it.name,
-                mode = it.mode,
-                // A boarding pin belongs to its leg as much as the line does.
-                color = lineColors.at(it.colorIndex, it.mode.color),
-                terminus = it.terminus,
-            )
-        }
-    }
-    RouteMap(
-        lines = lines,
-        points = points,
-        selectedPointId = selectedStopId,
-        showPointLabels = showStopNames,
-        onPointClick = onStopClick,
-        modifier = modifier.fillMaxSize(),
-    ) {
-        ItineraryMapPane(
-            journey = journey,
-            fromName = fromName,
-            toName = toName,
-            stops = stops,
-            lineColors = lineColors,
-            selectedStopId = selectedStopId,
-            onWaypointClick = onStopClick,
-            onOpenTrip = onOpenTrip,
-        )
-    }
-}
-
-/**
- * The map's docked pane: the trip at a glance, the lines to ride, and the handful of places
- * the traveller actually has to do something at — with the time they arrive and the time they
- * leave again. Tapping a line focuses that stop on the map; selecting one on the map
- * highlights it here.
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun ItineraryMapPane(
-    journey: Journey,
-    fromName: String,
-    toName: String,
-    stops: List<ItineraryStop>,
-    lineColors: LineColors,
-    selectedStopId: String?,
-    onWaypointClick: (String) -> Unit,
-    onOpenTrip: (PendingMapTrip) -> Unit,
-) {
-    val timeFormatter = rememberTimeFormatter()
-    val waypoints = remember(stops) { waypoints(stops) }
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        tonalElevation = 3.dp,
-        shadowElevation = 8.dp,
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = stringResource(R.string.format_route_arrow, fromName, toName),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(
-                    R.string.itinerary_map_summary,
-                    journey.departureTime.format(timeFormatter),
-                    journey.arrivalTime.format(timeFormatter),
-                    formatDuration(journey.transitDurationSeconds),
-                    pluralStringResource(
-                        R.plurals.plural_transfers,
-                        journey.transfers,
-                        journey.transfers,
-                    ),
-                ),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val transitLegs = remember(journey) { journey.legs.filter { it.isTransit } }
-            if (transitLegs.isNotEmpty()) {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.padding(top = 12.dp),
-                ) {
-                    transitLegs.forEachIndexed { transitIndex, leg ->
-                        LegModeChip(
-                            leg = leg,
-                            containerColor = lineColors.at(transitIndex, leg.mode.color),
-                            onOpenTrip = onOpenTrip,
-                        )
-                    }
-                }
-            }
-            if (waypoints.isNotEmpty()) {
-                HorizontalDivider(Modifier.padding(top = 12.dp))
-                // Scrolls rather than growing: a long journey must not push the map off screen.
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 168.dp)
-                        .verticalScroll(rememberScrollState()),
-                ) {
-                    waypoints.forEach { waypoint ->
-                        WaypointRow(
-                            waypoint = waypoint,
-                            lineColors = lineColors,
-                            selected = selectedStopId in waypoint.ids,
-                            onClick = { onWaypointClick(waypoint.ids.first()) },
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-/** One pane line: `20:01 → 20:05  Wilanowska`, with each time keeping its delay treatment. */
-@Composable
-private fun WaypointRow(
-    waypoint: ItineraryWaypoint,
-    lineColors: LineColors,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(MaterialTheme.shapes.small)
-            .background(
-                if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(lineColors.at(waypoint.colorIndex, waypoint.mode.color)),
-        )
-        waypoint.arrival?.let { arrival ->
-            InlineRealTimeText(time = arrival, scheduledTime = waypoint.scheduledArrival ?: arrival)
-        }
-        if (waypoint.arrival != null && waypoint.departure != null) {
-            Text(
-                text = "→",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        waypoint.departure?.let { departure ->
-            InlineRealTimeText(time = departure, scheduledTime = waypoint.scheduledDeparture ?: departure)
-        }
-        Text(
-            text = waypoint.name,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
 }
 
 /**
@@ -1013,33 +437,6 @@ private fun LegRow(
             }
         }
     }
-}
-
-/**
- * The leg's line badge. Transit legs carry a trip id, so the badge doubles as the way into the
- * line's full timetable; legs the feed gives no trip id for stay inert rather than looking
- * tappable and doing nothing.
- */
-@Composable
-private fun LegModeChip(leg: JourneyLeg, containerColor: Color, onOpenTrip: (PendingMapTrip) -> Unit) {
-    ModeChip(
-        mode = leg.mode,
-        label = leg.lineLabel,
-        containerColor = containerColor,
-        clickLabel = stringResource(R.string.itinerary_open_trip),
-        onClick = leg.tripId?.let { tripId ->
-            {
-                onOpenTrip(
-                    PendingMapTrip(
-                        tripId = tripId,
-                        label = leg.lineLabel,
-                        mode = leg.mode,
-                        routeColor = leg.routeColor,
-                    ),
-                )
-            }
-        },
-    )
 }
 
 @Composable
