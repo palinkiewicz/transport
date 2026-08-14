@@ -13,8 +13,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -42,12 +44,22 @@ fun isBottomBarDestination(destination: androidx.navigation.NavDestination): Boo
     bottomBarDestinations.any { destination.hasRoute(it.route::class) } ||
         destination.hasRoute(ShownOnMapRoute::class)
 
+/**
+ * True for a tab's own root — what decides whether a navigation is a sideways tab switch
+ * (fade-through) or a push (shared-axis X).
+ *
+ * Narrower than [isBottomBarDestination] on purpose: a map pushed to show a run keeps the bar, but
+ * arriving at it *is* a push, so it slides in from the side like every other pushed screen.
+ */
+internal fun NavBackStackEntry.isTabRoot(): Boolean =
+    destination.let { current -> bottomBarDestinations.any { current.hasRoute(it.route::class) } }
+
 @Composable
-fun TransportBottomBar(navController: NavHostController) {
+fun TransportBottomBar(navController: NavHostController, modifier: Modifier = Modifier) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = backStackEntry?.destination
 
-    NavigationBar {
+    NavigationBar(modifier = modifier) {
         bottomBarDestinations.forEach { destination ->
             NavigationBarItem(
                 // A pushed map marks the Map tab as the one being looked at, so tapping it reads as

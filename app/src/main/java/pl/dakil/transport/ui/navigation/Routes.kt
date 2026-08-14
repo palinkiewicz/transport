@@ -29,8 +29,28 @@ object DeparturesRoute
 @Serializable
 object SavedRoute
 
+/**
+ * Groups [SettingsRoute] and its sub-screens so they share one
+ * [pl.dakil.transport.ui.settings.SettingsViewModel]. Without that the index and each sub-screen
+ * would each seed their own copy of the settings from disk, and a change made in a sub-screen would
+ * leave the index (whose "Reset all" is enabled from `isDefault`) reading a stale snapshot.
+ *
+ * Safe to nest because Settings is never the host's start destination — see
+ * [pl.dakil.transport.domain.model.DefaultTab] — and a nav host cannot start on a nested route.
+ */
+@Serializable
+object SettingsGraph
+
 @Serializable
 object SettingsRoute
+
+/**
+ * One settings section, shown on its own screen. [section] is a
+ * [pl.dakil.transport.ui.settings.SettingsSection] name — the enum itself stays in the UI layer
+ * because it carries the section's label, summary and icon.
+ */
+@Serializable
+data class SettingsSectionRoute(val section: String)
 
 /** What a [LocationPickerRoute] pick fills. */
 enum class PickerTarget {

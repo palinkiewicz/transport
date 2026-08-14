@@ -1,106 +1,61 @@
 package pl.dakil.transport.ui.settings
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.DirectionsBus
-import androidx.compose.material.icons.filled.ExpandMore
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LargeFlexibleTopAppBar
-import androidx.compose.material3.MaterialShapes
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlin.math.abs
-import kotlin.math.roundToInt
 import pl.dakil.transport.R
-import pl.dakil.transport.domain.model.AppSettings
-import pl.dakil.transport.domain.model.ConnectionTimesMode
-import pl.dakil.transport.domain.model.DefaultTab
-import pl.dakil.transport.domain.model.ExportDelivery
-import pl.dakil.transport.domain.model.ExportFileName
-import pl.dakil.transport.domain.model.LineColorMode
-import pl.dakil.transport.domain.model.MapTheme
-import pl.dakil.transport.domain.model.OfflineCacheSettings
-import pl.dakil.transport.domain.model.VehicleMotionSettings
-import pl.dakil.transport.ui.components.IntSliderRow
-import pl.dakil.transport.ui.components.LabeledSliderRow
-import pl.dakil.transport.ui.components.parseRouteColor
-import pl.dakil.transport.ui.components.SingleChoiceToggleFlow
-import pl.dakil.transport.ui.components.SteppedSliderRow
-import pl.dakil.transport.ui.components.SwitchRow
 
 /**
- * App-wide settings. Most of it is the vehicle-motion pipeline: because the API serves
- * timetables rather than vehicle positions, how a marker moves is a rendering decision, and
- * every part of that decision is exposed here rather than baked in.
+ * The settings index: one row per [SettingsSection], each opening a screen of its own, plus the
+ * app-info dialog and the app-wide reset.
+ *
+ * The sections themselves live in [SettingsSectionScreen] — this screen deliberately holds no
+ * controls, so the list stays short enough to read at a glance however much tuning is added below
+ * it. Ordered by how many people touch them: everyday choices first, the deep interpolation tuning
+ * last.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
+fun SettingsScreen(
+    onOpenSection: (SettingsSection) -> Unit,
+    viewModel: SettingsViewModel = hiltViewModel(),
+) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    var showAppInfo by rememberSaveable { mutableStateOf(false) }
 
     Scaffold(
         modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
@@ -121,738 +76,66 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
         },
     ) { innerPadding ->
         Column(
-            verticalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier
+                .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .verticalScroll(rememberScrollState()),
         ) {
-            // Ordered by how many people touch them: everyday choices first, the deep
-            // interpolation tuning last (and collapsed).
-            GeneralGroup(settings, viewModel)
-            SearchAndResultsGroup(settings, viewModel)
-            LineColorsGroup(settings, viewModel)
-            ItineraryExportGroup(settings, viewModel)
-            MapDetailGroup(settings, viewModel)
-            OfflineDataGroup(settings, viewModel)
-            DataRefreshGroup(settings, viewModel)
-            VehicleMotionGroup(settings, viewModel)
-            Spacer(Modifier.size(8.dp))
-        }
-    }
-}
-
-/**
- * The one thing worth saying before any of the sliders make sense: the moving markers are an
- * estimate, not a tracked position. Collapsed to a single tappable line inside the vehicle
- * movement card — the headline is what most people need, the reasoning is one tap away and
- * costs no space until asked for.
- */
-@Composable
-private fun NotGpsNotice(modifier: Modifier = Modifier) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "notice-chevron")
-
-    Surface(
-        onClick = { expanded = !expanded },
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = stringResource(R.string.settings_not_gps_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    Icons.Default.ExpandMore,
-                    contentDescription = stringResource(
-                        if (expanded) R.string.settings_not_gps_hide else R.string.settings_not_gps_show,
-                    ),
-                    modifier = Modifier
-                        .size(20.dp)
-                        .rotate(chevronRotation),
+            SettingsSection.entries.forEach { section ->
+                SettingsRow(
+                    title = stringResource(section.titleRes),
+                    summary = stringResource(section.summaryRes),
+                    icon = section.icon,
+                    onClick = { onOpenSection(section) },
+                    opensScreen = true,
                 )
             }
-            AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = stringResource(R.string.settings_not_gps_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp, end = 20.dp),
-                )
-            }
+            // A dialog rather than a screen of its own: five lines and four links are not a
+            // destination, and it is the one row here that changes nothing — hence no chevron.
+            SettingsRow(
+                title = stringResource(R.string.settings_app_info),
+                summary = stringResource(R.string.settings_app_info_summary),
+                icon = Icons.Outlined.Info,
+                onClick = { showAppInfo = true },
+                opensScreen = false,
+            )
         }
     }
-}
 
-@Composable
-private fun GeneralGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = stringResource(R.string.settings_group_general), icon = Icons.Default.Tune) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_opening_screen), style = MaterialTheme.typography.titleSmall)
-            // A wrapping flow, not a connected row: four tab names don't fit one row without
-            // being cut off mid-word.
-            SingleChoiceToggleFlow(
-                options = DefaultTab.entries,
-                selected = settings.defaultTab,
-                onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },
-                label = { stringResource(it.labelRes) },
-            )
-            Text(
-                text = stringResource(R.string.settings_opening_screen_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        SwitchRow(
-            title = stringResource(R.string.settings_remember_search),
-            checked = settings.rememberLastSearch,
-            onCheckedChange = { on -> viewModel.update { it.copy(rememberLastSearch = on) } },
-            supportingText = stringResource(R.string.settings_remember_search_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_stay_on_map),
-            checked = settings.stayOnMapWhenPickingRoute,
-            onCheckedChange = { on -> viewModel.update { it.copy(stayOnMapWhenPickingRoute = on) } },
-            supportingText = stringResource(R.string.settings_stay_on_map_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_remember_map),
-            checked = settings.rememberMapCamera,
-            onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },
-            supportingText = stringResource(R.string.settings_remember_map_note),
-        )
-    }
-}
-
-@Composable
-private fun SearchAndResultsGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = stringResource(R.string.settings_group_search), icon = Icons.Default.Search) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_connection_times), style = MaterialTheme.typography.titleSmall)
-            // Wrapping flow like the opening-screen choice above: "Door to door" is far too long
-            // to share one row with the other mode without being cut off.
-            SingleChoiceToggleFlow(
-                options = ConnectionTimesMode.entries,
-                selected = settings.connectionTimesMode,
-                onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },
-                label = { stringResource(it.labelRes) },
-            )
-            Text(
-                text = stringResource(R.string.settings_connection_times_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        IntSliderRow(
-            title = stringResource(R.string.settings_recent_places),
-            value = settings.recentPlacesLimit,
-            onValueCommit = { count -> viewModel.update { it.copy(recentPlacesLimit = count) } },
-            min = AppSettings.RECENT_PLACES_OFF,
-            max = AppSettings.RECENT_PLACES_MAX,
-            valueLabel = { count ->
-                if (count <= AppSettings.RECENT_PLACES_OFF) {
-                    stringResource(R.string.settings_recent_places_off)
-                } else {
-                    count.toString()
-                }
-            },
-            supportingText = stringResource(R.string.settings_recent_places_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_pin_recent_places),
-            checked = settings.pinRecentPlaces,
-            onCheckedChange = { on -> viewModel.update { it.copy(pinRecentPlaces = on) } },
-            supportingText = stringResource(R.string.settings_pin_recent_places_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_keep_first_cached),
-            checked = settings.keepFirstCachedResult,
-            onCheckedChange = { on -> viewModel.update { it.copy(keepFirstCachedResult = on) } },
-            supportingText = stringResource(R.string.settings_keep_first_cached_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_sort_by_distance),
-            checked = settings.sortSuggestionsByDistance,
-            onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
-            supportingText = stringResource(R.string.settings_sort_by_distance_note),
-        )
-        IntSliderRow(
-            title = stringResource(R.string.settings_search_bias),
-            value = settings.searchBiasStrength,
-            onValueCommit = { strength -> viewModel.update { it.copy(searchBiasStrength = strength) } },
-            min = AppSettings.SEARCH_BIAS_NONE,
-            max = AppSettings.SEARCH_BIAS_MAX,
-            valueLabel = { strength ->
-                if (strength <= AppSettings.SEARCH_BIAS_NONE) {
-                    stringResource(R.string.settings_search_bias_none)
-                } else {
-                    strength.toString()
-                }
-            },
-            supportingText = stringResource(R.string.settings_search_bias_note),
-        )
+    if (showAppInfo) {
+        AppInfoDialog(onDismiss = { showAppInfo = false })
     }
 }
 
 /**
- * Where line badges take their colour from, and the palette the two non-server modes draw on.
- * Only the list screens honour this — see [pl.dakil.transport.ui.components.rememberLineColors].
- */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun LineColorsGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    var editingIndex by rememberSaveable { mutableStateOf<Int?>(null) }
-    val palette = settings.palette
-
-    SettingsGroup(
-        title = stringResource(R.string.settings_group_line_colors),
-        icon = Icons.Default.Palette,
-        onReset = viewModel::resetLineColors.takeIf { !settings.lineColorsAreDefault },
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_line_colors), style = MaterialTheme.typography.titleSmall)
-            SingleChoiceToggleFlow(
-                options = LineColorMode.entries,
-                selected = settings.lineColorMode,
-                onSelect = { mode -> viewModel.update { it.copy(lineColorMode = mode) } },
-                label = { stringResource(it.labelRes) },
-            )
-            // One note per mode rather than one paragraph covering all three: what the selected
-            // mode does is the only thing worth reading here.
-            Text(
-                text = stringResource(
-                    when (settings.lineColorMode) {
-                        LineColorMode.TRANSITOUS -> R.string.settings_line_colors_note_transitous
-                        LineColorMode.CUSTOM -> R.string.settings_line_colors_note_custom
-                        LineColorMode.AUTO -> R.string.settings_line_colors_note_auto
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        // Transitous never reads the palette, so offering it there is noise.
-        AnimatedVisibility(visible = settings.lineColorMode != LineColorMode.TRANSITOUS) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(stringResource(R.string.settings_line_colors_palette), style = MaterialTheme.typography.titleSmall)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    palette.forEachIndexed { index, hex ->
-                        val description = stringResource(R.string.settings_line_color_swatch, index + 1)
-                        Surface(
-                            onClick = { editingIndex = index },
-                            shape = CircleShape,
-                            color = parseRouteColor(hex, MaterialTheme.colorScheme.surfaceVariant),
-                            modifier = Modifier
-                                .size(44.dp)
-                                .semantics { contentDescription = description },
-                        ) {}
-                    }
-                }
-                Text(
-                    text = stringResource(R.string.settings_line_colors_palette_note),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-
-    editingIndex?.let { index ->
-        ColorPresetDialog(
-            selected = palette[index],
-            onPick = { hex ->
-                viewModel.update { current ->
-                    current.copy(customLineColors = current.palette.toMutableList().also { it[index] = hex })
-                }
-                editingIndex = null
-            },
-            onDismiss = { editingIndex = null },
-        )
-    }
-}
-
-/**
- * What an exported itinerary contains, and how it leaves the app — the same choices whichever
- * format the share menu picks. The readers disagree wildly about what they want out of a file —
- * some ignore waypoints, others choke on long tracks — so the shape of the export is the user's to
- * decide.
+ * A plain [ListItem] row, transparent so it sits on the screen's own background. [opensScreen] adds
+ * the trailing chevron: it marks the rows that navigate, which is the one thing the app-info row
+ * does not do.
  */
 @Composable
-private fun ItineraryExportGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    val export = settings.export
-    SettingsGroup(
-        title = stringResource(R.string.settings_group_export),
-        icon = Icons.Default.Share,
-        onReset = viewModel::resetItineraryExport.takeIf { !export.isDefault },
-    ) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_export_delivery), style = MaterialTheme.typography.titleSmall)
-            SingleChoiceToggleFlow(
-                options = ExportDelivery.entries,
-                selected = export.delivery,
-                onSelect = { delivery -> viewModel.updateExport { it.copy(delivery = delivery) } },
-                label = { stringResource(it.labelRes) },
-            )
-            Text(stringResource(R.string.settings_export_filename), style = MaterialTheme.typography.titleSmall)
-            SingleChoiceToggleFlow(
-                options = ExportFileName.entries,
-                selected = export.fileName,
-                onSelect = { name -> viewModel.updateExport { it.copy(fileName = name) } },
-                label = { stringResource(it.labelRes) },
-            )
-        }
-        SwitchRow(
-            title = stringResource(R.string.settings_export_tracks),
-            checked = export.includeTracks,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTracks = on) } },
-            supportingText = stringResource(R.string.settings_export_tracks_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_export_access_legs),
-            checked = export.includeAccessLegs,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeAccessLegs = on) } },
-            supportingText = stringResource(R.string.settings_export_access_legs_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_export_intermediate_stops),
-            checked = export.includeIntermediateStops,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeIntermediateStops = on) } },
-            supportingText = stringResource(R.string.settings_export_intermediate_stops_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_export_times),
-            checked = export.includeTimes,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTimes = on) } },
-            supportingText = stringResource(R.string.settings_export_times_note),
-        )
-        // Only meaningful once something is being timestamped.
-        AnimatedVisibility(visible = export.includeTimes) {
-            SwitchRow(
-                title = stringResource(R.string.settings_export_real_times),
-                checked = export.useRealTimes,
-                onCheckedChange = { on -> viewModel.updateExport { it.copy(useRealTimes = on) } },
-                supportingText = stringResource(R.string.settings_export_real_times_note),
-            )
-        }
-        SwitchRow(
-            title = stringResource(R.string.settings_export_descriptions),
-            checked = export.includeDescriptions,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(includeDescriptions = on) } },
-            supportingText = stringResource(R.string.settings_export_descriptions_note),
-        )
-    }
-}
-
-/**
- * Twelve hue families in two tones each — enough range to build a readable set of six without
- * asking anyone to reason about hex, and every entry mid-toned so a badge's black-or-white label
- * stays legible on it.
- */
-private val LINE_COLOR_PRESETS = listOf(
-    "B3261E", "E46962", "9A4B00", "D97706", "8B6B00", "C9A227",
-    "4C6B1F", "7CB342", "006D3B", "3FA96A", "00696D", "00A5A8",
-    "00658F", "3AA0CC", "1A56DB", "5B8DEF", "3730A3", "6D63D6",
-    "6750A4", "9A82DB", "8E24AA", "B85FCB", "984061", "C7809A",
-)
-
-@Composable
-private fun ColorPresetDialog(selected: String, onPick: (String) -> Unit, onDismiss: () -> Unit) {
-    val selectedLabel = stringResource(R.string.settings_line_color_selected)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.settings_line_color_pick)) },
-        text = {
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(6),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(LINE_COLOR_PRESETS.size) { index ->
-                    val hex = LINE_COLOR_PRESETS[index]
-                    val color = parseRouteColor(hex, MaterialTheme.colorScheme.surfaceVariant)
-                    Surface(
-                        onClick = { onPick(hex) },
-                        shape = CircleShape,
-                        color = color,
-                        modifier = Modifier.size(40.dp),
-                    ) {
-                        if (hex.equals(selected, ignoreCase = true)) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Check,
-                                    contentDescription = selectedLabel,
-                                    tint = if (color.luminance() > 0.5f) Color.Black else Color.White,
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
-        },
-    )
-}
-
-@Composable
-private fun VehicleMotionGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    val motion = settings.vehicleMotion
-    SettingsGroup(
-        title = stringResource(R.string.settings_group_vehicle_movement),
-        icon = Icons.Default.DirectionsBus,
-        onReset = viewModel::resetMotion.takeIf { !motion.isDefault },
-        // The deepest tuning in the app: visible, named, and one tap from open — but not
-        // occupying half the screen for everyone who never touches it.
-        initiallyExpanded = false,
-    ) {
-        NotGpsNotice()
-        SwitchRow(
-            title = stringResource(R.string.settings_monotonic),
-            checked = motion.monotonicProgress,
-            onCheckedChange = { on -> viewModel.updateMotion { it.copy(monotonicProgress = on) } },
-            supportingText = stringResource(R.string.settings_monotonic_note),
-        )
-        SteppedSliderRow(
-            title = stringResource(R.string.settings_frame_interval),
-            values = VehicleMotionSettings.FRAME_INTERVAL_STEPS,
-            value = motion.frameIntervalMillis,
-            onValueCommit = { value -> viewModel.updateMotion { it.copy(frameIntervalMillis = value) } },
-            distance = { a, b -> abs(a - b).toFloat() },
-            valueLabel = ::frameIntervalLabel,
-            supportingText = stringResource(R.string.settings_frame_interval_note),
-        )
-        IntSliderRow(
-            title = stringResource(R.string.settings_fetch_interval),
-            value = motion.refreshIntervalSeconds,
-            onValueCommit = { value -> viewModel.updateMotion { it.copy(refreshIntervalSeconds = value) } },
-            min = 10,
-            max = 120,
-            step = 5,
-            valueLabel = { stringResource(R.string.format_seconds, it) },
-            supportingText = stringResource(R.string.settings_fetch_interval_note),
-        )
-        IntSliderRow(
-            title = stringResource(R.string.settings_fetch_window),
-            value = motion.fetchWindowSeconds,
-            onValueCommit = { value -> viewModel.updateMotion { it.copy(fetchWindowSeconds = value) } },
-            min = 60,
-            max = 600,
-            step = 30,
-            valueLabel = { stringResource(R.string.format_seconds, it) },
-            supportingText = stringResource(R.string.settings_fetch_window_note),
-        )
-        IntSliderRow(
-            title = stringResource(R.string.settings_segment_retention),
-            value = motion.segmentRetentionSeconds,
-            onValueCommit = { value ->
-                viewModel.updateMotion { it.copy(segmentRetentionSeconds = value) }
-            },
-            min = 0,
-            max = 600,
-            step = 30,
-            valueLabel = { seconds ->
-                if (seconds == 0) {
-                    stringResource(R.string.settings_segment_retention_off)
-                } else {
-                    stringResource(R.string.format_seconds, seconds)
-                }
-            },
-            supportingText = stringResource(R.string.settings_segment_retention_note),
-        )
-    }
-}
-
-/** Formats a redraw interval: sub-second values read as frame rates, longer ones as seconds. */
-@Composable
-private fun frameIntervalLabel(millis: Int): String = when {
-    millis < 1_000 -> stringResource(
-        R.string.format_frame_interval_millis,
-        millis,
-        (1_000f / millis).roundToInt(),
-    )
-    millis % 1_000 == 0 -> stringResource(R.string.format_frame_interval_seconds, millis / 1_000)
-    else -> stringResource(R.string.format_frame_interval_seconds_decimal, millis / 1_000f)
-}
-
-@Composable
-private fun DataRefreshGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = stringResource(R.string.settings_group_auto_refresh), icon = Icons.Default.Refresh) {
-        SwitchRow(
-            title = stringResource(R.string.settings_refresh_while_open),
-            checked = settings.autoRefreshEnabled,
-            onCheckedChange = { on -> viewModel.update { it.copy(autoRefreshEnabled = on) } },
-            supportingText = stringResource(R.string.settings_refresh_while_open_note),
-        )
-        if (settings.autoRefreshEnabled) {
-            IntSliderRow(
-                title = stringResource(R.string.settings_refresh_interval),
-                value = settings.resultsRefreshSeconds,
-                onValueCommit = { value -> viewModel.update { it.copy(resultsRefreshSeconds = value) } },
-                min = 10,
-                max = 300,
-                step = 10,
-                valueLabel = { stringResource(R.string.format_seconds, it) },
-                supportingText = stringResource(R.string.settings_refresh_interval_note),
-            )
-        }
-    }
-}
-
-@Composable
-private fun MapDetailGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    SettingsGroup(title = stringResource(R.string.settings_group_map_detail), icon = Icons.Default.Layers) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_map_theme), style = MaterialTheme.typography.titleSmall)
-            SingleChoiceToggleFlow(
-                options = MapTheme.entries,
-                selected = settings.mapTheme,
-                onSelect = { theme -> viewModel.update { it.copy(mapTheme = theme) } },
-                label = { stringResource(it.labelRes) },
-            )
-            Text(
-                text = stringResource(R.string.settings_map_theme_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        LabeledSliderRow(
-            title = stringResource(R.string.settings_stops_from_zoom),
-            value = settings.stopsMinZoom,
-            onValueCommit = { value -> viewModel.update { it.copy(stopsMinZoom = value) } },
-            valueRange = 8f..18f,
-            steps = 19,
-            valueLabel = { stringResource(R.string.format_zoom_level, it) },
-            supportingText = stringResource(R.string.settings_stops_from_zoom_note),
-        )
-        LabeledSliderRow(
-            title = stringResource(R.string.settings_vehicles_from_zoom),
-            value = settings.vehicleMotion.minZoom,
-            onValueCommit = { value -> viewModel.updateMotion { it.copy(minZoom = value) } },
-            valueRange = 5f..16f,
-            steps = 21,
-            valueLabel = { stringResource(R.string.format_zoom_level, it) },
-            supportingText = stringResource(R.string.settings_vehicles_from_zoom_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_focus_vehicle),
-            checked = settings.focusSelectedVehicle,
-            onCheckedChange = { on -> viewModel.update { it.copy(focusSelectedVehicle = on) } },
-            supportingText = stringResource(R.string.settings_focus_vehicle_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_itinerary_stop_names),
-            checked = settings.showItineraryStopNames,
-            onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
-            supportingText = stringResource(R.string.settings_itinerary_stop_names_note),
-        )
-    }
-}
-
-/**
- * How long fetched data is kept, how much of it, and what to do with it.
- *
- * The copy here has one job beyond naming the controls: making clear that none of this ever
- * hides a stop the app already knows about. Expiry only decides when it is worth asking the API
- * again — and "keep showing expired data" is the one switch that does gate what is drawn, which
- * is why it says so plainly.
- */
-@Composable
-private fun OfflineDataGroup(settings: AppSettings, viewModel: SettingsViewModel) {
-    val cache = settings.offlineCache
-    val stats by viewModel.cacheStats.collectAsStateWithLifecycle()
-    var confirmClear by remember { mutableStateOf(false) }
-
-    SettingsGroup(
-        title = stringResource(R.string.settings_group_offline),
-        icon = Icons.Default.CloudDownload,
-        onReset = viewModel::resetOfflineCache.takeIf { !cache.isDefault },
-    ) {
-        IntSliderRow(
-            title = stringResource(R.string.settings_stop_cache_ttl),
-            value = cache.stopCacheTtlDays,
-            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(stopCacheTtlDays = value) } },
-            min = OfflineCacheSettings.MIN_TTL_DAYS,
-            max = OfflineCacheSettings.MAX_TTL_DAYS,
-            valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
-            supportingText = stringResource(R.string.settings_stop_cache_ttl_note),
-        )
-        IntSliderRow(
-            title = stringResource(R.string.settings_search_cache_ttl),
-            value = cache.searchCacheTtlDays,
-            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(searchCacheTtlDays = value) } },
-            min = OfflineCacheSettings.MIN_TTL_DAYS,
-            max = OfflineCacheSettings.MAX_TTL_DAYS,
-            valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
-            supportingText = stringResource(R.string.settings_search_cache_ttl_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_offline_search),
-            checked = cache.offlineSearchEnabled,
-            onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(offlineSearchEnabled = on) } },
-            supportingText = stringResource(R.string.settings_offline_search_note),
-        )
-        SwitchRow(
-            title = stringResource(R.string.settings_show_expired_cache),
-            checked = cache.showExpiredCache,
-            onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(showExpiredCache = on) } },
-            supportingText = stringResource(R.string.settings_show_expired_cache_note),
-        )
-        SteppedSliderRow(
-            title = stringResource(R.string.settings_cache_limit),
-            values = OfflineCacheSettings.MAX_PLACES_STEPS,
-            value = cache.maxCachedPlaces,
-            onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(maxCachedPlaces = value) } },
-            valueLabel = { pluralStringResource(R.plurals.plural_places, it, it) },
-            supportingText = stringResource(R.string.settings_cache_limit_note),
-        )
-        stats?.let { current ->
-            Text(
-                text = stringResource(
-                    R.string.settings_cache_stats,
-                    pluralStringResource(R.plurals.plural_stops, current.stops, current.stops),
-                    pluralStringResource(R.plurals.plural_areas, current.areas, current.areas),
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        TextButton(
-            enabled = stats?.let { it.places > 0 } == true,
-            onClick = { confirmClear = true },
-        ) { Text(stringResource(R.string.settings_clear_cache)) }
-    }
-
-    if (confirmClear) {
-        AlertDialog(
-            onDismissRequest = { confirmClear = false },
-            title = { Text(stringResource(R.string.settings_clear_cache_title)) },
-            text = { Text(stringResource(R.string.settings_clear_cache_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        confirmClear = false
-                        viewModel.clearCache()
-                    },
-                ) { Text(stringResource(R.string.settings_clear_cache_confirm)) }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmClear = false }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            },
-        )
-    }
-}
-
-/**
- * A settings card: shaped icon tile, title, optional per-group reset, and its controls.
- *
- * [initiallyExpanded] `false` makes the card collapsible and starts it closed — used for the
- * power-user groups, so they stay visible and named on the screen instead of being exiled to
- * an "advanced" sub-screen, without spending a screenful on sliders most people never move.
- */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun SettingsGroup(
+private fun SettingsRow(
     title: String,
+    summary: String,
     icon: ImageVector,
-    modifier: Modifier = Modifier,
-    onReset: (() -> Unit)? = null,
-    initiallyExpanded: Boolean = true,
-    content: @Composable ColumnScope.() -> Unit,
+    onClick: () -> Unit,
+    opensScreen: Boolean,
 ) {
-    // Always-expanded groups have no chevron and no state to keep.
-    val collapsible = !initiallyExpanded
-    var expanded by rememberSaveable(title) { mutableStateOf(initiallyExpanded) }
-    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "group-chevron")
-
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        // No arrangement spacing here: the collapsed card would otherwise keep a 20.dp gap for
-        // the hidden content. The expanded content carries its own leading padding instead.
-        Column(
-            modifier = Modifier.padding(
-                PaddingValues(
-                    start = 20.dp,
-                    end = 20.dp,
-                    top = 16.dp,
-                    bottom = if (collapsible && !expanded) 16.dp else 20.dp,
-                ),
-            ),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = if (collapsible) {
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { expanded = !expanded }
-                } else {
-                    Modifier.fillMaxWidth()
-                },
-            ) {
-                Surface(
-                    shape = MaterialShapes.Cookie9Sided.toShape(),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            icon,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(20.dp),
-                        )
-                    }
-                }
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                )
-                if (onReset != null && expanded) {
-                    OutlinedButton(onClick = onReset) { Text(stringResource(R.string.action_reset)) }
-                }
-                if (collapsible) {
-                    Icon(
-                        Icons.Default.ExpandMore,
-                        contentDescription = stringResource(
-                            if (expanded) R.string.settings_group_collapse else R.string.settings_group_expand,
-                            title,
-                        ),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .size(22.dp)
-                            .rotate(chevronRotation),
-                    )
-                }
-            }
-            AnimatedVisibility(visible = expanded) {
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(20.dp),
-                    modifier = Modifier.padding(top = 20.dp),
-                    content = content,
+    ListItem(
+        modifier = Modifier.clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(containerColor = Color.Transparent),
+        headlineContent = { Text(title) },
+        supportingContent = { Text(summary) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = if (opensScreen) {
+            {
+                Icon(
+                    Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-        }
-    }
+        } else {
+            null
+        },
+    )
 }

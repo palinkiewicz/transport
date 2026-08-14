@@ -374,6 +374,26 @@
 
     <!-- Settings -->
     <string name="settings_title">Ustawienia</string>
+    <string name="settings_group_general_summary">Ekran startowy, zapamiętane wyszukiwania i pozycja mapy</string>
+    <string name="settings_group_search_summary">Czasy połączeń, ostatnie miejsca i kolejność podpowiedzi</string>
+    <string name="settings_group_line_colors_summary">Skąd odznaki linii biorą swój kolor</string>
+    <string name="settings_group_export_summary">Co zawiera wyeksportowana trasa i jak opuszcza aplikację</string>
+    <string name="settings_group_map_detail_summary">Kolory mapy, progi powiększenia i etykiety trasy</string>
+    <string name="settings_group_offline_summary">Jak długo i ile danych jest przechowywanych</string>
+    <string name="settings_group_auto_refresh_summary">Jak często otwarte ekrany odświeżają się same</string>
+    <string name="settings_group_vehicle_movement_summary">Jak szacowane i rysowane są poruszające się znaczniki</string>
+
+    <string name="settings_app_info">O aplikacji</string>
+    <string name="settings_app_info_summary">Wersja, autor, repozytorium</string>
+    <string name="version_x">Wersja %1$s</string>
+    <string name="about_title">O aplikacji Transport</string>
+    <string name="about_description">Transport wyszukuje połączenia, pokazuje tablice odjazdów i śledzi pojazdy na mapie, korzystając z Transitous — darmowej, społecznościowej usługi wyznaczania tras. Wszystko, co pobierze, zapisuje na urządzeniu, więc to, co już zobaczyłeś, działa również bez połączenia.</string>
+    <string name="about_repository">Repozytorium</string>
+    <string name="about_author">Autor</string>
+    <string name="about_idea">Pomysłodawca</string>
+    <string name="about_data">Dane</string>
+    <string name="about_close">Zamknij</string>
+
     <string name="settings_group_general">Ogólne</string>
     <string name="settings_opening_screen">Ekran startowy</string>
     <string name="settings_opening_screen_note">Karta otwarta po uruchomieniu aplikacji.</string>
@@ -494,8 +514,6 @@
     <string name="settings_segment_retention">Utrzymuj brakujące kursy</string>
     <string name="settings_segment_retention_note">Czas, przez jaki kurs nieobecny w najnowszych danych nadal porusza się na podstawie znanych informacji, zamiast znikać i pojawiać się ponownie.</string>
     <string name="settings_segment_retention_off">Wyłączone</string>
-    <string name="settings_group_expand">Rozwiń %1$s</string>
-    <string name="settings_group_collapse">Zwiń %1$s</string>
 
     <!-- Advanced search options -->
     <string name="advanced_options_title">Zaawansowane</string>

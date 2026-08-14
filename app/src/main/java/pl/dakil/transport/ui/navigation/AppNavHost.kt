@@ -1,14 +1,32 @@
 package pl.dakil.transport.ui.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -33,6 +51,8 @@ import pl.dakil.transport.ui.search.ConnectionsSearchScreen
 import pl.dakil.transport.ui.search.DeparturesSearchScreen
 import pl.dakil.transport.ui.search.LocationPickerScreen
 import pl.dakil.transport.ui.settings.SettingsScreen
+import pl.dakil.transport.ui.settings.SettingsSection
+import pl.dakil.transport.ui.settings.SettingsSectionScreen
 
 @Composable
 fun AppNavHost(
@@ -88,16 +108,67 @@ fun AppNavHost(
     // Provided here rather than in the activity: everything that draws a line badge lives under
     // this host, and the value has to stay live so a colour change lands on an already-open screen.
     CompositionLocalProvider(LocalLineColorSettings provides lineColors) {
+        // What the bar measures while it is on screen. The destinations are padded by this rather
+        // than by the Scaffold's own inset: an [AnimatedVisibility] that only slides keeps its child
+        // at full height for the whole exit, so the Scaffold would hold a bar's worth of bottom
+        // padding right through a push and then drop it in one frame — leaving the arriving screen
+        // short of a bar's height for the entire transition and snapping it to full size at the end.
+        // Keyed off whether the bar *belongs* on the destination, the height changes the moment the
+        // navigation starts and the bar simply slides away over a screen that is already full size.
+        var barHeight by remember { mutableStateOf(0.dp) }
+        val density = LocalDensity.current
+
         Scaffold(
-            bottomBar = { if (showBottomBar) TransportBottomBar(navController) },
+            bottomBar = {
+                // Slides out with the pushed screen that hid it rather than vanishing under it.
+                AnimatedVisibility(
+                    visible = showBottomBar,
+                    enter = slideInVertically(initialOffsetY = { it }),
+                    exit = slideOutVertically(targetOffsetY = { it }),
+                ) {
+                    TransportBottomBar(
+                        navController = navController,
+                        modifier = Modifier.onSizeChanged {
+                            barHeight = with(density) { it.height.toDp() }
+                        },
+                    )
+                }
+            },
             // Each destination has its own Scaffold (and usually a TopAppBar) that already claims
             // system bar insets; letting this outer Scaffold also claim them double-pads every screen.
             contentWindowInsets = WindowInsets(0),
-        ) { innerPadding ->
+        ) { _ ->
             NavHost(
                 navController = navController,
                 startDestination = startRoute,
-                modifier = Modifier.padding(innerPadding),
+                // Painted with the screen background so no window flashes through the fade-through,
+                // where both screens are partially transparent at once.
+                modifier = Modifier
+                    .padding(bottom = if (showBottomBar) barHeight else 0.dp)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                // Switching between bottom-bar tabs plays Material fade-through (no direction);
+                // everything pushed on top of a tab uses Material 3's shared-axis X instead.
+                enterTransition = {
+                    if (initialState.isTabRoot() && targetState.isTabRoot()) fadeThroughEnter()
+                    else slideIntoContainer(SlideDirection.Start, tween(TRANSITION_DURATION_MS)) +
+                        fadeIn(tween(TRANSITION_DURATION_MS))
+                },
+                exitTransition = {
+                    if (initialState.isTabRoot() && targetState.isTabRoot()) fadeThroughExit()
+                    else slideOutOfContainer(SlideDirection.Start, tween(TRANSITION_DURATION_MS)) +
+                        fadeOut(tween(TRANSITION_DURATION_MS))
+                },
+                popEnterTransition = {
+                    if (initialState.isTabRoot() && targetState.isTabRoot()) fadeThroughEnter()
+                    else slideIntoContainer(SlideDirection.End, tween(TRANSITION_DURATION_MS)) +
+                        fadeIn(tween(TRANSITION_DURATION_MS))
+                },
+                popExitTransition = {
+                    if (initialState.isTabRoot() && targetState.isTabRoot()) fadeThroughExit()
+                    else slideOutOfContainer(SlideDirection.End, tween(TRANSITION_DURATION_MS)) +
+                        fadeOut(tween(TRANSITION_DURATION_MS))
+                },
             ) {
                 // The tab's map and a pushed one are the same screen behind two destinations, so
                 // they are declared from one lambda rather than twice over.
@@ -141,8 +212,28 @@ fun AppNavHost(
                         onOpenItinerary = { route -> navController.navigate(route) },
                     )
                 }
-                composable<SettingsRoute> {
-                    SettingsScreen()
+                // The index and its sections share one ViewModel through the graph entry, so a
+                // change made in a section is what the index reads when it comes back — see
+                // [SettingsGraph].
+                navigation<SettingsGraph>(startDestination = SettingsRoute::class) {
+                    composable<SettingsRoute> { entry ->
+                        val parentEntry = remember(entry) { navController.getBackStackEntry<SettingsGraph>() }
+                        SettingsScreen(
+                            onOpenSection = { section ->
+                                navController.navigate(SettingsSectionRoute(section.name))
+                            },
+                            viewModel = hiltViewModel(parentEntry),
+                        )
+                    }
+                    composable<SettingsSectionRoute> { entry ->
+                        val parentEntry = remember(entry) { navController.getBackStackEntry<SettingsGraph>() }
+                        val route: SettingsSectionRoute = entry.toRoute()
+                        SettingsSectionScreen(
+                            section = SettingsSection.valueOf(route.section),
+                            onBack = { navController.popBackStack() },
+                            viewModel = hiltViewModel(parentEntry),
+                        )
+                    }
                 }
                 navigation<ResultsGraph>(startDestination = ResultsRoute::class) {
                     composable<ResultsRoute> { entry ->
@@ -207,3 +298,20 @@ internal fun NavHostController.navigateToTab(route: Any) {
         launchSingleTop = true
     }
 }
+
+private const val TRANSITION_DURATION_MS = 500
+private const val FADE_THROUGH_DURATION_MS = 220
+private const val FADE_THROUGH_OUT_MS = 90
+
+/**
+ * Material fade-through: the outgoing screen fades out first, then the incoming one fades and
+ * scales up into the gap. Used only between tabs, which have no spatial relationship to slide along.
+ */
+private fun fadeThroughEnter(): EnterTransition =
+    fadeIn(tween(FADE_THROUGH_DURATION_MS, delayMillis = FADE_THROUGH_OUT_MS)) +
+        scaleIn(
+            initialScale = 0.92f,
+            animationSpec = tween(FADE_THROUGH_DURATION_MS, delayMillis = FADE_THROUGH_OUT_MS),
+        )
+
+private fun fadeThroughExit(): ExitTransition = fadeOut(tween(FADE_THROUGH_OUT_MS))
