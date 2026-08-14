@@ -88,6 +88,7 @@ import pl.dakil.transport.domain.model.ExportDelivery
 import pl.dakil.transport.domain.model.ExportFormat
 import pl.dakil.transport.domain.model.GeoPoint
 import pl.dakil.transport.domain.model.Journey
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.SavedItinerary
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.JourneyLeg
@@ -106,7 +107,6 @@ import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.map.RouteMap
 import pl.dakil.transport.ui.map.RouteMapPoint
 import pl.dakil.transport.ui.map.rememberJourneyRouteLines
-import pl.dakil.transport.ui.navigation.TripRoute
 
 /** A stop the itinerary names in both views, so a tap in one can point at it in the other. */
 private data class ItineraryStop(
@@ -231,7 +231,7 @@ fun ItineraryScreen(
     fromName: String,
     toName: String,
     onBack: () -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
     /**
      * The endpoints this journey was planned between. Given, the screen offers a star that pins
      * the whole journey for offline use; the saved-itinerary screen passes null because a
@@ -636,7 +636,7 @@ private fun ItineraryMap(
     selectedStopId: String?,
     showStopNames: Boolean,
     onStopClick: (String?) -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val lines = rememberJourneyRouteLines(journey, legColors)
@@ -690,7 +690,7 @@ private fun ItineraryMapPane(
     lineColors: LineColors,
     selectedStopId: String?,
     onWaypointClick: (String) -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
 ) {
     val timeFormatter = rememberTimeFormatter()
     val waypoints = remember(stops) { waypoints(stops) }
@@ -904,7 +904,7 @@ private fun LegRow(
     colorIndex: Int?,
     fromNameOverride: String? = null,
     toNameOverride: String? = null,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
     /** Null leaves the stop rows inert (nothing to show on a map). */
     onStopClick: ((String) -> Unit)? = null,
 ) {
@@ -1021,7 +1021,7 @@ private fun LegRow(
  * tappable and doing nothing.
  */
 @Composable
-private fun LegModeChip(leg: JourneyLeg, containerColor: Color, onOpenTrip: (TripRoute) -> Unit) {
+private fun LegModeChip(leg: JourneyLeg, containerColor: Color, onOpenTrip: (PendingMapTrip) -> Unit) {
     ModeChip(
         mode = leg.mode,
         label = leg.lineLabel,
@@ -1030,11 +1030,10 @@ private fun LegModeChip(leg: JourneyLeg, containerColor: Color, onOpenTrip: (Tri
         onClick = leg.tripId?.let { tripId ->
             {
                 onOpenTrip(
-                    TripRoute(
+                    PendingMapTrip(
                         tripId = tripId,
-                        lineLabel = leg.lineLabel,
-                        headsign = leg.headsign,
-                        modeName = leg.mode.name,
+                        label = leg.lineLabel,
+                        mode = leg.mode,
                         routeColor = leg.routeColor,
                     ),
                 )

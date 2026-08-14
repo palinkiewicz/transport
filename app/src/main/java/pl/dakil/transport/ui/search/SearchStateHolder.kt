@@ -62,7 +62,7 @@ class SearchStateHolder @Inject constructor(
     /** A map-target pick, consumed by the Map screen. */
     val pendingMapLocation = MutableStateFlow<TransitLocation?>(null)
 
-    /** A trip to follow on the map, raised by the trip timetable's "show on map" action. */
+    /** A trip to follow on the map, raised wherever a line is tapped to be seen on one. */
     val pendingMapTrip = MutableStateFlow<PendingMapTrip?>(null)
 
     /**
@@ -140,8 +140,8 @@ class SearchStateHolder @Inject constructor(
     }
 
     /**
-     * A trip the user asked to see on the map. The caller navigates to the Map tab itself — the
-     * timetable screens it comes from are already inside the nav host, unlike a shared point.
+     * A trip the user asked to see on the map. The caller pushes the map itself — everywhere this
+     * is raised from is already inside the nav host, unlike a point shared by another app.
      */
     fun setMapTrip(trip: PendingMapTrip) {
         pendingMapTrip.value = trip

@@ -46,6 +46,7 @@ import java.time.Duration
 import java.time.OffsetDateTime
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.Departure
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.ui.components.EmptyBox
 import pl.dakil.transport.ui.components.ErrorBox
 import pl.dakil.transport.ui.components.LoadingBox
@@ -56,13 +57,12 @@ import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.components.RefreshButton
 import pl.dakil.transport.ui.components.refreshSubtitle
 import pl.dakil.transport.ui.components.timeDeviationColor
-import pl.dakil.transport.ui.navigation.TripRoute
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun DeparturesScreen(
     onBack: () -> Unit,
-    onDepartureSelected: (TripRoute) -> Unit,
+    onDepartureSelected: (PendingMapTrip) -> Unit,
     viewModel: DeparturesViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -175,11 +175,10 @@ fun DeparturesScreen(
                                         onClick = departure.tripId?.let { tripId ->
                                             {
                                                 onDepartureSelected(
-                                                    TripRoute(
+                                                    PendingMapTrip(
                                                         tripId = tripId,
-                                                        lineLabel = departure.lineLabel,
-                                                        headsign = departure.headsign,
-                                                        modeName = departure.mode.name,
+                                                        label = departure.lineLabel,
+                                                        mode = departure.mode,
                                                         routeColor = departure.routeColor,
                                                     ),
                                                 )

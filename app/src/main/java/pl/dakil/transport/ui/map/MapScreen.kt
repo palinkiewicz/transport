@@ -181,12 +181,12 @@ import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.ModeChip
 import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.components.rememberTickingNow
+import pl.dakil.transport.ui.components.tripTimetable
 import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
 import pl.dakil.transport.ui.theme.SettledMotionScheme
 import pl.dakil.transport.domain.model.nextStopIndex
-import pl.dakil.transport.ui.trip.rememberTickingNow
-import pl.dakil.transport.ui.trip.tripTimetable
 
 // The mode palette, glyph keys and stroke live in MapMarkers.kt — shared with the itinerary's
 // route map so a stop looks like the same object wherever the app draws one.
@@ -363,6 +363,8 @@ fun MapScreen(
     // A trip opened from a timetable. It outlives its marker: a run that is not on the road has
     // no vehicle to draw, and only its route and stops are shown.
     val pinnedTrip by viewModel.pinnedTrip.collectAsStateWithLifecycle()
+    // Null until the run's own timetable has said whether it is on the road at all.
+    val pinnedTripLive by viewModel.pinnedTripLive.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     // Delegated on purpose: the map content lambda is composed once and never swapped, so the
     // layers below must read this through its State (a captured value would freeze at startup).
@@ -627,7 +629,7 @@ fun MapScreen(
     // there is to look at. Keyed on the trip, so it happens once per opening and never fights the
     // user's own panning afterwards.
     val pinnedTripShape = pinnedTrip
-        ?.takeIf { !it.isRunning }
+        ?.takeIf { pinnedTripLive == false }
         ?.let { (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape }
     LaunchedEffect(pinnedTrip?.tripId, pinnedTripShape != null) {
         val bounds = pinnedTripShape?.segments?.flatten()?.boundingBox() ?: return@LaunchedEffect

@@ -19,6 +19,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.ui.components.LocalLineColorSettings
 import pl.dakil.transport.ui.saved.SavedScreen
 import pl.dakil.transport.ui.itinerary.ItineraryScreen
@@ -31,12 +32,12 @@ import pl.dakil.transport.ui.search.ConnectionsSearchScreen
 import pl.dakil.transport.ui.search.DeparturesSearchScreen
 import pl.dakil.transport.ui.search.LocationPickerScreen
 import pl.dakil.transport.ui.settings.SettingsScreen
-import pl.dakil.transport.ui.trip.TripScreen
 
 @Composable
 fun AppNavHost(
     startDestinationViewModel: StartDestinationViewModel = hiltViewModel(),
     lineColorSettingsViewModel: LineColorSettingsViewModel = hiltViewModel(),
+    showOnMapViewModel: ShowOnMapViewModel = hiltViewModel(),
 ) {
     val startTab by startDestinationViewModel.startTab.collectAsStateWithLifecycle()
     // One frame of nothing while the setting is read, rather than starting on the map and
@@ -55,6 +56,21 @@ fun AppNavHost(
             startDestinationViewModel.consumeMapRequest()
             navController.navigateToTab(MapRoute)
         }
+    }
+
+    /**
+     * Opening a line shows it on the map: the run is handed over and a map is pushed to follow it.
+     *
+     * A plain push, deliberately not [navigateToTab]: the map is normally already on this stack a
+     * few entries down (map → stop → board), and switching to it there would mean popping the
+     * screens the user came through, so back could no longer retrace them — and going round the
+     * loop again (a stop on the shown route → its board → its run → the map again) would keep
+     * throwing that history away. Pushing instead means back walks the whole way out, one screen
+     * at a time.
+     */
+    val showTripOnMap = { trip: PendingMapTrip ->
+        showOnMapViewModel.showTrip(trip)
+        navController.navigate(MapRoute)
     }
 
     val backStackEntry by navController.currentBackStackEntryAsState()
@@ -108,7 +124,7 @@ fun AppNavHost(
                     SavedScreen(
                         onOpenConnectionsSearch = { navController.navigateToTab(ConnectionsRoute) },
                         onOpenConnection = { route -> navController.navigate(route) },
-                        onOpenTrip = { route -> navController.navigate(route) },
+                        onOpenTrip = showTripOnMap,
                         onOpenItinerary = { route -> navController.navigate(route) },
                     )
                 }
@@ -134,7 +150,7 @@ fun AppNavHost(
                             fromName = resultsViewModel.fromName,
                             toName = resultsViewModel.toName,
                             onBack = { navController.popBackStack() },
-                            onOpenTrip = { route -> navController.navigate(route) },
+                            onOpenTrip = showTripOnMap,
                             endpoints = resultsViewModel.fromPlace to resultsViewModel.toPlace,
                         )
                     }
@@ -142,30 +158,13 @@ fun AppNavHost(
                 composable<SavedItineraryRoute> {
                     SavedItineraryScreen(
                         onBack = { navController.popBackStack() },
-                        onOpenTrip = { route -> navController.navigate(route) },
+                        onOpenTrip = showTripOnMap,
                     )
                 }
                 composable<DepartureBoardRoute> {
                     DeparturesScreen(
                         onBack = { navController.popBackStack() },
-                        onDepartureSelected = { route -> navController.navigate(route) },
-                    )
-                }
-                composable<TripRoute> {
-                    TripScreen(
-                        onBack = { navController.popBackStack() },
-                        onOpenDepartures = { route -> navController.navigate(route) },
-                        // The trip itself was already handed to the map by the screen; putting a
-                        // map on top is all that is left.
-                        //
-                        // A plain push, deliberately not [navigateToTab]: the map is normally
-                        // already on this stack a few entries down (map → stop → timetable →
-                        // trip), and switching to it there would mean popping the screens the
-                        // user came through, so back could no longer retrace them — and going
-                        // round the loop again (a stop on the shown route → its timetable → its
-                        // trip → the map again) would keep throwing that history away. Pushing
-                        // instead means back walks the whole way out, one screen at a time.
-                        onShowOnMap = { navController.navigate(MapRoute) },
+                        onDepartureSelected = showTripOnMap,
                     )
                 }
             }

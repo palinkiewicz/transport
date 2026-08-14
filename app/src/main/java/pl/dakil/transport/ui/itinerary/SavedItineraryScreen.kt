@@ -9,7 +9,7 @@ import java.time.OffsetDateTime
 import pl.dakil.transport.R
 import pl.dakil.transport.ui.components.rememberDateFormatter
 import pl.dakil.transport.ui.components.rememberTimeFormatter
-import pl.dakil.transport.ui.navigation.TripRoute
+import pl.dakil.transport.domain.model.PendingMapTrip
 
 /**
  * A pinned journey, opened from the Saved tab.
@@ -21,7 +21,7 @@ import pl.dakil.transport.ui.navigation.TripRoute
 @Composable
 fun SavedItineraryScreen(
     onBack: () -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
     viewModel: SavedItineraryViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()

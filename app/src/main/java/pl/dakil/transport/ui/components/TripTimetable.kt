@@ -1,4 +1,4 @@
-package pl.dakil.transport.ui.trip
+package pl.dakil.transport.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,7 +30,6 @@ import java.time.OffsetDateTime
 import kotlinx.coroutines.delay
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.TripStop
-import pl.dakil.transport.ui.components.InlineRealTimeText
 
 /** How often the "where is it now" highlight re-evaluates against the clock. */
 private const val NOW_TICK_MILLIS = 15_000L
@@ -51,12 +50,12 @@ fun rememberTickingNow(): OffsetDateTime {
 }
 
 /**
- * The stop list of one vehicle run, shared by the trip screen and the map's vehicle panel:
- * a continuous route rail with a dot per stop, terminus stops emphasized, and one row
- * ([highlightedIndex]) marked as where the run is. Which row that is belongs to the caller —
- * the map's panel points at the stop being approached, the trip screen at the last one called at.
+ * The stop list of one vehicle run: a continuous route rail with a dot per stop, terminus stops
+ * emphasized, and one row ([highlightedIndex]) marked as where the run is — the stop being
+ * approached, for the map's vehicle panel that draws it.
  *
- * [onStopClick] is null where there is nowhere to go (the map panel keeps the map on screen).
+ * [onStopClick] is null where there is nowhere to go, which is the map panel's case: it keeps the
+ * map on screen.
  */
 fun LazyListScope.tripTimetable(
     stops: List<TripStop>,

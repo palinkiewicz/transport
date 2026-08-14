@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.FavoriteConnection
 import pl.dakil.transport.domain.model.FavoriteLine
+import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.SavedItinerary
 import pl.dakil.transport.ui.components.FavoriteButton
 import pl.dakil.transport.ui.components.LocationListItem
@@ -52,7 +53,6 @@ import pl.dakil.transport.ui.components.rememberDateFormatter
 import pl.dakil.transport.ui.components.rememberTimeFormatter
 import pl.dakil.transport.ui.navigation.ResultsRoute
 import pl.dakil.transport.ui.navigation.SavedItineraryRoute
-import pl.dakil.transport.ui.navigation.TripRoute
 
 /**
  * The Saved tab: everything the user has starred — places, connections (start→end pairs,
@@ -67,7 +67,7 @@ import pl.dakil.transport.ui.navigation.TripRoute
 fun SavedScreen(
     onOpenConnectionsSearch: () -> Unit,
     onOpenConnection: (ResultsRoute) -> Unit,
-    onOpenTrip: (TripRoute) -> Unit,
+    onOpenTrip: (PendingMapTrip) -> Unit,
     onOpenItinerary: (SavedItineraryRoute) -> Unit,
     viewModel: SavedViewModel = hiltViewModel(),
 ) {
@@ -175,7 +175,7 @@ fun SavedScreen(
                         LineListItem(
                             line = line,
                             containerColor = lineColors.at(index, line.mode.color),
-                            onClick = { onOpenTrip(line.toTripRoute()) },
+                            onClick = { onOpenTrip(line.toPendingMapTrip()) },
                             onRemove = { viewModel.removeLine(line) },
                             modifier = Modifier.animateItem(),
                         )
@@ -277,11 +277,10 @@ private fun FavoriteConnection.toResultsRoute(): ResultsRoute = ResultsRoute(
     timeIso = null,
 )
 
-private fun FavoriteLine.toTripRoute(): TripRoute = TripRoute(
+private fun FavoriteLine.toPendingMapTrip(): PendingMapTrip = PendingMapTrip(
     tripId = tripId,
-    lineLabel = label,
-    headsign = headsign,
-    modeName = mode.name,
+    label = label,
+    mode = mode,
     routeColor = routeColor,
 )
 

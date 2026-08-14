@@ -82,16 +82,6 @@ data class ItineraryRoute(val index: Int)
 @Serializable
 data class SavedItineraryRoute(val id: String)
 
-/** Full run of a single vehicle trip — all stops with times. */
-@Serializable
-data class TripRoute(
-    val tripId: String,
-    val lineLabel: String,
-    val headsign: String?,
-    val modeName: String,
-    val routeColor: String?,
-)
-
 /** The departures/arrivals board itself, for one stop. */
 @Serializable
 data class DepartureBoardRoute(

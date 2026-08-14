@@ -184,10 +184,8 @@
     </plurals>
     <string name="refresh_subtitle_connections">Connections</string>
     <string name="refresh_subtitle_departures">Live departures</string>
-    <string name="refresh_subtitle_trip">Trip timetable</string>
 
     <!-- Trip timetable screen -->
-    <string name="trip_show_on_map">Show on map</string>
 
     <!-- Vehicle attributes -->
     <string name="attribute_wheelchair">Wheelchair access</string>

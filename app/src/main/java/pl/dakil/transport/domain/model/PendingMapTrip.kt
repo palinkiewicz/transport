@@ -1,18 +1,14 @@
 package pl.dakil.transport.domain.model
 
 /**
- * A trip the user asked to see on the map, handed from a timetable screen to the map through
- * [pl.dakil.transport.ui.search.SearchStateHolder].
+ * A trip the user asked to see on the map, handed over through
+ * [pl.dakil.transport.ui.search.SearchStateHolder] by whichever screen the line was tapped on — a
+ * departure board, a saved line, an itinerary leg.
  *
- * [between] is the stop pair the vehicle sits between right now (see [currentLegAt]): the map has
- * no way to look a trip's position up by id, so it fetches the trip's segments from a box around
- * that pair. Carrying it here means the map can start fetching immediately, without first waiting
- * on the trip's own details.
- *
- * [isRunning] is what decides whether there is a vehicle to follow at all. A run that has finished
- * — or has yet to set off — still has a route and stops worth showing, it just has nowhere to draw
- * a marker, so the map skips the vehicle fetches entirely rather than polling for one that cannot
- * be there.
+ * Identity only. Where the run has got to, and whether it is on the road at all, are worked out by
+ * the map from the trip's own timetable ([pl.dakil.transport.ui.map.MapViewModel.selectPinnedTrip]):
+ * that timetable has to be fetched for the panel regardless, and asking the tapped row to know it
+ * would mean a network round trip before the map could even open.
  */
 data class PendingMapTrip(
     val tripId: String,
@@ -21,6 +17,4 @@ data class PendingMapTrip(
     val mode: TransportMode,
     /** GTFS `RRGGBB` route color (no leading `#`), when the feed provides one. */
     val routeColor: String?,
-    val between: Pair<GeoPoint, GeoPoint>,
-    val isRunning: Boolean,
 )
