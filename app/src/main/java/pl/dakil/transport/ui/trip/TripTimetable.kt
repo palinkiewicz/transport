@@ -52,15 +52,16 @@ fun rememberTickingNow(): OffsetDateTime {
 
 /**
  * The stop list of one vehicle run, shared by the trip screen and the map's vehicle panel:
- * a continuous route rail with a dot per stop, terminus stops emphasized, and the last stop
- * already called at ([currentIndex]) marked as the run's live position.
+ * a continuous route rail with a dot per stop, terminus stops emphasized, and one row
+ * ([highlightedIndex]) marked as where the run is. Which row that is belongs to the caller —
+ * the map's panel points at the stop being approached, the trip screen at the last one called at.
  *
  * [onStopClick] is null where there is nowhere to go (the map panel keeps the map on screen).
  */
 fun LazyListScope.tripTimetable(
     stops: List<TripStop>,
     railColor: Color,
-    currentIndex: Int,
+    highlightedIndex: Int,
     onStopClick: ((TripStop) -> Unit)? = null,
 ) {
     items(stops.size) { index ->
@@ -69,7 +70,7 @@ fun LazyListScope.tripTimetable(
             railColor = railColor,
             isFirst = index == 0,
             isLast = index == stops.lastIndex,
-            isCurrent = index == currentIndex,
+            isCurrent = index == highlightedIndex,
             onClick = onStopClick?.let { click -> { click(stops[index]) } },
         )
     }

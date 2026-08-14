@@ -36,6 +36,16 @@ fun List<TripStop>.lastPassedIndex(now: OffsetDateTime): Int =
     indexOfLast { !it.time.isAfter(now) }
 
 /**
+ * Index of the stop the run is heading for — the first it has not called at yet, or the terminus
+ * once it has called at them all. -1 for an empty list, as for [lastPassedIndex].
+ *
+ * This is what a live run's timetable highlights: where it is *going* is the answer the reader
+ * wants, and it is the only one that stays useful once the vehicle has left the last stop behind.
+ */
+fun List<TripStop>.nextStopIndex(now: OffsetDateTime): Int =
+    indexOfFirst { it.time.isAfter(now) }.takeIf { it >= 0 } ?: lastIndex
+
+/**
  * Whether the run is on the road at [now] — the condition for it having a position to show on the
  * map at all. The lead before the first departure is deliberate: `/map/trips` already returns a
  * vehicle waiting to set off, drawn at its first stop.

@@ -225,7 +225,6 @@
     <string name="map_line_focus">Pokaż tylko tę linię</string>
     <string name="map_line_show_all">Pokaż wszystkie linie</string>
     <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
-    <string name="map_vehicle_next_stop">następny: %1$s</string>
 
     <!-- Map filter menu -->
     <string name="map_filters_open">Filtry mapy</string>

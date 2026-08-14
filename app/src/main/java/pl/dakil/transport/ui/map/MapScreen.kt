@@ -13,6 +13,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,22 +25,22 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DirectionsBoat
 import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.Flag
@@ -59,8 +61,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Surface
@@ -84,19 +87,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.core.content.ContextCompat
@@ -167,6 +174,7 @@ import pl.dakil.transport.domain.model.PendingMapTrip
 import pl.dakil.transport.domain.model.RouteShape
 import pl.dakil.transport.domain.model.TransitLocation
 import pl.dakil.transport.domain.model.TransportMode
+import pl.dakil.transport.domain.model.TripStop
 import androidx.compose.ui.text.style.TextOverflow
 import pl.dakil.transport.ui.components.AttributeChip
 import pl.dakil.transport.ui.components.FavoriteButton
@@ -175,7 +183,8 @@ import pl.dakil.transport.ui.components.VehicleAmenityChips
 import pl.dakil.transport.ui.components.parseRouteColor
 import pl.dakil.transport.ui.components.shortMessage
 import pl.dakil.transport.ui.navigation.DepartureBoardRoute
-import pl.dakil.transport.domain.model.lastPassedIndex
+import pl.dakil.transport.ui.theme.SettledMotionScheme
+import pl.dakil.transport.domain.model.nextStopIndex
 import pl.dakil.transport.ui.trip.rememberTickingNow
 import pl.dakil.transport.ui.trip.tripTimetable
 
@@ -229,6 +238,19 @@ private val PICKED_POINT_COLOR = Color(0xFF78909C)
 /** Share of the map the selected vehicle's panel may take before its timetable scrolls. */
 private const val VEHICLE_PANEL_MAX_MAP_FRACTION = 0.4f
 
+/**
+ * How tall `BottomSheetDefaults.DragHandle` measures — its 4 dp bar plus the 22 dp of padding M3
+ * puts above and below it. Not a style choice of ours: the handle is the scaffold's own, drawn in
+ * its own slot above the panel, and the sheet's peek height has to be the panel *plus* it.
+ */
+private val DRAG_HANDLE_HEIGHT = 48.dp
+
+/** Bottom padding of a sheet panel whose last row is not a scrolling list. */
+private val PANEL_BOTTOM_PADDING = 12.dp
+
+/** Gap between the vehicle panel's chips and its timetable. */
+private val TIMETABLE_TOP_PADDING = 4.dp
+
 /** How long the camera takes to reach a freshly selected vehicle. */
 private val FOLLOW_CENTER_DURATION = 500.milliseconds
 
@@ -267,7 +289,29 @@ private fun CameraProjection.targetCentering(vehicle: GeoPoint, panelHeight: Dp)
     return positionFromScreenLocation(DpOffset(onScreen.x, onScreen.y + panelHeight / 2))
 }
 
-@OptIn(kotlinx.coroutines.FlowPreview::class, ExperimentalMaterial3Api::class)
+/**
+ * Reserves [topInset] above the content and reports itself that much taller — the sheet handle's
+ * room to stay out of the status bar. See the inset itself in [MapScreen] for why it is measured
+ * here rather than read as a padding value in composition.
+ */
+private fun Modifier.sheetTopInset(topInset: () -> Dp) = layout { measurable, constraints ->
+    val inset = topInset().roundToPx().coerceAtLeast(0)
+    val placeable = measurable.measure(constraints.offset(vertical = -inset))
+    layout(placeable.width, placeable.height + inset) { placeable.place(0, inset) }
+}
+
+/** Lays the sheet's body out at [total] less whatever [topInset] the handle above it is taking. */
+private fun Modifier.sheetBodyHeight(total: Dp, topInset: () -> Dp) = layout { measurable, constraints ->
+    val height = (total - topInset()).roundToPx().coerceAtLeast(0)
+    val placeable = measurable.measure(constraints.copy(minHeight = height, maxHeight = height))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+}
+
+@OptIn(
+    kotlinx.coroutines.FlowPreview::class,
+    ExperimentalMaterial3Api::class,
+    ExperimentalMaterial3ExpressiveApi::class,
+)
 @Composable
 fun MapScreen(
     onOpenTimetable: (DepartureBoardRoute) -> Unit,
@@ -309,7 +353,6 @@ fun MapScreen(
     // Delegated for the same reason as the layer state below: the map content lambda is composed
     // once, so a captured value would freeze the labels at whichever colourway loaded first.
     val darkMap by styleViewModel.darkMap.collectAsStateWithLifecycle()
-    MapStatusBarIcons(darkMap)
     val selectedStop by viewModel.selectedStop.collectAsStateWithLifecycle()
     val stopRoutes by viewModel.stopRoutes.collectAsStateWithLifecycle()
     // Delegated for the same reason as the rest: the routes layer reads this from inside the
@@ -369,9 +412,8 @@ fun MapScreen(
 
     // The two info panels are one *standard* (non-modal) M3 bottom sheet: no scrim, so the map
     // behind it stays pannable and tappable, and the scaffold only spans the area the nav host
-    // gave this screen, so the bottom bar keeps its place under it. The drag handle, the
-    // partial→expanded snapping, the fling physics and the nested scroll into the timetable are
-    // all the framework's.
+    // gave this screen, so the bottom bar keeps its place under it. The partial→expanded snapping,
+    // the fling physics and the nested scroll into the timetable are all the framework's.
     //
     // A pinned trip heads the panel itself while its run is off the road: there is no marker to
     // read the line from, and the trip is still what the panel is about.
@@ -393,14 +435,43 @@ fun MapScreen(
     var displayedKind by remember { mutableStateOf<SheetContentKind?>(null) }
     sheetContentKind?.let { displayedKind = it }
 
+    /**
+     * How tall the stop panel measures. Its open height is the *content's*, so the sheet wraps what
+     * it holds instead of resting at a guessed constant: a stop with four rows of line chips and
+     * one with none are different heights, and neither should show a gap or a cut-off row. It is a
+     * measurement fed back as a layout input, which is safe because that panel wraps its own
+     * content and so cannot grow to fill whatever it is given.
+     */
+    var stopPanelHeight by remember { mutableStateOf(0.dp) }
+
+    /**
+     * How tall the vehicle panel *would* measure with nothing capping its timetable. The panel
+     * itself fills the sheet, so this is the one number that says where the sheet should rest:
+     * at the whole panel while it fits, at [vehiclePanelHeight] once the run is longer than that.
+     */
+    var vehicleNaturalHeight by remember { mutableStateOf(0.dp) }
+
+    // Only a run whose timetable outgrows the collapsed panel has anywhere to expand *to*; letting
+    // a three-stop run be dragged to full screen would just uncover blank surface.
+    val sheetExpandable = displayedKind == SheetContentKind.VEHICLE &&
+        vehicleNaturalHeight > vehiclePanelHeight
+    val panelHeight = when (displayedKind) {
+        SheetContentKind.STOP -> stopPanelHeight
+        SheetContentKind.VEHICLE -> minOf(vehicleNaturalHeight, vehiclePanelHeight)
+        null -> 0.dp
+    }
+
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+
+    // Read through State: the sheet state keeps the first lambda it is given for the sheet's life.
+    val expandableNow by rememberUpdatedState(sheetExpandable)
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.Hidden,
         skipHiddenState = false,
-        // The sheet has one open height and no second one to drag to: these panels are as tall as
-        // what they have to say, and an expanded state on content that cannot fill the screen just
-        // snaps to a taller box padded with nothing. The handle stays because a sheet has one —
-        // it is what makes it draggable, and dragging it *down* still dismisses.
-        confirmValueChange = { it != SheetValue.Expanded },
+        // A stop panel is as tall as what it has to say and has no second height to drag to, so an
+        // expanded state on it would only snap to a taller box padded with nothing. A long run's
+        // timetable does have more to show, and that one expands to the full screen.
+        confirmValueChange = { it != SheetValue.Expanded || expandableNow },
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
     LaunchedEffect(sheetContentKind) {
@@ -412,20 +483,61 @@ fun MapScreen(
         snapshotFlow { sheetState.currentValue }
             .collect { if (it == SheetValue.Hidden) viewModel.clearSelection() }
     }
-    /**
-     * How tall the sheet's body measures — its own content, handle included, since the scaffold's
-     * handle slot is empty and the body draws one.
-     *
-     * The open height is the *content's*, so the sheet wraps what it holds instead of resting at a
-     * guessed constant: a stop with four rows of line chips and one with none are different
-     * heights, and neither should show a gap or a cut-off row. It is a measurement fed back as a
-     * layout input, which is safe here only because the body wraps its own content (the vehicle's
-     * timetable scrolls inside a ceiling) and so cannot grow to fill whatever it is given.
-     */
-    var sheetContentHeight by remember { mutableStateOf(0.dp) }
+    /** Where the sheet rests: the open panel plus the handle above it, animated as it grows. */
     val sheetHeight by animateDpAsState(
-        targetValue = if (sheetContentKind == null) 0.dp else sheetContentHeight,
+        targetValue = if (sheetContentKind == null) 0.dp else DRAG_HANDLE_HEIGHT + panelHeight,
         label = "sheetHeight",
+    )
+
+    /**
+     * How far the sheet is between resting at its peek height (0) and standing fully open (1),
+     * taken from its live offset rather than from the state it will settle in — so what reads it
+     * follows the finger through the drag instead of snapping when the gesture ends.
+     */
+    val containerPx = with(density) { mapHeight.toPx() }
+    val peekPx = with(density) { sheetHeight.toPx() }
+    val sheetExpansion = remember(containerPx, peekPx) {
+        derivedStateOf {
+            if (containerPx <= peekPx) return@derivedStateOf 0f
+            // Throws until the sheet's first measurement has placed it; the read still registers,
+            // so this recomputes as soon as there is an offset to read.
+            val offset = runCatching { sheetState.requireOffset() }.getOrNull()
+                ?: return@derivedStateOf 0f
+            ((containerPx - offset - peekPx) / (containerPx - peekPx)).coerceIn(0f, 1f)
+        }
+    }
+
+    /**
+     * How much of the status bar the sheet has slid under — nothing while its edge is below the bar,
+     * the whole bar once it stands at the top of the screen. An expandable sheet is laid out at the
+     * screen's full height, so at its open anchor the handle would sit *under* the status bar, where
+     * the system bar takes the taps meant for it; this is the room the handle takes to keep clear of
+     * it, growing as the sheet passes underneath the way the platform's own sheets do. The body
+     * gives up exactly what the handle takes ([sheetTopInset] against [sheetBodyHeight]), so the
+     * sheet's own height — and with it the anchor this is measured from — never moves.
+     *
+     * Read in the layout phase by both, and so a lambda: a composition-phase read would recompose
+     * the whole sheet every frame of a drag, and the two would disagree by however far the sheet had
+     * moved in between.
+     */
+    val sheetTopInset: () -> Dp = {
+        val offset = runCatching { sheetState.requireOffset() }.getOrNull()
+        if (offset == null) {
+            0.dp
+        } else {
+            (statusBarHeight - with(density) { offset.toDp() }).coerceIn(0.dp, statusBarHeight)
+        }
+    }
+
+    // The status bar sits on the map — except with the sheet standing open over the whole screen,
+    // where it sits on the sheet's own surface and the app's theme is what its icons have to read
+    // against. Settled, not live: flipping the icons mid-drag would strobe them.
+    MapStatusBarIcons(
+        darkBackground = if (sheetState.currentValue == SheetValue.Expanded) {
+            MaterialTheme.colorScheme.surface.luminance() < 0.5f
+        } else {
+            darkMap
+        },
     )
 
     // Back peels the map's own layers off one at a time — filter panel, then whichever info
@@ -618,6 +730,35 @@ fun MapScreen(
             }
     }
 
+    // A selected stop is lifted into the map its panel leaves visible the same way, minus the
+    // following: a stop does not move, so this is the one animation and the camera is the user's
+    // again afterwards. Keyed on the stop, so it happens once per selection.
+    LaunchedEffect(selectedStop?.favoriteKey) {
+        val stop = selectedStop ?: return@LaunchedEffect
+        // A vehicle being followed is already driving the camera, and it wins: the stop was tapped
+        // on the run it is showing, not instead of it.
+        if (followingVehicle) return@LaunchedEffect
+        // A stop picked in the search field arrives with a fly-to of its own (cameraTarget above),
+        // which zooms as well as pans; the lift is the last word on where the camera lands, so it
+        // waits for that to be done rather than animating against it — and reads the projection
+        // afterwards, at the zoom the shift will actually be made at.
+        snapshotFlow { cameraTarget }.first { it == null }
+        // Nothing to aim at until the panel has been measured — centring on the whole map first
+        // would land the stop short and snap it up a frame later.
+        val panelHeight = snapshotFlow { stopPanelHeight }.first { it > 0.dp }
+        val projection = cameraState.awaitProjection()
+        pendingLocateMe = false
+        cameraState.animateTo(
+            cameraState.position.copy(
+                target = projection.targetCentering(
+                    GeoPoint(lat = stop.lat, lon = stop.lon),
+                    DRAG_HANDLE_HEIGHT + panelHeight,
+                ),
+            ),
+            duration = FOLLOW_CENTER_DURATION,
+        )
+    }
+
     val locationState = if (hasLocationPermission) {
         val locationProvider = rememberDefaultLocationProvider()
         rememberUserLocationState(locationProvider)
@@ -637,22 +778,51 @@ fun MapScreen(
     }
 
 
+    // The sheet's drag settle, its open animation and the fling that carries over from the timetable
+    // all animate on the theme's default spatial spec, and the expressive scheme's spring overshoots
+    // every one of them: the panel swings past its anchor and back, and M3 stretches the sheet's own
+    // surface to cover the gap that opens under it. [SettledMotionScheme] is that one spec, and
+    // nothing else, made duration-based so no fling speed can carry it past where it is going.
+    MaterialExpressiveTheme(motionScheme = SettledMotionScheme) {
     BottomSheetScaffold(
         scaffoldState = scaffoldState,
         sheetPeekHeight = sheetHeight,
         // The scaffold is a frame around the map, not a surface of its own; anything it painted
         // would sit between the map and the sheet.
         containerColor = Color.Transparent,
-        // The handle is drawn by the body instead of the scaffold's slot, so one measurement
-        // covers the whole sheet and the peek height it feeds needs no constant added to it.
-        sheetDragHandle = null,
+        // M3's own handle, in M3's own slot: the scaffold wraps whatever it is given here in the
+        // drag semantics, the tooltip and the tap that expands or collapses the sheet, so a
+        // hand-drawn one would have to reimplement all of it to end up where this starts.
+        sheetDragHandle = {
+            // Above it, the room it needs to stay clear of the status bar the sheet slides under.
+            Box(modifier = Modifier.sheetTopInset(sheetTopInset)) {
+                if (sheetExpandable) {
+                    BottomSheetDefaults.DragHandle()
+                } else {
+                    // A panel with nowhere to expand to leaves that tap with nothing to do, so
+                    // there it closes the sheet — what the header's ✕ used to be, without a second
+                    // control saying the same thing. The inner click takes the tap first.
+                    Box(
+                        modifier = Modifier.clickable(
+                            onClickLabel = stringResource(R.string.action_close),
+                            role = Role.Button,
+                            onClick = {
+                                // The panel the handle belongs to, so closing a stop opened over a
+                                // followed run leaves the run itself selected.
+                                when (displayedKind) {
+                                    SheetContentKind.STOP -> viewModel.clearStopSelection()
+                                    SheetContentKind.VEHICLE -> viewModel.clearVehicleSelection()
+                                    null -> {}
+                                }
+                            },
+                        ),
+                    ) {
+                        BottomSheetDefaults.DragHandle()
+                    }
+                }
+            }
+        },
         sheetContent = {
-            Column(
-                modifier = Modifier.onSizeChanged { size ->
-                    sheetContentHeight = with(density) { size.height.toDp() }
-                },
-            ) {
-            BottomSheetDefaults.DragHandle(modifier = Modifier.align(Alignment.CenterHorizontally))
             when (displayedKind) {
                 SheetContentKind.STOP -> displayedStop?.let { stop ->
                     StopInfoPanel(
@@ -662,7 +832,7 @@ fun MapScreen(
                         onToggleRouteFocus = { viewModel.toggleRouteFocus(it) },
                         isFavorite = favorites.containsLocation(stop),
                         onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
-                        onClose = { viewModel.clearStopSelection() },
+                        onHeightChange = { stopPanelHeight = it },
                         onOpenTimetable = {
                             viewModel.clearSelection()
                             onOpenTimetable(
@@ -695,12 +865,24 @@ fun MapScreen(
                             ?.takeIf { vehicleDetails !is VehicleDetailsUiState.Loading }
                             ?.let(favorites::containsLine),
                         onToggleFavorite = { favoriteLine?.let(viewModel::toggleFavoriteLine) },
-                        onClose = { viewModel.clearVehicleSelection() },
-                        maxHeight = vehiclePanelHeight,
+                        expandable = sheetExpandable,
+                        sheetExpansion = { sheetExpansion.value },
+                        collapsed = { sheetState.currentValue != SheetValue.Expanded },
+                        onNaturalHeightChange = { vehicleNaturalHeight = it },
+                        // An expandable panel is laid out at the sheet's full travel and its
+                        // timetable scrolls inside it, so dragging the sheet up uncovers a list
+                        // that is already there — following the finger, resizing nothing.
+                        modifier = if (sheetExpandable) {
+                            Modifier.sheetBodyHeight(
+                                total = mapHeight - DRAG_HANDLE_HEIGHT,
+                                topInset = sheetTopInset,
+                            )
+                        } else {
+                            Modifier
+                        },
                     )
                 }
                 null -> {}
-            }
             }
         },
     ) { _ ->
@@ -1147,6 +1329,7 @@ fun MapScreen(
         }
     }
     }
+    }
 }
 
 /** Which of the two info panels the map's bottom sheet is showing. */
@@ -1162,20 +1345,21 @@ private enum class SheetContentKind { STOP, VEHICLE }
  * icons over the light map, light icons over the dark one.
  *
  * This screen is the one place the map itself is what the status bar sits against — every other
- * destination puts a top app bar there — so the clock and signal icons have to follow the
- * basemap rather than the app theme that `enableEdgeToEdge` set at startup. The previous
- * appearance is put back on leaving, so nothing else is affected. Null means the colourway is
- * not resolved yet: nothing to contrast against, so nothing is touched.
+ * destination puts a top app bar there — so the clock and signal icons have to follow whatever is
+ * behind them, the basemap or a sheet standing open over it, rather than the app theme that
+ * `enableEdgeToEdge` set at startup. The previous appearance is put back on leaving, so nothing else
+ * is affected. Null means the colourway is not resolved yet: nothing to contrast against, so nothing
+ * is touched.
  */
 @Composable
-private fun MapStatusBarIcons(darkMap: Boolean?) {
+private fun MapStatusBarIcons(darkBackground: Boolean?) {
     val view = LocalView.current
-    if (view.isInEditMode || darkMap == null) return
+    if (view.isInEditMode || darkBackground == null) return
     val window = (view.context as? Activity)?.window ?: return
-    DisposableEffect(view, window, darkMap) {
+    DisposableEffect(view, window, darkBackground) {
         val controller = WindowCompat.getInsetsController(window, view)
         val previous = controller.isAppearanceLightStatusBars
-        controller.isAppearanceLightStatusBars = !darkMap
+        controller.isAppearanceLightStatusBars = !darkBackground
         onDispose { controller.isAppearanceLightStatusBars = previous }
     }
 }
@@ -1251,13 +1435,11 @@ private data class VehiclePanelLine(
     val label: String,
     val mode: TransportMode,
     val routeColor: String?,
-    /** The vehicle's next stop; null when nothing is running (or before the first fetch lands). */
-    val nextStopName: String?,
     /** Null for a run that is off the road: neither "live" nor "scheduled" is true of it. */
     val realTime: Boolean?,
 ) {
 
-    /** See [VehicleMarker.favoriteLine] — [destination] must be the headsign, not [nextStopName]. */
+    /** See [VehicleMarker.favoriteLine] — [destination] must be the trip's headsign. */
     fun favoriteLine(destination: String?): FavoriteLine? = tripId?.let {
         FavoriteLine(label = label, headsign = destination, mode = mode, routeColor = routeColor, tripId = it)
     }
@@ -1268,7 +1450,6 @@ private fun VehicleMarker.panelLine() = VehiclePanelLine(
     label = label,
     mode = mode,
     routeColor = routeColor,
-    nextStopName = nextStopName,
     realTime = realTime,
 )
 
@@ -1277,7 +1458,6 @@ private fun PendingMapTrip.panelLine() = VehiclePanelLine(
     label = label,
     mode = mode,
     routeColor = routeColor,
-    nextStopName = null,
     realTime = null,
 )
 
@@ -1285,9 +1465,13 @@ private fun PendingMapTrip.panelLine() = VehiclePanelLine(
  * Body of the map's bottom sheet for a tapped vehicle, mirroring [StopInfoPanel]. Shows the
  * trip's attributes and its timetable as they load ([detailsState]).
  *
- * No surface of its own: it is sheet content, so the container and the handle belong to the sheet,
- * and the sheet opens to exactly as tall as this measures. [maxHeight] is what stops a forty-stop
- * run from making that the whole screen — past it the timetable scrolls inside the sheet.
+ * No surface of its own: it is sheet content, so the container and the handle belong to the sheet.
+ * A run whose timetable outgrows the sheet's peek height makes the sheet [expandable]: the panel is
+ * then laid out at the sheet's whole travel and the timetable scrolls inside it, so dragging the
+ * sheet up simply uncovers more of a list that is already there. What that costs is the run's
+ * position — with only the top strip of the list on screen the highlighted row has to be *scrolled*
+ * up into it, and towards the end of a run there are not enough stops left below it to scroll that
+ * far, hence the blank tail below.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1299,18 +1483,88 @@ private fun VehicleInfoPanel(
     /** Null hides the star entirely (no trip id to identify the line by). */
     isFavorite: Boolean?,
     onToggleFavorite: () -> Unit,
-    onClose: () -> Unit,
-    /** Ceiling on the panel, so a long run's timetable scrolls rather than growing the sheet. */
-    maxHeight: Dp,
+    /** Whether the sheet can be dragged open — false when the whole panel already shows. */
+    expandable: Boolean,
+    /** How far the sheet is open: 0 at its peek height, 1 fully open. Read per frame of a drag. */
+    sheetExpansion: () -> Float,
+    /** Whether the sheet has settled back at its peek height. Deferred: this is a settled read. */
+    collapsed: () -> Boolean,
+    /** Height this measures uncapped — what the collapsed sheet peeks at, before its ceiling. */
+    onNaturalHeightChange: (Dp) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
     val timetable = (detailsState as? VehicleDetailsUiState.Shown)?.details?.timetable.orEmpty()
+    val now = rememberTickingNow()
+    // The stop being approached rather than the last one called at: where the run is *going* is
+    // what this panel is read for, and it stays an answer once the run has left its last stop.
+    val highlightedIndex = timetable.nextStopIndex(now)
+    val listState = rememberLazyListState()
+    /** Everything above the timetable, measured: the peek height is this plus what list fits. */
+    var headerHeight by remember { mutableStateOf(0.dp) }
+    // Every row is one height, so one of them answers for the whole list — which is what lets the
+    // sheet peek at the panel's natural height without laying the timetable out a second time.
+    // Taken from the first measurement and then left alone, because a stop name long enough to wrap
+    // makes rows differ by a line: tracking it would move the tail below with the scroll, and the
+    // tail is what the scroll is aimed by.
+    // The viewport is latched with it, and for a second reason: over the last stretch of the drag
+    // the list gives up the room the handle takes to clear the status bar, and a tail that followed
+    // that would re-aim the list in the middle of the gesture.
+    var geometry by remember(line.tripId) { mutableStateOf(ListGeometry()) }
+    LaunchedEffect(line.tripId, listState) {
+        geometry = snapshotFlow {
+            ListGeometry(
+                rowHeightPx = listState.layoutInfo.visibleItemsInfo.firstOrNull()?.size ?: 0,
+                viewportPx = listState.layoutInfo.viewportSize.height,
+            )
+        }.first { it.rowHeightPx > 0 && it.viewportPx > 0 }
+    }
+    val rowHeightPx = geometry.rowHeightPx
+    val listHeightPx = rowHeightPx * timetable.size
+
+    val naturalHeight = headerHeight + with(density) {
+        if (timetable.isEmpty()) PANEL_BOTTOM_PADDING else TIMETABLE_TOP_PADDING + listHeightPx.toDp()
+    }
+    LaunchedEffect(naturalHeight) { onNaturalHeightChange(naturalHeight) }
+
+    /**
+     * Blank tail the *collapsed* sheet needs under the last stop, so that scrolling the highlighted
+     * row to the very top of the list is always possible: a list can only be scrolled by as much as
+     * it overflows its viewport, and this viewport is the sheet's whole travel — mostly off screen
+     * while it is collapsed, which leaves the rows *below* the highlighted one paying for the
+     * scroll. Towards the end of a run there are not enough of them, and without the tail the row
+     * stops short of the top and, near the terminus, short of the strip that is on screen at all.
+     *
+     * Aiming at the top rather than at the strip's lower edge is what makes this independent of how
+     * tall the strip happens to be — and it is the more useful place besides, since the stops after
+     * the one being approached are the ones still to come.
+     *
+     * None of it applies to an open sheet, where the whole list is on screen: the tail is scaled
+     * away as the sheet is dragged (see [VehicleTimetable]), so it never holds a screenful of
+     * nothing under a run that is nearly over. A run long enough to fill the open sheet has no tail
+     * at either end of the drag.
+     */
+    val collapsedTail = with(density) {
+        (highlightedIndex.coerceAtLeast(0) * rowHeightPx + geometry.viewportPx - listHeightPx)
+            .coerceAtLeast(0)
+            .toDp()
+    }
+
     Column(
-        modifier = Modifier
-            .heightIn(max = maxHeight)
+        modifier = modifier
             // The timetable runs to the panel's edge: its rows carry their own padding, and
             // a gap below the last visible one reads as the list having stopped scrolling.
-            .padding(start = 16.dp, end = 8.dp, bottom = if (timetable.isEmpty()) 12.dp else 0.dp),
+            .padding(
+                start = 16.dp,
+                end = 8.dp,
+                bottom = if (timetable.isEmpty()) PANEL_BOTTOM_PADDING else 0.dp,
+            ),
     ) {
+        Column(
+            modifier = Modifier.onSizeChanged { size ->
+                headerHeight = with(density) { size.height.toDp() }
+            },
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 // Same colored-circle look as the vehicle's marker on the map.
                 Box(
@@ -1342,7 +1596,6 @@ private fun VehicleInfoPanel(
                     Text(
                         text = listOfNotNull(
                             stringResource(line.mode.labelRes),
-                            line.nextStopName?.let { stringResource(R.string.map_vehicle_next_stop, it) },
                             details?.agencyName ?: details?.routeLongName,
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.bodySmall,
@@ -1353,9 +1606,6 @@ private fun VehicleInfoPanel(
                 }
                 if (isFavorite != null) {
                     FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
-                }
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
                 }
             }
 
@@ -1391,35 +1641,112 @@ private fun VehicleInfoPanel(
                     else -> {}
                 }
             }
-
-            if (timetable.isNotEmpty()) {
-                val now = rememberTickingNow()
-                val currentIndex = timetable.lastPassedIndex(now)
-                val listState = rememberLazyListState()
-                // Open on where the vehicle is now rather than at the run's first stop.
-                LaunchedEffect(timetable.first().place.favoriteKey) {
-                    if (currentIndex > 0) listState.scrollToItem(currentIndex)
-                }
-                LazyColumn(
-                    state = listState,
-                    // fill = false so a short run keeps the panel short instead of stretching it.
-                    modifier = Modifier
-                        .weight(1f, fill = false)
-                        .padding(top = 4.dp, end = 8.dp),
-                ) {
-                    tripTimetable(
-                        stops = timetable,
-                        railColor = parseRouteColor(line.routeColor, markerColor(line.mode)),
-                        currentIndex = currentIndex,
-                    )
-                }
-            }
         }
+
+        if (timetable.isNotEmpty()) {
+            VehicleTimetable(
+                stops = timetable,
+                railColor = parseRouteColor(line.routeColor, markerColor(line.mode)),
+                highlightedIndex = highlightedIndex,
+                listState = listState,
+                collapsedTail = collapsedTail,
+                // Nothing to aim at before the first layout has said how tall a row is: the very
+                // first scroll should land on the highlight, not animate to it from a guess.
+                measured = rowHeightPx > 0,
+                sheetExpansion = sheetExpansion,
+                collapsed = collapsed,
+                // Filling only once the sheet can be dragged open: a run that fits keeps the
+                // panel its own height, where filling would leave blank under the last stop.
+                modifier = Modifier.weight(1f, fill = expandable),
+            )
+        }
+    }
+}
+
+/**
+ * What [VehicleInfoPanel] measures its timetable's geometry as, latched together at the first
+ * layout: both numbers describe the same pass, and one of them arriving a frame before the other
+ * would size the sheet against a list it does not match.
+ */
+private data class ListGeometry(val rowHeightPx: Int = 0, val viewportPx: Int = 0)
+
+/**
+ * The timetable inside [VehicleInfoPanel], split out because it is the one thing here that reads
+ * the sheet's [sheetExpansion] — a value that changes every frame of a drag, and recomposing this
+ * much is cheaper than recomposing the panel around it.
+ *
+ * The list opens on the stop the vehicle is heading for, and follows the run as it advances until
+ * the user scrolls the list themselves, from when on it is theirs — until the sheet comes back down,
+ * which re-aims the strip and hands it back.
+ */
+@Composable
+private fun VehicleTimetable(
+    stops: List<TripStop>,
+    railColor: Color,
+    highlightedIndex: Int,
+    listState: LazyListState,
+    /** Blank tail the collapsed sheet needs under the last stop — see [VehicleInfoPanel]. */
+    collapsedTail: Dp,
+    /** Whether the list has been laid out once, so the tail and the row height are real numbers. */
+    measured: Boolean,
+    /** How far the sheet is open: 0 at its peek height, 1 fully open. */
+    sheetExpansion: () -> Float,
+    /** Whether the sheet has settled back at its peek height. */
+    collapsed: () -> Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val tripKey = stops.first().place.favoriteKey
+    // Whether the highlight may still steer the list. Dragging the timetable is the user taking it
+    // over — scrolling it out from under them afterwards is the app fighting them.
+    var userScrolled by remember(tripKey) { mutableStateOf(false) }
+    LaunchedEffect(listState, tripKey) {
+        listState.interactionSource.interactions.collect {
+            if (it is DragInteraction.Start) userScrolled = true
+        }
+    }
+    // Coming back down re-aims the strip at the stop the run is at, and hands the list back to the
+    // highlight: the few rows a collapsed sheet shows are only worth the space if they are the part
+    // of the run it is at, and whatever the user scrolled to was them reading the *open* sheet.
+    // Only settled collapses count — the drag's own target flips as it crosses the threshold, and
+    // scrolling the list then would move it under the finger.
+    var recentres by remember(tripKey) { mutableStateOf(0) }
+    LaunchedEffect(tripKey) {
+        snapshotFlow { collapsed() }
+            .drop(1)
+            .filter { it }
+            .collect {
+                userScrolled = false
+                recentres++
+            }
+    }
+    // First landing on the highlight is a jump — there is nothing on screen yet to animate from.
+    // Every one after it is the run having advanced a stop, or the sheet having come back down.
+    var landed by remember(tripKey) { mutableStateOf(false) }
+    LaunchedEffect(tripKey, highlightedIndex, collapsedTail, measured, userScrolled, recentres) {
+        if (!measured || userScrolled) return@LaunchedEffect
+        val index = highlightedIndex.coerceAtLeast(0)
+        if (landed) listState.animateScrollToItem(index) else listState.scrollToItem(index)
+        landed = true
+    }
+    LazyColumn(
+        state = listState,
+        // Scaled off as the sheet opens rather than dropped when it settles: the tail is what holds
+        // the list at a scroll offset the open sheet has no room for, so removing it in one step
+        // yanks the whole timetable down the moment the drag ends. Taken out along the way instead,
+        // the list unwinds under the finger as the sheet rises.
+        contentPadding = PaddingValues(bottom = collapsedTail * (1f - sheetExpansion())),
+        modifier = modifier.padding(top = TIMETABLE_TOP_PADDING, end = 8.dp),
+    ) {
+        tripTimetable(stops = stops, railColor = railColor, highlightedIndex = highlightedIndex)
+    }
 }
 
 /**
  * Body of the map's bottom sheet for a tapped stop. The sheet is a *standard* one, so the map
  * above it stays fully interactive while it is open — see [MapScreen] for the container.
+ *
+ * Unlike the vehicle's, this panel is as tall as what it has to say and the sheet rests at exactly
+ * that height ([onHeightChange]) — there is no long list here to drag open.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1431,12 +1758,18 @@ private fun StopInfoPanel(
     onToggleRouteFocus: (RouteShape) -> Unit,
     isFavorite: Boolean,
     onToggleFavorite: () -> Unit,
-    onClose: () -> Unit,
     onOpenTimetable: () -> Unit,
     onBeginHere: () -> Unit,
     onFinishHere: () -> Unit,
+    /** What this measures — the height the sheet opens to, and what the camera aims around. */
+    onHeightChange: (Dp) -> Unit,
 ) {
-    Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, bottom = 12.dp)) {
+    val density = LocalDensity.current
+    Column(
+        modifier = Modifier
+            .onSizeChanged { size -> onHeightChange(with(density) { size.height.toDp() }) }
+            .padding(start = 16.dp, end = 8.dp, bottom = PANEL_BOTTOM_PADDING),
+    ) {
             // A plain place or a point picked on the map is not served by any mode, so it gets
             // a map pin rather than a (meaningless, always-bus) vehicle icon, and none of the
             // stop-specific content: no lines, no timetable.
@@ -1483,9 +1816,6 @@ private fun StopInfoPanel(
                     }
                 }
                 FavoriteButton(isFavorite = isFavorite, onToggle = onToggleFavorite)
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = stringResource(R.string.action_close))
-                }
             }
             // Line chips + route overlay load automatically on selection (real stops only);
             // the spinner covers the brief fetch window.

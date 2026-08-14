@@ -114,8 +114,6 @@ data class VehicleMarker(
     /** Trip id for the details fetch and the trip timetable screen; null when the API omits it. */
     val tripId: String?,
     val label: String,
-    /** The vehicle's next stop — see [VehicleSegment.nextStopName]; not the trip's destination. */
-    val nextStopName: String?,
     val mode: TransportMode,
     /** GTFS `RRGGBB` route color (no leading `#`), when the feed provides one. */
     val routeColor: String?,
@@ -125,8 +123,8 @@ data class VehicleMarker(
     /**
      * This vehicle's line as a favourite; null when there is no trip id to open it with.
      *
-     * [destination] must be the trip's headsign, not [nextStopName]: [FavoriteLine.key] is
-     * built from it, so keying on the next stop would give the same line a different key every
+     * [destination] must be the trip's headsign, not the vehicle's next stop: [FavoriteLine.key]
+     * is built from it, so keying on the next stop would give the same line a different key every
      * time the vehicle passes a stop.
      */
     fun favoriteLine(destination: String?): FavoriteLine? = tripId?.let {
@@ -1021,7 +1019,6 @@ private fun VehicleSegment.markerAt(time: OffsetDateTime): VehicleMarker? {
         id = tripKey,
         tripId = tripId,
         label = label,
-        nextStopName = nextStopName,
         mode = mode,
         routeColor = routeColor,
         realTime = realTime,

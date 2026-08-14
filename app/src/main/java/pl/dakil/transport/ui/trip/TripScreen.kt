@@ -129,7 +129,7 @@ fun TripScreen(
                     tripTimetable(
                         stops = state.stops,
                         railColor = lineColor,
-                        currentIndex = state.stops.lastPassedIndex(now),
+                        highlightedIndex = state.stops.lastPassedIndex(now),
                         // The trip's own stop id is the pole the vehicle calls at, so the
                         // board opens with this direction's group already on top.
                         onStopClick = { stop ->

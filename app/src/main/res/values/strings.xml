@@ -213,7 +213,6 @@
     <string name="map_line_focus">Show only this line</string>
     <string name="map_line_show_all">Show all lines</string>
     <!-- Vehicle info panel subtitle fragment, e.g. "next Central Station" -->
-    <string name="map_vehicle_next_stop">next %1$s</string>
 
     <!-- Map filter menu -->
     <string name="map_filters_open">Map filters</string>
