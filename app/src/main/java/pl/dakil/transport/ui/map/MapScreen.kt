@@ -778,6 +778,10 @@ fun MapScreen(
     }
 
 
+    // Captured before the override below, which is in force for everything under the scaffold: the
+    // sheet's content reaches back for it (see `sheetContent`), so only the sheet itself is settled.
+    val appMotionScheme = MaterialTheme.motionScheme
+
     // The sheet's drag settle, its open animation and the fling that carries over from the timetable
     // all animate on the theme's default spatial spec, and the expressive scheme's spring overshoots
     // every one of them: the panel swings past its anchor and back, and M3 stretches the sheet's own
@@ -823,6 +827,9 @@ fun MapScreen(
             }
         },
         sheetContent = {
+            // Only the *sheet* settles without a spring; what it holds is ordinary app UI and keeps
+            // the theme's own motion, so nothing drawn in here loses the expressive feel.
+            MaterialExpressiveTheme(motionScheme = appMotionScheme) {
             when (displayedKind) {
                 SheetContentKind.STOP -> displayedStop?.let { stop ->
                     StopInfoPanel(
@@ -883,6 +890,7 @@ fun MapScreen(
                     )
                 }
                 null -> {}
+            }
             }
         },
     ) { _ ->

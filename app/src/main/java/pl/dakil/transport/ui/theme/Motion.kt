@@ -25,7 +25,9 @@ import androidx.compose.material3.MotionScheme
  *
  * Provide it for a subtree with `MaterialExpressiveTheme(motionScheme = SettledMotionScheme)`, and
  * keep this single instance: the motion scheme is a *static* CompositionLocal, so a fresh one per
- * recomposition would invalidate everything under it.
+ * recomposition would invalidate everything under it. It has to be provided around the whole sheet
+ * container, since that is where the sheet reads the scheme — which is wider than the sheet itself,
+ * so the map's sheet hands the theme's own scheme back to its content.
  */
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 val SettledMotionScheme: MotionScheme = SettledSpatialMotionScheme(MotionScheme.expressive())
