@@ -74,6 +74,8 @@ internal fun JourneyMapPane(
     onOpenTrip: (PendingMapTrip) -> Unit,
     /** What this measures — the height the sheet opens to, and what the camera aims around. */
     onHeightChange: (Dp) -> Unit,
+    /** Height of the journey's own row — where the sheet rests once it is taken down to its header. */
+    onHeaderHeightChange: (Dp) -> Unit,
     viewModel: ItineraryViewModel = hiltViewModel(),
 ) {
     val journey = pinned.journey
@@ -93,7 +95,12 @@ internal fun JourneyMapPane(
             .onSizeChanged { size -> onHeightChange(with(density) { size.height.toDp() }) }
             .padding(start = 16.dp, end = 8.dp, bottom = 12.dp),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier.onSizeChanged { size ->
+                onHeaderHeightChange(with(density) { size.height.toDp() })
+            },
+        ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.format_route_arrow, pinned.fromName, pinned.toName),

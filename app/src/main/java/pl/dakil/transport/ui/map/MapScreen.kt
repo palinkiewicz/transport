@@ -251,6 +251,21 @@ private val DRAG_HANDLE_HEIGHT = 48.dp
 /** Bottom padding of a sheet panel whose last row is not a scrolling list. */
 private val PANEL_BOTTOM_PADDING = 12.dp
 
+/**
+ * Room the sheet leaves under a panel's identity row when it rests at its header. Exactly the gap
+ * every panel puts between that row and whatever follows it, so the sheet stops on the gap rather
+ * than a few pixels into the next row — a sliver of chip tops peeking over the edge reads as the
+ * sheet having failed to close on something.
+ */
+private val HEADER_BOTTOM_PADDING = 4.dp
+
+/**
+ * How much taller than its own header a panel must be before the header is worth resting at.
+ * Roughly a row: below that, collapsing would stop the sheet where it already stood and a swipe
+ * down would read as having failed to dismiss it.
+ */
+private val MIN_HEADER_COLLAPSE_GAIN = 48.dp
+
 /** Gap between the vehicle panel's chips and its timetable. */
 private val TIMETABLE_TOP_PADDING = 4.dp
 
@@ -475,6 +490,16 @@ fun MapScreen(
     /** How tall the itinerary pane measures. Like the stop panel, it wraps what it has to say. */
     var journeyPanelHeight by remember { mutableStateOf(0.dp) }
 
+    /**
+     * How tall each panel's identity row measures — the strip that says *what* the sheet is about,
+     * and the only thing left on screen once the sheet is taken down to its header rest. Measured
+     * rather than assumed for the same reason the open heights are: a stop name that wraps and one
+     * that does not are different heights, and the sheet has to stop just under the row either way.
+     */
+    var stopHeaderHeight by remember { mutableStateOf(0.dp) }
+    var vehicleHeaderHeight by remember { mutableStateOf(0.dp) }
+    var journeyHeaderHeight by remember { mutableStateOf(0.dp) }
+
     // Only a run whose timetable outgrows the collapsed panel has anywhere to expand *to*; letting
     // a three-stop run be dragged to full screen would just uncover blank surface.
     val sheetExpandable = displayedKind == SheetContentKind.VEHICLE &&
@@ -485,22 +510,122 @@ fun MapScreen(
         SheetContentKind.JOURNEY -> journeyPanelHeight
         null -> 0.dp
     }
+    /** Where the sheet rests once it is taken down to its header: the row plus room to breathe. */
+    val headerHeight = when (displayedKind) {
+        SheetContentKind.STOP -> stopHeaderHeight
+        SheetContentKind.VEHICLE -> vehicleHeaderHeight
+        SheetContentKind.JOURNEY -> journeyHeaderHeight
+        null -> 0.dp
+    }.let { if (it > 0.dp) it + HEADER_BOTTOM_PADDING else 0.dp }
+    // A panel barely taller than its own header has nothing to uncover, so it gets no header rest
+    // at all: the sheet would stop a few pixels below where it already stood, and a swipe down
+    // would read as having failed to dismiss it.
+    val sheetCollapsible = headerHeight > 0.dp &&
+        headerHeight + MIN_HEADER_COLLAPSE_GAIN <= panelHeight
+
+    /**
+     * Whether the sheet is resting at its header instead of at the whole panel — the third level
+     * the framework does not have. A standard sheet anchors at its peek height and at its content's
+     * and there is no third value to add, so the *peek itself* moves: this says which of the two
+     * heights it currently is. Everything else — the drag, the thresholds, the fling, the settle —
+     * is still the framework's; only where the sheet comes to rest is ours.
+     */
+    var sheetCollapsed by remember { mutableStateOf(false) }
+
+    /**
+     * Whether the peek height jumps to its new value instead of animating there.
+     *
+     * A sheet *resting* on the peek is carried by it, so animating the peek is what animates the
+     * sheet — the normal case, and the whole point. A sheet that is already moving is not: every
+     * change to the anchors restarts the animation carrying it, so a peek sliding under a dragged
+     * or a closing sheet for a third of a second leaves it crawling after an anchor that keeps
+     * moving away. There the peek is put where it is going in one step and the sheet's own
+     * animation covers the distance — nothing is lost, because a moving sheet's anchor is not
+     * what the eye is following.
+     */
+    var snapSheetHeight by remember { mutableStateOf(false) }
+
+    /** Where the sheet rests: the panel — or just its header — plus the handle above it. */
+    val restingHeight = when {
+        sheetContentKind == null -> 0.dp
+        sheetCollapsed && sheetCollapsible -> DRAG_HANDLE_HEIGHT + headerHeight
+        else -> DRAG_HANDLE_HEIGHT + panelHeight
+    }
+    val animatedSheetHeight by animateDpAsState(targetValue = restingHeight, label = "sheetHeight")
+    val sheetHeight = if (snapSheetHeight) restingHeight else animatedSheetHeight
+    val restingHeightNow by rememberUpdatedState(restingHeight)
+    // The jump was for the one change that asked for it; whatever the panel does afterwards — a
+    // timetable landing, a chip row wrapping — animates again.
+    LaunchedEffect(sheetCollapsed, snapSheetHeight) {
+        if (!snapSheetHeight) return@LaunchedEffect
+        snapshotFlow { animatedSheetHeight == restingHeightNow }.first { it }
+        snapSheetHeight = false
+    }
+
+    /** Takes the sheet between its header rest and its open one — see [snapSheetHeight]. */
+    fun setSheetCollapsed(collapsed: Boolean, snap: Boolean) {
+        snapSheetHeight = snap
+        sheetCollapsed = collapsed
+    }
 
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
 
     // Read through State: the sheet state keeps the first lambda it is given for the sheet's life.
     val expandableNow by rememberUpdatedState(sheetExpandable)
+    val collapsedNow by rememberUpdatedState(sheetCollapsed)
+    val collapsibleNow by rememberUpdatedState(sheetCollapsible)
+    val hasPanelNow by rememberUpdatedState(sheetContentKind != null)
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.Hidden,
         skipHiddenState = false,
-        // A stop panel is as tall as what it has to say and has no second height to drag to, so an
-        // expanded state on it would only snap to a taller box padded with nothing. A long run's
-        // timetable does have more to show, and that one expands to the full screen.
-        confirmValueChange = { it != SheetValue.Expanded || expandableNow },
+        // Which of the framework's three values the sheet is allowed to settle in from where it
+        // currently stands. Deliberately free of side effects: M3 calls this while *describing* the
+        // sheet to accessibility as well as when settling it, so anything moved in here would move
+        // again every time the sheet is read out.
+        confirmValueChange = { target ->
+            when (target) {
+                // A swipe down off the open panel has the header rest to stop at first, so it is
+                // not a dismissal yet; a swipe down off the header is.
+                SheetValue.Hidden -> collapsedNow || !collapsibleNow || !hasPanelNow
+                // Full screen is for a run whose timetable outgrows the open panel, and only from
+                // that panel: from the header the drag has the panel to stop at first.
+                SheetValue.Expanded -> !collapsedNow && expandableNow
+                SheetValue.PartiallyExpanded -> true
+            }
+        },
     )
     val scaffoldState = rememberBottomSheetScaffoldState(bottomSheetState = sheetState)
-    LaunchedEffect(sheetContentKind) {
-        if (sheetContentKind == null) sheetState.hide() else sheetState.partialExpand()
+    // The other half of the third level: which of the two heights the peek is, moved by where the
+    // drag is *heading* rather than by where it ended. Reading the settled value instead would move
+    // the anchor only after the finger had lifted, which is the sheet jumping somewhere else once
+    // the gesture is over. So crossing M3's threshold towards Hidden takes the rest down to the
+    // header and crossing it towards Expanded brings it back up to the panel, while the vetoes
+    // above stop that same drag carrying on into the state it was nominally aimed at.
+    LaunchedEffect(sheetState) {
+        snapshotFlow { sheetState.targetValue }.collect { target ->
+            when {
+                target == SheetValue.Hidden && !sheetCollapsed && collapsibleNow && hasPanelNow ->
+                    setSheetCollapsed(collapsed = true, snap = true)
+                target == SheetValue.Expanded && sheetCollapsed ->
+                    setSheetCollapsed(collapsed = false, snap = true)
+            }
+        }
+    }
+    /** What the open sheet is about, so that a fresh subject opens at its whole panel again. */
+    val sheetSubject = when (sheetContentKind) {
+        SheetContentKind.STOP -> selectedStop?.favoriteKey
+        SheetContentKind.VEHICLE -> panelLine?.tripId ?: panelLine?.label
+        SheetContentKind.JOURNEY -> "journey"
+        null -> null
+    }
+    LaunchedEffect(sheetContentKind, sheetSubject) {
+        if (sheetContentKind == null) {
+            sheetState.hide()
+        } else {
+            // Whatever the panel before it was collapsed to was said about that one.
+            setSheetCollapsed(collapsed = false, snap = false)
+            if (sheetState.currentValue != SheetValue.PartiallyExpanded) sheetState.partialExpand()
+        }
     }
     // Swiping the sheet away is a deselection like any other — the halo and route overlay go with
     // it. Only the settled state counts, or a drag past the threshold would deselect mid-gesture.
@@ -512,11 +637,6 @@ fun MapScreen(
         snapshotFlow { sheetState.currentValue }
             .collect { if (it == SheetValue.Hidden) closeSheet() }
     }
-    /** Where the sheet rests: the open panel plus the handle above it, animated as it grows. */
-    val sheetHeight by animateDpAsState(
-        targetValue = if (sheetContentKind == null) 0.dp else DRAG_HANDLE_HEIGHT + panelHeight,
-        label = "sheetHeight",
-    )
 
     /**
      * How far the sheet is between resting at its peek height (0) and standing fully open (1),
@@ -765,6 +885,26 @@ fun MapScreen(
             }
     }
 
+    // Panning or pinching the map takes the sheet down to its header. What is under the finger is
+    // the map, and a panel standing over half of it is in the way of the very thing being looked
+    // at; the header keeps saying what is selected, and one tap on the handle brings the panel
+    // back. Only the user's own gestures count — the camera moves the app makes (flying to a
+    // picked place, lifting a selected stop, following a run) are the sheet's own doing and must
+    // not pull it down a moment after it opened.
+    LaunchedEffect(cameraState, sheetState) {
+        snapshotFlow { cameraState.position }
+            .drop(1)
+            .filter { cameraState.moveReason == CameraMoveReason.GESTURE }
+            .collect {
+                if (!hasPanelNow || !collapsibleNow || sheetCollapsed) return@collect
+                // From full screen the sheet has the whole travel to cover, so the peek is put
+                // where it is going in one step; resting on the peek it is carried by it.
+                val settled = sheetState.currentValue == SheetValue.PartiallyExpanded
+                setSheetCollapsed(collapsed = true, snap = !settled)
+                if (!settled) sheetState.partialExpand()
+            }
+    }
+
     // Selecting a vehicle hands the camera over to it until the user takes it back. The
     // followed vehicle is centred in the map the panel leaves visible, not in the map as a
     // whole — that is what CameraPosition.padding shifts.
@@ -875,26 +1015,39 @@ fun MapScreen(
         sheetDragHandle = {
             // Above it, the room it needs to stay clear of the status bar the sheet slides under.
             Box(modifier = Modifier.sheetTopInset(sheetTopInset)) {
-                if (sheetExpandable) {
+                // M3's own tap expands a sheet that has an expanded state to reach and hides one
+                // that has not. Neither is right at every level here, so the tap is taken over
+                // wherever the framework's would do the wrong thing or nothing at all: it lifts a
+                // sheet resting at its header back to the whole panel, and closes a panel that has
+                // no full screen to be expanded to — what the header's ✕ used to be, without a
+                // second control saying the same thing. The inner click takes the tap first.
+                val liftFromHeader = sheetCollapsed && sheetCollapsible
+                val handleTap: (() -> Unit)? = when {
+                    liftFromHeader -> { { setSheetCollapsed(collapsed = false, snap = false) } }
+                    sheetExpandable -> null
+                    else -> {
+                        {
+                            // The panel the handle belongs to, so closing a stop opened over a
+                            // followed run leaves the run itself selected.
+                            when (displayedKind) {
+                                SheetContentKind.STOP -> viewModel.clearStopSelection()
+                                SheetContentKind.VEHICLE -> viewModel.clearVehicleSelection()
+                                SheetContentKind.JOURNEY -> onCloseJourney()
+                                null -> {}
+                            }
+                        }
+                    }
+                }
+                if (handleTap == null) {
                     BottomSheetDefaults.DragHandle()
                 } else {
-                    // A panel with nowhere to expand to leaves that tap with nothing to do, so
-                    // there it closes the sheet — what the header's ✕ used to be, without a second
-                    // control saying the same thing. The inner click takes the tap first.
                     Box(
                         modifier = Modifier.clickable(
-                            onClickLabel = stringResource(R.string.action_close),
+                            onClickLabel = stringResource(
+                                if (liftFromHeader) R.string.action_expand else R.string.action_close,
+                            ),
                             role = Role.Button,
-                            onClick = {
-                                // The panel the handle belongs to, so closing a stop opened over a
-                                // followed run leaves the run itself selected.
-                                when (displayedKind) {
-                                    SheetContentKind.STOP -> viewModel.clearStopSelection()
-                                    SheetContentKind.VEHICLE -> viewModel.clearVehicleSelection()
-                                    SheetContentKind.JOURNEY -> onCloseJourney()
-                                    null -> {}
-                                }
-                            },
+                            onClick = handleTap,
                         ),
                     ) {
                         BottomSheetDefaults.DragHandle()
@@ -916,6 +1069,7 @@ fun MapScreen(
                         isFavorite = favorites.containsLocation(stop),
                         onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
                         onHeightChange = { stopPanelHeight = it },
+                        onHeaderHeightChange = { stopHeaderHeight = it },
                         onOpenTimetable = {
                             viewModel.clearSelection()
                             onOpenTimetable(
@@ -952,6 +1106,7 @@ fun MapScreen(
                         sheetExpansion = { sheetExpansion.value },
                         collapsed = { sheetState.currentValue != SheetValue.Expanded },
                         onNaturalHeightChange = { vehicleNaturalHeight = it },
+                        onHeaderHeightChange = { vehicleHeaderHeight = it },
                         // An expandable panel is laid out at the sheet's full travel and its
                         // timetable scrolls inside it, so dragging the sheet up uncovers a list
                         // that is already there — following the finger, resizing nothing.
@@ -976,6 +1131,7 @@ fun MapScreen(
                         onWaypointClick = { id -> journeyStopId = id },
                         onOpenTrip = onOpenTrip,
                         onHeightChange = { height -> journeyPanelHeight = height },
+                        onHeaderHeightChange = { height -> journeyHeaderHeight = height },
                     )
                 }
                 null -> {}
@@ -1531,8 +1687,10 @@ fun MapScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 // Ornaments sit on top of the sheet, so opening it lifts them instead of the
-                // sheet covering them — the same animated height the sheet itself opens to.
-                .padding(bottom = sheetHeight),
+                // sheet covering them. The *animated* height, not the one the sheet is anchored
+                // at: where that jumps to keep a moving sheet off a moving anchor, nothing is
+                // dragging these, so they glide the whole way.
+                .padding(bottom = animatedSheetHeight),
         ) {
             Box(modifier = Modifier.fillMaxWidth()) {
                 // Basemap credits and the Transitous sources link in one control. The end
@@ -1733,6 +1891,8 @@ private fun VehicleInfoPanel(
     collapsed: () -> Boolean,
     /** Height this measures uncapped — what the collapsed sheet peeks at, before its ceiling. */
     onNaturalHeightChange: (Dp) -> Unit,
+    /** Height of the line's own row — where the sheet rests once it is taken down to its header. */
+    onHeaderHeightChange: (Dp) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
@@ -1807,7 +1967,12 @@ private fun VehicleInfoPanel(
                 headerHeight = with(density) { size.height.toDp() }
             },
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.onSizeChanged { size ->
+                    onHeaderHeightChange(with(density) { size.height.toDp() })
+                },
+            ) {
                 // Same colored-circle look as the vehicle's marker on the map.
                 Box(
                     modifier = Modifier
@@ -2005,6 +2170,8 @@ private fun StopInfoPanel(
     onFinishHere: () -> Unit,
     /** What this measures — the height the sheet opens to, and what the camera aims around. */
     onHeightChange: (Dp) -> Unit,
+    /** Height of the stop's own row — where the sheet rests once it is taken down to its header. */
+    onHeaderHeightChange: (Dp) -> Unit,
 ) {
     val density = LocalDensity.current
     Column(
@@ -2016,7 +2183,12 @@ private fun StopInfoPanel(
             // a map pin rather than a (meaningless, always-bus) vehicle icon, and none of the
             // stop-specific content: no lines, no timetable.
             val isPoint = stop.stopId == null
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.onSizeChanged { size ->
+                    onHeaderHeightChange(with(density) { size.height.toDp() })
+                },
+            ) {
                 val mode = stop.primaryMode ?: TransportMode.OTHER
                 // Same colored-circle look as the stop's marker on the map.
                 Box(
