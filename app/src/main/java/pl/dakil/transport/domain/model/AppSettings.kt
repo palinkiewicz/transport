@@ -178,6 +178,44 @@ enum class MapTheme(@param:StringRes val labelRes: Int) {
 }
 
 /**
+ * The palette the app itself paints in.
+ *
+ * [DYNAMIC] is the platform's wallpaper palette, which only exists from Android 12 — the picker
+ * hides it below that, and [colorSchemeFor] falls back to [TRANSPORT] for anyone whose stored
+ * choice arrives on a phone that cannot honour it.
+ *
+ * Deliberately unrelated to [MapTheme]: this colours the app's own surfaces, that one picks a
+ * basemap.
+ */
+@Serializable
+enum class AppColorTheme(@param:StringRes val labelRes: Int) {
+    /** The app's own identity, and the default: a vivid violet with a teal third accent. */
+    TRANSPORT(R.string.theme_transport),
+
+    /** The wallpaper palette, where the platform offers one. Android 12 and up. */
+    DYNAMIC(R.string.theme_dynamic),
+    OCEAN(R.string.theme_ocean),
+    LAVENDER(R.string.theme_lavender),
+    SUNSET(R.string.theme_sunset),
+    ROSE(R.string.theme_rose),
+    TEAL(R.string.theme_teal),
+}
+
+/**
+ * Whether the app follows the system dark setting or overrides it.
+ *
+ * Separate from [AppColorTheme] because the two are independent: every colour theme has a light
+ * and a dark form, and someone who wants a dark app on a light system should not have to give up
+ * their colour to get it.
+ */
+@Serializable
+enum class DarkThemeOption(@param:StringRes val labelRes: Int) {
+    SYSTEM(R.string.dark_theme_system),
+    LIGHT(R.string.dark_theme_light),
+    DARK(R.string.dark_theme_dark),
+}
+
+/**
  * Where a line's colour comes from on the list screens. The map always uses the server's colours:
  * markers and route overlays have no "next line" order to hand a palette out along.
  */
@@ -314,6 +352,21 @@ data class AppSettings(
     /** Stop markers are not fetched or drawn below this zoom level. */
     val stopsMinZoom: Float = 13.0f,
 
+    /**
+     * The palette the app paints itself in.
+     *
+     * Defaults to the app's own [AppColorTheme.TRANSPORT] rather than the wallpaper palette.
+     * Dynamic colour used to be unconditional on Android 12 and up, with no way to turn it off;
+     * it is now one entry in the picker, so an existing install moves off it on upgrade.
+     */
+    val colorTheme: AppColorTheme = AppColorTheme.TRANSPORT,
+
+    /** Whether the app follows the system dark setting or overrides it. */
+    val darkTheme: DarkThemeOption = DarkThemeOption.SYSTEM,
+
+    /** True black backgrounds in dark mode, for OLED screens. Nothing at all in light mode. */
+    val pureBlack: Boolean = false,
+
     /** Which of the bundled basemap styles every map in the app draws with. */
     val mapTheme: MapTheme = MapTheme.SYSTEM,
 
@@ -432,9 +485,17 @@ data class AppSettings(
             customLineColors.getOrNull(index)?.takeIf { it.isNotBlank() } ?: LinePalette.DEFAULT[index]
         }
 
-    /** Whether both line-colour fields still hold their defaults, for the group's reset button. */
-    val lineColorsAreDefault: Boolean
-        get() = lineColorMode == DEFAULT.lineColorMode && customLineColors == DEFAULT.customLineColors
+    /**
+     * Whether everything the Appearance screen edits still holds its default, for that section's
+     * reset button — the app palette, the basemap colourway and the line-colour pair alike.
+     */
+    val appearanceIsDefault: Boolean
+        get() = colorTheme == DEFAULT.colorTheme &&
+            darkTheme == DEFAULT.darkTheme &&
+            pureBlack == DEFAULT.pureBlack &&
+            mapTheme == DEFAULT.mapTheme &&
+            lineColorMode == DEFAULT.lineColorMode &&
+            customLineColors == DEFAULT.customLineColors
 
     companion object {
         val DEFAULT = AppSettings()

@@ -1,22 +1,30 @@
 package pl.dakil.transport.ui.settings
 
+import android.os.Build
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -24,13 +32,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.DirectionsBus
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
@@ -53,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -62,14 +68,17 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import pl.dakil.transport.R
+import pl.dakil.transport.domain.model.AppColorTheme
 import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.ConnectionTimesMode
+import pl.dakil.transport.domain.model.DarkThemeOption
 import pl.dakil.transport.domain.model.DefaultTab
 import pl.dakil.transport.domain.model.ExportDelivery
 import pl.dakil.transport.domain.model.ExportFileName
@@ -77,54 +86,40 @@ import pl.dakil.transport.domain.model.LineColorMode
 import pl.dakil.transport.domain.model.MapTheme
 import pl.dakil.transport.domain.model.OfflineCacheSettings
 import pl.dakil.transport.domain.model.VehicleMotionSettings
-import pl.dakil.transport.ui.components.IntSliderRow
-import pl.dakil.transport.ui.components.LabeledSliderRow
-import pl.dakil.transport.ui.components.SingleChoiceToggleFlow
-import pl.dakil.transport.ui.components.SteppedSliderRow
-import pl.dakil.transport.ui.components.SwitchRow
 import pl.dakil.transport.ui.components.parseRouteColor
+import pl.dakil.transport.ui.theme.colorSchemeFor
+import pl.dakil.transport.ui.theme.resolveDark
 
 /**
- * The settings sections, in the order the index lists them: everyday choices first, the deep
- * interpolation tuning last. Each one is a screen of its own — [SettingsSectionScreen] draws it,
- * and the index only needs the title, the summary and the icon from here.
+ * The settings sections, in the order the index lists them: how the app looks first, then how it
+ * behaves, then the map and the deep interpolation tuning, then the cache.
+ *
+ * Five screens rather than the eight this started with — a section holding two switches was a
+ * navigation step for nothing, and the split cut across the settings it was meant to organise
+ * (the vehicles' minimum zoom sat on one screen while the rest of their motion tuning, and the
+ * reset that would change it, sat on another). Grouping inside a screen is a [SectionHeader]
+ * rather than a screen of its own.
  */
 enum class SettingsSection(
     @param:StringRes val titleRes: Int,
     @param:StringRes val summaryRes: Int,
     val icon: ImageVector,
 ) {
-    GENERAL(R.string.settings_group_general, R.string.settings_group_general_summary, Icons.Default.Tune),
-    SEARCH(R.string.settings_group_search, R.string.settings_group_search_summary, Icons.Default.Search),
-    LINE_COLORS(
-        R.string.settings_group_line_colors,
-        R.string.settings_group_line_colors_summary,
+    APPEARANCE(
+        R.string.settings_group_appearance,
+        R.string.settings_group_appearance_summary,
         Icons.Default.Palette,
     ),
-    EXPORT(R.string.settings_group_export, R.string.settings_group_export_summary, Icons.Default.Share),
-    MAP_DETAIL(
-        R.string.settings_group_map_detail,
-        R.string.settings_group_map_detail_summary,
-        Icons.Default.Layers,
-    ),
+    GENERAL(R.string.settings_group_general, R.string.settings_group_general_summary, Icons.Default.Tune),
+    SEARCH(R.string.settings_group_search, R.string.settings_group_search_summary, Icons.Default.Search),
+    MAP(R.string.settings_group_map, R.string.settings_group_map_summary, Icons.Default.Layers),
     OFFLINE(R.string.settings_group_offline, R.string.settings_group_offline_summary, Icons.Default.CloudDownload),
-    AUTO_REFRESH(
-        R.string.settings_group_auto_refresh,
-        R.string.settings_group_auto_refresh_summary,
-        Icons.Default.Refresh,
-    ),
-    VEHICLE_MOVEMENT(
-        R.string.settings_group_vehicle_movement,
-        R.string.settings_group_vehicle_movement_summary,
-        Icons.Default.DirectionsBus,
-    ),
 }
 
 /**
  * One section's controls, under the section's own top app bar.
  *
- * The section's per-group reset moves into the bar's actions, where the index keeps "Reset all" —
- * the card header it used to sit in is now the screen itself.
+ * The section's reset sits in the bar's actions, where the index keeps "Reset all".
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -138,11 +133,13 @@ fun SettingsSectionScreen(
 
     // Null where the section has nothing of its own to reset, or is already at its defaults.
     val onReset: (() -> Unit)? = when (section) {
-        SettingsSection.LINE_COLORS -> viewModel::resetLineColors.takeIf { !settings.lineColorsAreDefault }
-        SettingsSection.EXPORT -> viewModel::resetItineraryExport.takeIf { !settings.export.isDefault }
+        SettingsSection.APPEARANCE -> viewModel::resetAppearance.takeIf { !settings.appearanceIsDefault }
+        // Only the export block: the rest of this screen is flat on AppSettings with nothing to
+        // scope a reset to.
+        SettingsSection.SEARCH -> viewModel::resetItineraryExport.takeIf { !settings.export.isDefault }
+        SettingsSection.MAP -> viewModel::resetMotion.takeIf { !settings.vehicleMotion.isDefault }
         SettingsSection.OFFLINE -> viewModel::resetOfflineCache.takeIf { !settings.offlineCache.isDefault }
-        SettingsSection.VEHICLE_MOVEMENT -> viewModel::resetMotion.takeIf { !settings.vehicleMotion.isDefault }
-        else -> null
+        SettingsSection.GENERAL -> null
     }
 
     Scaffold(
@@ -169,198 +166,156 @@ fun SettingsSectionScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
+                .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
+                .verticalScroll(rememberScrollState()),
         ) {
-            SettingsCard {
-                when (section) {
-                    SettingsSection.GENERAL -> GeneralSettings(settings, viewModel)
-                    SettingsSection.SEARCH -> SearchAndResultsSettings(settings, viewModel)
-                    SettingsSection.LINE_COLORS -> LineColorsSettings(settings, viewModel)
-                    SettingsSection.EXPORT -> ItineraryExportSettings(settings, viewModel)
-                    SettingsSection.MAP_DETAIL -> MapDetailSettings(settings, viewModel)
-                    SettingsSection.OFFLINE -> OfflineDataSettings(settings, viewModel)
-                    SettingsSection.AUTO_REFRESH -> DataRefreshSettings(settings, viewModel)
-                    SettingsSection.VEHICLE_MOVEMENT -> VehicleMovementSettings(settings, viewModel)
-                }
+            when (section) {
+                SettingsSection.APPEARANCE -> AppearanceSettings(settings, viewModel)
+                SettingsSection.GENERAL -> GeneralSettings(settings, viewModel)
+                SettingsSection.SEARCH -> SearchSettings(settings, viewModel)
+                SettingsSection.MAP -> MapSettings(settings, viewModel)
+                SettingsSection.OFFLINE -> OfflineDataSettings(settings, viewModel)
             }
-            Spacer(Modifier.size(8.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 }
 
-/** The card the controls used to sit in as a group, kept so the rows keep their surface and spacing. */
+// ---- Appearance ---------------------------------------------------------------------------------
+
+/**
+ * Everything about how the app looks: its own palette, its dark mode, and the two places it hands
+ * colours to something that is not a Material surface — the basemap and the line badges.
+ */
 @Composable
-private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.extraLarge,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            verticalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.padding(20.dp),
-            content = content,
-        )
+private fun AppearanceSettings(settings: AppSettings, viewModel: SettingsViewModel) {
+    SectionHeader(stringResource(R.string.settings_theme_colors))
+
+    // Dynamic colour is the platform's wallpaper palette; below Android 12 there is no wallpaper
+    // palette to read, so the option is not offered rather than offered and inert.
+    val themes = AppColorTheme.entries.filter {
+        it != AppColorTheme.DYNAMIC || Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     }
+
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        items(themes, key = { it.name }) { theme ->
+            ThemeColorSwatch(
+                theme = theme,
+                darkTheme = settings.darkTheme.resolveDark(),
+                isSelected = theme == settings.colorTheme,
+                onClick = { viewModel.update { it.copy(colorTheme = theme) } },
+            )
+        }
+    }
+
+    SectionHeader(stringResource(R.string.settings_dark_mode))
+
+    SettingSegmentedRow(
+        selected = settings.darkTheme,
+        options = DarkThemeOption.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { option -> viewModel.update { it.copy(darkTheme = option) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_pure_black),
+        summary = stringResource(R.string.settings_pure_black_note),
+        checked = settings.pureBlack,
+        onCheckedChange = { on -> viewModel.update { it.copy(pureBlack = on) } },
+        // It has no effect at all in light mode; a switch you can flip that changes nothing reads
+        // as broken.
+        enabled = settings.darkTheme != DarkThemeOption.LIGHT,
+    )
+
+    SectionHeader(stringResource(R.string.settings_map_theme))
+
+    // The same three-way control as the app's own dark mode above, because it is the same choice
+    // asked about a different surface — offering one as a switch row and the other as a menu would
+    // make them look like unrelated settings.
+    SettingSegmentedRow(
+        selected = settings.mapTheme,
+        options = MapTheme.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { theme -> viewModel.update { it.copy(mapTheme = theme) } },
+    )
+    SectionNote(stringResource(R.string.settings_map_theme_note))
+
+    LineColorsSettings(settings, viewModel)
 }
 
 /**
- * The one thing worth saying before any of the sliders make sense: the moving markers are an
- * estimate, not a tracked position. Collapsed to a single tappable line — the headline is what most
- * people need, the reasoning is one tap away and costs no space until asked for.
+ * One theme, painted in its own colours.
+ *
+ * The circle is split the way the platform's own theme picker splits it — the accent across the
+ * top, its two supporting containers below — so the swatch shows what the theme will actually look
+ * like rather than reducing it to a single dot.
+ *
+ * [darkTheme] is the app's *resolved* dark flag, not the system's: someone forcing light mode on a
+ * dark phone should be shown the light schemes they are about to get.
  */
 @Composable
-private fun NotGpsNotice(modifier: Modifier = Modifier) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "notice-chevron")
+private fun ThemeColorSwatch(
+    theme: AppColorTheme,
+    darkTheme: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit,
+) {
+    val scheme = colorSchemeFor(colorTheme = theme, darkTheme = darkTheme)
 
-    Surface(
-        onClick = { expanded = !expanded },
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.tertiaryContainer,
-        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
-        modifier = modifier.fillMaxWidth(),
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(76.dp),
     ) {
-        Column(modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Outlined.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .then(
+                    if (isSelected) {
+                        Modifier.border(3.dp, MaterialTheme.colorScheme.primary, CircleShape)
+                    } else {
+                        Modifier
+                    },
                 )
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    text = stringResource(R.string.settings_not_gps_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    Icons.Default.ExpandMore,
-                    contentDescription = stringResource(
-                        if (expanded) R.string.settings_not_gps_hide else R.string.settings_not_gps_show,
-                    ),
-                    modifier = Modifier
-                        .size(20.dp)
-                        .rotate(chevronRotation),
-                )
+                // The ring is drawn on the outside edge, so the painted circle has to shrink inside
+                // it or the two overlap.
+                .padding(if (isSelected) 6.dp else 0.dp)
+                .clip(CircleShape)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.fillMaxSize()) {
+                drawArc(scheme.primary, startAngle = 180f, sweepAngle = 180f, useCenter = true)
+                drawArc(scheme.secondaryContainer, startAngle = 90f, sweepAngle = 90f, useCenter = true)
+                drawArc(scheme.tertiaryContainer, startAngle = 0f, sweepAngle = 90f, useCenter = true)
             }
-            AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = stringResource(R.string.settings_not_gps_body),
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp, end = 20.dp),
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = scheme.onPrimary,
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 8.dp)
+                        .size(20.dp),
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun GeneralSettings(settings: AppSettings, viewModel: SettingsViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.settings_opening_screen), style = MaterialTheme.typography.titleSmall)
-        // A wrapping flow, not a connected row: four tab names don't fit one row without
-        // being cut off mid-word.
-        SingleChoiceToggleFlow(
-            options = DefaultTab.entries,
-            selected = settings.defaultTab,
-            onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },
-            label = { stringResource(it.labelRes) },
-        )
+        Spacer(Modifier.height(6.dp))
         Text(
-            text = stringResource(R.string.settings_opening_screen_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = stringResource(theme.labelRes),
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isSelected) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            textAlign = TextAlign.Center,
+            maxLines = 2,
         )
     }
-    SwitchRow(
-        title = stringResource(R.string.settings_remember_search),
-        checked = settings.rememberLastSearch,
-        onCheckedChange = { on -> viewModel.update { it.copy(rememberLastSearch = on) } },
-        supportingText = stringResource(R.string.settings_remember_search_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_stay_on_map),
-        checked = settings.stayOnMapWhenPickingRoute,
-        onCheckedChange = { on -> viewModel.update { it.copy(stayOnMapWhenPickingRoute = on) } },
-        supportingText = stringResource(R.string.settings_stay_on_map_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_remember_map),
-        checked = settings.rememberMapCamera,
-        onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },
-        supportingText = stringResource(R.string.settings_remember_map_note),
-    )
-}
-
-@Composable
-private fun SearchAndResultsSettings(settings: AppSettings, viewModel: SettingsViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.settings_connection_times), style = MaterialTheme.typography.titleSmall)
-        // Wrapping flow like the opening-screen choice above: "Door to door" is far too long
-        // to share one row with the other mode without being cut off.
-        SingleChoiceToggleFlow(
-            options = ConnectionTimesMode.entries,
-            selected = settings.connectionTimesMode,
-            onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },
-            label = { stringResource(it.labelRes) },
-        )
-        Text(
-            text = stringResource(R.string.settings_connection_times_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    IntSliderRow(
-        title = stringResource(R.string.settings_recent_places),
-        value = settings.recentPlacesLimit,
-        onValueCommit = { count -> viewModel.update { it.copy(recentPlacesLimit = count) } },
-        min = AppSettings.RECENT_PLACES_OFF,
-        max = AppSettings.RECENT_PLACES_MAX,
-        valueLabel = { count ->
-            if (count <= AppSettings.RECENT_PLACES_OFF) {
-                stringResource(R.string.settings_recent_places_off)
-            } else {
-                count.toString()
-            }
-        },
-        supportingText = stringResource(R.string.settings_recent_places_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_pin_recent_places),
-        checked = settings.pinRecentPlaces,
-        onCheckedChange = { on -> viewModel.update { it.copy(pinRecentPlaces = on) } },
-        supportingText = stringResource(R.string.settings_pin_recent_places_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_keep_first_cached),
-        checked = settings.keepFirstCachedResult,
-        onCheckedChange = { on -> viewModel.update { it.copy(keepFirstCachedResult = on) } },
-        supportingText = stringResource(R.string.settings_keep_first_cached_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_sort_by_distance),
-        checked = settings.sortSuggestionsByDistance,
-        onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
-        supportingText = stringResource(R.string.settings_sort_by_distance_note),
-    )
-    IntSliderRow(
-        title = stringResource(R.string.settings_search_bias),
-        value = settings.searchBiasStrength,
-        onValueCommit = { strength -> viewModel.update { it.copy(searchBiasStrength = strength) } },
-        min = AppSettings.SEARCH_BIAS_NONE,
-        max = AppSettings.SEARCH_BIAS_MAX,
-        valueLabel = { strength ->
-            if (strength <= AppSettings.SEARCH_BIAS_NONE) {
-                stringResource(R.string.settings_search_bias_none)
-            } else {
-                strength.toString()
-            }
-        },
-        supportingText = stringResource(R.string.settings_search_bias_note),
-    )
 }
 
 /**
@@ -373,35 +328,33 @@ private fun LineColorsSettings(settings: AppSettings, viewModel: SettingsViewMod
     var editingIndex by rememberSaveable { mutableStateOf<Int?>(null) }
     val palette = settings.palette
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.settings_line_colors), style = MaterialTheme.typography.titleSmall)
-        SingleChoiceToggleFlow(
-            options = LineColorMode.entries,
-            selected = settings.lineColorMode,
-            onSelect = { mode -> viewModel.update { it.copy(lineColorMode = mode) } },
-            label = { stringResource(it.labelRes) },
-        )
-        // One note per mode rather than one paragraph covering all three: what the selected
-        // mode does is the only thing worth reading here.
-        Text(
-            text = stringResource(
-                when (settings.lineColorMode) {
-                    LineColorMode.TRANSITOUS -> R.string.settings_line_colors_note_transitous
-                    LineColorMode.CUSTOM -> R.string.settings_line_colors_note_custom
-                    LineColorMode.AUTO -> R.string.settings_line_colors_note_auto
-                },
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
+    SectionHeader(stringResource(R.string.settings_header_line_colors))
+
+    SettingSelectRow(
+        title = stringResource(R.string.settings_line_colors),
+        // One note per mode rather than one paragraph covering all three: what the selected mode
+        // does is the only thing worth reading here.
+        summary = stringResource(
+            when (settings.lineColorMode) {
+                LineColorMode.TRANSITOUS -> R.string.settings_line_colors_note_transitous
+                LineColorMode.CUSTOM -> R.string.settings_line_colors_note_custom
+                LineColorMode.AUTO -> R.string.settings_line_colors_note_auto
+            },
+        ),
+        selected = settings.lineColorMode,
+        options = LineColorMode.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { mode -> viewModel.update { it.copy(lineColorMode = mode) } },
+    )
+
     // Transitous never reads the palette, so offering it there is noise.
     AnimatedVisibility(visible = settings.lineColorMode != LineColorMode.TRANSITOUS) {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(stringResource(R.string.settings_line_colors_palette), style = MaterialTheme.typography.titleSmall)
+        Column {
+            SectionHeader(stringResource(R.string.settings_line_colors_palette))
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             ) {
                 palette.forEachIndexed { index, hex ->
                     val description = stringResource(R.string.settings_line_color_swatch, index + 1)
@@ -415,11 +368,7 @@ private fun LineColorsSettings(settings: AppSettings, viewModel: SettingsViewMod
                     ) {}
                 }
             }
-            Text(
-                text = stringResource(R.string.settings_line_colors_palette_note),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            SectionNote(stringResource(R.string.settings_line_colors_palette_note))
         }
     }
 
@@ -435,72 +384,6 @@ private fun LineColorsSettings(settings: AppSettings, viewModel: SettingsViewMod
             onDismiss = { editingIndex = null },
         )
     }
-}
-
-/**
- * What an exported itinerary contains, and how it leaves the app — the same choices whichever
- * format the share menu picks. The readers disagree wildly about what they want out of a file —
- * some ignore waypoints, others choke on long tracks — so the shape of the export is the user's to
- * decide.
- */
-@Composable
-private fun ItineraryExportSettings(settings: AppSettings, viewModel: SettingsViewModel) {
-    val export = settings.export
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.settings_export_delivery), style = MaterialTheme.typography.titleSmall)
-        SingleChoiceToggleFlow(
-            options = ExportDelivery.entries,
-            selected = export.delivery,
-            onSelect = { delivery -> viewModel.updateExport { it.copy(delivery = delivery) } },
-            label = { stringResource(it.labelRes) },
-        )
-        Text(stringResource(R.string.settings_export_filename), style = MaterialTheme.typography.titleSmall)
-        SingleChoiceToggleFlow(
-            options = ExportFileName.entries,
-            selected = export.fileName,
-            onSelect = { name -> viewModel.updateExport { it.copy(fileName = name) } },
-            label = { stringResource(it.labelRes) },
-        )
-    }
-    SwitchRow(
-        title = stringResource(R.string.settings_export_tracks),
-        checked = export.includeTracks,
-        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTracks = on) } },
-        supportingText = stringResource(R.string.settings_export_tracks_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_export_access_legs),
-        checked = export.includeAccessLegs,
-        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeAccessLegs = on) } },
-        supportingText = stringResource(R.string.settings_export_access_legs_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_export_intermediate_stops),
-        checked = export.includeIntermediateStops,
-        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeIntermediateStops = on) } },
-        supportingText = stringResource(R.string.settings_export_intermediate_stops_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_export_times),
-        checked = export.includeTimes,
-        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTimes = on) } },
-        supportingText = stringResource(R.string.settings_export_times_note),
-    )
-    // Only meaningful once something is being timestamped.
-    AnimatedVisibility(visible = export.includeTimes) {
-        SwitchRow(
-            title = stringResource(R.string.settings_export_real_times),
-            checked = export.useRealTimes,
-            onCheckedChange = { on -> viewModel.updateExport { it.copy(useRealTimes = on) } },
-            supportingText = stringResource(R.string.settings_export_real_times_note),
-        )
-    }
-    SwitchRow(
-        title = stringResource(R.string.settings_export_descriptions),
-        checked = export.includeDescriptions,
-        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeDescriptions = on) } },
-        supportingText = stringResource(R.string.settings_export_descriptions_note),
-    )
 }
 
 /**
@@ -555,51 +438,293 @@ private fun ColorPresetDialog(selected: String, onPick: (String) -> Unit, onDism
     )
 }
 
+// ---- General ------------------------------------------------------------------------------------
+
 @Composable
-private fun VehicleMovementSettings(settings: AppSettings, viewModel: SettingsViewModel) {
+private fun GeneralSettings(settings: AppSettings, viewModel: SettingsViewModel) {
+    SectionHeader(stringResource(R.string.settings_header_startup))
+
+    SettingSelectRow(
+        title = stringResource(R.string.settings_opening_screen),
+        summary = stringResource(R.string.settings_opening_screen_note),
+        selected = settings.defaultTab,
+        options = DefaultTab.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { tab -> viewModel.update { it.copy(defaultTab = tab) } },
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_remembering))
+
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_remember_search),
+        summary = stringResource(R.string.settings_remember_search_note),
+        checked = settings.rememberLastSearch,
+        onCheckedChange = { on -> viewModel.update { it.copy(rememberLastSearch = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_remember_map),
+        summary = stringResource(R.string.settings_remember_map_note),
+        checked = settings.rememberMapCamera,
+        onCheckedChange = { on -> viewModel.update { it.copy(rememberMapCamera = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_stay_on_map),
+        summary = stringResource(R.string.settings_stay_on_map_note),
+        checked = settings.stayOnMapWhenPickingRoute,
+        onCheckedChange = { on -> viewModel.update { it.copy(stayOnMapWhenPickingRoute = on) } },
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_auto_refresh))
+
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_refresh_while_open),
+        summary = stringResource(R.string.settings_refresh_while_open_note),
+        checked = settings.autoRefreshEnabled,
+        onCheckedChange = { on -> viewModel.update { it.copy(autoRefreshEnabled = on) } },
+    )
+    SettingIntSliderRow(
+        title = stringResource(R.string.settings_refresh_interval),
+        summary = stringResource(R.string.settings_refresh_interval_note),
+        value = settings.resultsRefreshSeconds,
+        onValueCommit = { value -> viewModel.update { it.copy(resultsRefreshSeconds = value) } },
+        min = 10,
+        max = 300,
+        step = 10,
+        valueLabel = { stringResource(R.string.format_seconds, it) },
+        // Dimmed rather than removed: it stays visible so the interval it would use is still
+        // readable, which is what the switch above is deciding about.
+        enabled = settings.autoRefreshEnabled,
+    )
+}
+
+// ---- Search, connections and export --------------------------------------------------------------
+
+@Composable
+private fun SearchSettings(settings: AppSettings, viewModel: SettingsViewModel) {
+    SectionHeader(stringResource(R.string.settings_header_suggestions))
+
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_keep_first_cached),
+        summary = stringResource(R.string.settings_keep_first_cached_note),
+        checked = settings.keepFirstCachedResult,
+        onCheckedChange = { on -> viewModel.update { it.copy(keepFirstCachedResult = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_sort_by_distance),
+        summary = stringResource(R.string.settings_sort_by_distance_note),
+        checked = settings.sortSuggestionsByDistance,
+        onCheckedChange = { on -> viewModel.update { it.copy(sortSuggestionsByDistance = on) } },
+    )
+    SettingIntSliderRow(
+        title = stringResource(R.string.settings_search_bias),
+        summary = stringResource(R.string.settings_search_bias_note),
+        value = settings.searchBiasStrength,
+        onValueCommit = { strength -> viewModel.update { it.copy(searchBiasStrength = strength) } },
+        min = AppSettings.SEARCH_BIAS_NONE,
+        max = AppSettings.SEARCH_BIAS_MAX,
+        valueLabel = { strength ->
+            if (strength <= AppSettings.SEARCH_BIAS_NONE) {
+                stringResource(R.string.settings_search_bias_none)
+            } else {
+                strength.toString()
+            }
+        },
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_recent_places))
+
+    SettingIntSliderRow(
+        title = stringResource(R.string.settings_recent_places),
+        summary = stringResource(R.string.settings_recent_places_note),
+        value = settings.recentPlacesLimit,
+        onValueCommit = { count -> viewModel.update { it.copy(recentPlacesLimit = count) } },
+        min = AppSettings.RECENT_PLACES_OFF,
+        max = AppSettings.RECENT_PLACES_MAX,
+        valueLabel = { count ->
+            if (count <= AppSettings.RECENT_PLACES_OFF) {
+                stringResource(R.string.settings_recent_places_off)
+            } else {
+                count.toString()
+            }
+        },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_pin_recent_places),
+        summary = stringResource(R.string.settings_pin_recent_places_note),
+        checked = settings.pinRecentPlaces,
+        onCheckedChange = { on -> viewModel.update { it.copy(pinRecentPlaces = on) } },
+        enabled = settings.recentPlacesLimit > AppSettings.RECENT_PLACES_OFF,
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_connections))
+
+    SettingSelectRow(
+        title = stringResource(R.string.settings_connection_times),
+        summary = stringResource(R.string.settings_connection_times_note),
+        selected = settings.connectionTimesMode,
+        options = ConnectionTimesMode.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { mode -> viewModel.update { it.copy(connectionTimesMode = mode) } },
+    )
+
+    ItineraryExportSettings(settings, viewModel)
+}
+
+/**
+ * What an exported itinerary contains, and how it leaves the app — the same choices whichever
+ * format the share menu picks. The readers disagree wildly about what they want out of a file —
+ * some ignore waypoints, others choke on long tracks — so the shape of the export is the user's to
+ * decide.
+ */
+@Composable
+private fun ItineraryExportSettings(settings: AppSettings, viewModel: SettingsViewModel) {
+    val export = settings.export
+
+    SectionHeader(stringResource(R.string.settings_header_export))
+
+    SettingSelectRow(
+        title = stringResource(R.string.settings_export_delivery),
+        selected = export.delivery,
+        options = ExportDelivery.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { delivery -> viewModel.updateExport { it.copy(delivery = delivery) } },
+    )
+    SettingSelectRow(
+        title = stringResource(R.string.settings_export_filename),
+        selected = export.fileName,
+        options = ExportFileName.entries,
+        label = { stringResource(it.labelRes) },
+        onSelect = { name -> viewModel.updateExport { it.copy(fileName = name) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_export_tracks),
+        summary = stringResource(R.string.settings_export_tracks_note),
+        checked = export.includeTracks,
+        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTracks = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_export_access_legs),
+        summary = stringResource(R.string.settings_export_access_legs_note),
+        checked = export.includeAccessLegs,
+        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeAccessLegs = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_export_intermediate_stops),
+        summary = stringResource(R.string.settings_export_intermediate_stops_note),
+        checked = export.includeIntermediateStops,
+        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeIntermediateStops = on) } },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_export_times),
+        summary = stringResource(R.string.settings_export_times_note),
+        checked = export.includeTimes,
+        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeTimes = on) } },
+    )
+    // Only meaningful once something is being timestamped.
+    AnimatedVisibility(visible = export.includeTimes) {
+        SettingSwitchRow(
+            title = stringResource(R.string.settings_export_real_times),
+            summary = stringResource(R.string.settings_export_real_times_note),
+            checked = export.useRealTimes,
+            onCheckedChange = { on -> viewModel.updateExport { it.copy(useRealTimes = on) } },
+        )
+    }
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_export_descriptions),
+        summary = stringResource(R.string.settings_export_descriptions_note),
+        checked = export.includeDescriptions,
+        onCheckedChange = { on -> viewModel.updateExport { it.copy(includeDescriptions = on) } },
+    )
+}
+
+// ---- Map and vehicles ----------------------------------------------------------------------------
+
+@Composable
+private fun MapSettings(settings: AppSettings, viewModel: SettingsViewModel) {
     val motion = settings.vehicleMotion
-    NotGpsNotice()
-    SwitchRow(
+
+    SectionHeader(stringResource(R.string.settings_header_map_detail))
+
+    SettingSliderRow(
+        title = stringResource(R.string.settings_stops_from_zoom),
+        summary = stringResource(R.string.settings_stops_from_zoom_note),
+        value = settings.stopsMinZoom,
+        onValueCommit = { value -> viewModel.update { it.copy(stopsMinZoom = value) } },
+        valueRange = 8f..18f,
+        steps = 19,
+        valueLabel = { stringResource(R.string.format_zoom_level, it) },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_itinerary_stop_names),
+        summary = stringResource(R.string.settings_itinerary_stop_names_note),
+        checked = settings.showItineraryStopNames,
+        onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_vehicles))
+
+    // Lives here rather than under Movement below, next to the stops' own zoom threshold it mirrors
+    // — and on the same screen as the reset that changes it, which it was not before.
+    SettingSliderRow(
+        title = stringResource(R.string.settings_vehicles_from_zoom),
+        summary = stringResource(R.string.settings_vehicles_from_zoom_note),
+        value = motion.minZoom,
+        onValueCommit = { value -> viewModel.updateMotion { it.copy(minZoom = value) } },
+        valueRange = 5f..16f,
+        steps = 21,
+        valueLabel = { stringResource(R.string.format_zoom_level, it) },
+    )
+    SettingSwitchRow(
+        title = stringResource(R.string.settings_focus_vehicle),
+        summary = stringResource(R.string.settings_focus_vehicle_note),
+        checked = settings.focusSelectedVehicle,
+        onCheckedChange = { on -> viewModel.update { it.copy(focusSelectedVehicle = on) } },
+    )
+
+    SectionHeader(stringResource(R.string.settings_header_movement))
+
+    NotGpsNotice(Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+
+    SettingSwitchRow(
         title = stringResource(R.string.settings_monotonic),
+        summary = stringResource(R.string.settings_monotonic_note),
         checked = motion.monotonicProgress,
         onCheckedChange = { on -> viewModel.updateMotion { it.copy(monotonicProgress = on) } },
-        supportingText = stringResource(R.string.settings_monotonic_note),
     )
-    SteppedSliderRow(
+    SettingSteppedSliderRow(
         title = stringResource(R.string.settings_frame_interval),
+        summary = stringResource(R.string.settings_frame_interval_note),
         values = VehicleMotionSettings.FRAME_INTERVAL_STEPS,
         value = motion.frameIntervalMillis,
         onValueCommit = { value -> viewModel.updateMotion { it.copy(frameIntervalMillis = value) } },
         distance = { a, b -> abs(a - b).toFloat() },
         valueLabel = ::frameIntervalLabel,
-        supportingText = stringResource(R.string.settings_frame_interval_note),
     )
-    IntSliderRow(
+    SettingIntSliderRow(
         title = stringResource(R.string.settings_fetch_interval),
+        summary = stringResource(R.string.settings_fetch_interval_note),
         value = motion.refreshIntervalSeconds,
         onValueCommit = { value -> viewModel.updateMotion { it.copy(refreshIntervalSeconds = value) } },
         min = 10,
         max = 120,
         step = 5,
         valueLabel = { stringResource(R.string.format_seconds, it) },
-        supportingText = stringResource(R.string.settings_fetch_interval_note),
     )
-    IntSliderRow(
+    SettingIntSliderRow(
         title = stringResource(R.string.settings_fetch_window),
+        summary = stringResource(R.string.settings_fetch_window_note),
         value = motion.fetchWindowSeconds,
         onValueCommit = { value -> viewModel.updateMotion { it.copy(fetchWindowSeconds = value) } },
         min = 60,
         max = 600,
         step = 30,
         valueLabel = { stringResource(R.string.format_seconds, it) },
-        supportingText = stringResource(R.string.settings_fetch_window_note),
     )
-    IntSliderRow(
+    SettingIntSliderRow(
         title = stringResource(R.string.settings_segment_retention),
+        summary = stringResource(R.string.settings_segment_retention_note),
         value = motion.segmentRetentionSeconds,
-        onValueCommit = { value ->
-            viewModel.updateMotion { it.copy(segmentRetentionSeconds = value) }
-        },
+        onValueCommit = { value -> viewModel.updateMotion { it.copy(segmentRetentionSeconds = value) } },
         min = 0,
         max = 600,
         step = 30,
@@ -610,8 +735,58 @@ private fun VehicleMovementSettings(settings: AppSettings, viewModel: SettingsVi
                 stringResource(R.string.format_seconds, seconds)
             }
         },
-        supportingText = stringResource(R.string.settings_segment_retention_note),
     )
+}
+
+/**
+ * The one thing worth saying before any of the movement sliders make sense: the moving markers are
+ * an estimate, not a tracked position. Collapsed to a single tappable line — the headline is what
+ * most people need, the reasoning is one tap away and costs no space until asked for.
+ */
+@Composable
+private fun NotGpsNotice(modifier: Modifier = Modifier) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(if (expanded) 180f else 0f, label = "notice-chevron")
+
+    Surface(
+        onClick = { expanded = !expanded },
+        shape = MaterialTheme.shapes.large,
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+        modifier = modifier.fillMaxWidth(),
+    ) {
+        Column(modifier = Modifier.padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Outlined.Info,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = stringResource(R.string.settings_not_gps_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Icon(
+                    Icons.Default.ExpandMore,
+                    contentDescription = stringResource(
+                        if (expanded) R.string.settings_not_gps_hide else R.string.settings_not_gps_show,
+                    ),
+                    modifier = Modifier
+                        .size(20.dp)
+                        .rotate(chevronRotation),
+                )
+            }
+            AnimatedVisibility(visible = expanded) {
+                Text(
+                    text = stringResource(R.string.settings_not_gps_body),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp, end = 20.dp),
+                )
+            }
+        }
+    }
 }
 
 /** Formats a redraw interval: sub-second values read as frame rates, longer ones as seconds. */
@@ -626,75 +801,7 @@ private fun frameIntervalLabel(millis: Int): String = when {
     else -> stringResource(R.string.format_frame_interval_seconds_decimal, millis / 1_000f)
 }
 
-@Composable
-private fun DataRefreshSettings(settings: AppSettings, viewModel: SettingsViewModel) {
-    SwitchRow(
-        title = stringResource(R.string.settings_refresh_while_open),
-        checked = settings.autoRefreshEnabled,
-        onCheckedChange = { on -> viewModel.update { it.copy(autoRefreshEnabled = on) } },
-        supportingText = stringResource(R.string.settings_refresh_while_open_note),
-    )
-    if (settings.autoRefreshEnabled) {
-        IntSliderRow(
-            title = stringResource(R.string.settings_refresh_interval),
-            value = settings.resultsRefreshSeconds,
-            onValueCommit = { value -> viewModel.update { it.copy(resultsRefreshSeconds = value) } },
-            min = 10,
-            max = 300,
-            step = 10,
-            valueLabel = { stringResource(R.string.format_seconds, it) },
-            supportingText = stringResource(R.string.settings_refresh_interval_note),
-        )
-    }
-}
-
-@Composable
-private fun MapDetailSettings(settings: AppSettings, viewModel: SettingsViewModel) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(stringResource(R.string.settings_map_theme), style = MaterialTheme.typography.titleSmall)
-        SingleChoiceToggleFlow(
-            options = MapTheme.entries,
-            selected = settings.mapTheme,
-            onSelect = { theme -> viewModel.update { it.copy(mapTheme = theme) } },
-            label = { stringResource(it.labelRes) },
-        )
-        Text(
-            text = stringResource(R.string.settings_map_theme_note),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    LabeledSliderRow(
-        title = stringResource(R.string.settings_stops_from_zoom),
-        value = settings.stopsMinZoom,
-        onValueCommit = { value -> viewModel.update { it.copy(stopsMinZoom = value) } },
-        valueRange = 8f..18f,
-        steps = 19,
-        valueLabel = { stringResource(R.string.format_zoom_level, it) },
-        supportingText = stringResource(R.string.settings_stops_from_zoom_note),
-    )
-    LabeledSliderRow(
-        title = stringResource(R.string.settings_vehicles_from_zoom),
-        value = settings.vehicleMotion.minZoom,
-        onValueCommit = { value -> viewModel.updateMotion { it.copy(minZoom = value) } },
-        valueRange = 5f..16f,
-        steps = 21,
-        valueLabel = { stringResource(R.string.format_zoom_level, it) },
-        supportingText = stringResource(R.string.settings_vehicles_from_zoom_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_focus_vehicle),
-        checked = settings.focusSelectedVehicle,
-        onCheckedChange = { on -> viewModel.update { it.copy(focusSelectedVehicle = on) } },
-        supportingText = stringResource(R.string.settings_focus_vehicle_note),
-    )
-    SwitchRow(
-        title = stringResource(R.string.settings_itinerary_stop_names),
-        checked = settings.showItineraryStopNames,
-        onCheckedChange = { on -> viewModel.update { it.copy(showItineraryStopNames = on) } },
-        supportingText = stringResource(R.string.settings_itinerary_stop_names_note),
-    )
-}
+// ---- Offline and storage -------------------------------------------------------------------------
 
 /**
  * How long fetched data is kept, how much of it, and what to do with it.
@@ -710,58 +817,65 @@ private fun OfflineDataSettings(settings: AppSettings, viewModel: SettingsViewMo
     val stats by viewModel.cacheStats.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
 
-    IntSliderRow(
+    SectionHeader(stringResource(R.string.settings_header_cache_refresh))
+
+    SettingIntSliderRow(
         title = stringResource(R.string.settings_stop_cache_ttl),
+        summary = stringResource(R.string.settings_stop_cache_ttl_note),
         value = cache.stopCacheTtlDays,
         onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(stopCacheTtlDays = value) } },
         min = OfflineCacheSettings.MIN_TTL_DAYS,
         max = OfflineCacheSettings.MAX_TTL_DAYS,
         valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
-        supportingText = stringResource(R.string.settings_stop_cache_ttl_note),
     )
-    IntSliderRow(
+    SettingIntSliderRow(
         title = stringResource(R.string.settings_search_cache_ttl),
+        summary = stringResource(R.string.settings_search_cache_ttl_note),
         value = cache.searchCacheTtlDays,
         onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(searchCacheTtlDays = value) } },
         min = OfflineCacheSettings.MIN_TTL_DAYS,
         max = OfflineCacheSettings.MAX_TTL_DAYS,
         valueLabel = { pluralStringResource(R.plurals.plural_days, it, it) },
-        supportingText = stringResource(R.string.settings_search_cache_ttl_note),
     )
-    SwitchRow(
+
+    SectionHeader(stringResource(R.string.settings_header_offline_search))
+
+    SettingSwitchRow(
         title = stringResource(R.string.settings_offline_search),
+        summary = stringResource(R.string.settings_offline_search_note),
         checked = cache.offlineSearchEnabled,
         onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(offlineSearchEnabled = on) } },
-        supportingText = stringResource(R.string.settings_offline_search_note),
     )
-    SwitchRow(
+    SettingSwitchRow(
         title = stringResource(R.string.settings_show_expired_cache),
+        summary = stringResource(R.string.settings_show_expired_cache_note),
         checked = cache.showExpiredCache,
         onCheckedChange = { on -> viewModel.updateOfflineCache { it.copy(showExpiredCache = on) } },
-        supportingText = stringResource(R.string.settings_show_expired_cache_note),
     )
-    SteppedSliderRow(
+
+    SectionHeader(stringResource(R.string.settings_header_storage))
+
+    SettingSteppedSliderRow(
         title = stringResource(R.string.settings_cache_limit),
+        summary = stringResource(R.string.settings_cache_limit_note),
         values = OfflineCacheSettings.MAX_PLACES_STEPS,
         value = cache.maxCachedPlaces,
         onValueCommit = { value -> viewModel.updateOfflineCache { it.copy(maxCachedPlaces = value) } },
         valueLabel = { pluralStringResource(R.plurals.plural_places, it, it) },
-        supportingText = stringResource(R.string.settings_cache_limit_note),
     )
     stats?.let { current ->
-        Text(
-            text = stringResource(
+        SectionNote(
+            stringResource(
                 R.string.settings_cache_stats,
                 pluralStringResource(R.plurals.plural_stops, current.stops, current.stops),
                 pluralStringResource(R.plurals.plural_areas, current.areas, current.areas),
             ),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
     TextButton(
         enabled = stats?.let { it.places > 0 } == true,
         onClick = { confirmClear = true },
+        modifier = Modifier.padding(horizontal = 16.dp),
     ) { Text(stringResource(R.string.settings_clear_cache)) }
 
     if (confirmClear) {
@@ -784,4 +898,15 @@ private fun OfflineDataSettings(settings: AppSettings, viewModel: SettingsViewMo
             },
         )
     }
+}
+
+/** A line of prose belonging to a group rather than to any one row — indented to match the rows. */
+@Composable
+private fun SectionNote(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+    )
 }

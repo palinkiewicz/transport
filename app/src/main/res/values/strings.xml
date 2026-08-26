@@ -356,15 +356,44 @@
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
+
+    <!-- Appearance: the app's own palette -->
+    <string name="settings_theme_colors">Theme colours</string>
+    <string name="theme_transport">Transport</string>
+    <string name="theme_dynamic">Dynamic</string>
+    <string name="theme_ocean">Ocean</string>
+    <string name="theme_lavender">Lavender</string>
+    <string name="theme_sunset">Sunset</string>
+    <string name="theme_rose">Rose</string>
+    <string name="theme_teal">Teal</string>
+    <string name="settings_dark_mode">Dark mode</string>
+    <string name="dark_theme_system">System</string>
+    <string name="dark_theme_light">Light</string>
+    <string name="dark_theme_dark">Dark</string>
+    <string name="settings_pure_black">Pure black</string>
+    <string name="settings_pure_black_note">True black backgrounds in dark mode, to save power on an OLED screen.</string>
+
+    <!-- Group headers within a settings section -->
+    <string name="settings_header_line_colors">Line colours</string>
+    <string name="settings_header_startup">Start-up</string>
+    <string name="settings_header_remembering">Remembering</string>
+    <string name="settings_header_auto_refresh">Auto-refresh</string>
+    <string name="settings_header_suggestions">Suggestions</string>
+    <string name="settings_header_recent_places">Recent places</string>
+    <string name="settings_header_connections">Connections</string>
+    <string name="settings_header_export">Itinerary export</string>
+    <string name="settings_header_map_detail">Detail</string>
+    <string name="settings_header_vehicles">Vehicles</string>
+    <string name="settings_header_movement">Movement</string>
+    <string name="settings_header_cache_refresh">Refreshing</string>
+    <string name="settings_header_offline_search">Offline search</string>
+    <string name="settings_header_storage">Storage</string>
     <!-- Section summaries, shown under each section's name on the settings index -->
-    <string name="settings_group_general_summary">Opening screen, remembered searches and map position</string>
-    <string name="settings_group_search_summary">Connection times, recent places and how suggestions are ranked</string>
-    <string name="settings_group_line_colors_summary">Where line badges take their colour from</string>
-    <string name="settings_group_export_summary">What an exported itinerary holds, and how it leaves the app</string>
-    <string name="settings_group_map_detail_summary">Map colours, zoom thresholds and itinerary labels</string>
+    <string name="settings_group_appearance_summary">Theme, dark mode, map and line colours</string>
+    <string name="settings_group_general_summary">Opening screen, what is remembered, auto-refresh</string>
+    <string name="settings_group_search_summary">Suggestions, recent places, connection times and export</string>
+    <string name="settings_group_map_summary">Zoom thresholds, labels and how vehicles move</string>
     <string name="settings_group_offline_summary">How long stored data is kept, and how much of it</string>
-    <string name="settings_group_auto_refresh_summary">How often open screens reload by themselves</string>
-    <string name="settings_group_vehicle_movement_summary">How moving markers are estimated and drawn</string>
 
     <string name="settings_app_info">App info</string>
     <string name="settings_app_info_summary">Version, author, repository</string>
@@ -377,6 +406,7 @@
     <string name="about_data">Data</string>
     <string name="about_close">Close</string>
 
+    <string name="settings_group_appearance">Appearance</string>
     <string name="settings_group_general">General</string>
     <string name="settings_opening_screen">Opening screen</string>
     <string name="settings_opening_screen_note">Which tab opens when you launch the app.</string>
@@ -406,7 +436,6 @@
     <string name="connection_times_door_to_door">Door to door</string>
     <string name="connection_times_both">Both</string>
 
-    <string name="settings_group_line_colors">Line colours</string>
     <string name="settings_line_colors">Line colour source</string>
     <string name="line_colors_transitous">Transitous</string>
     <string name="line_colors_custom">Custom</string>
@@ -420,7 +449,6 @@
     <string name="settings_line_color_pick">Pick a colour</string>
     <string name="settings_line_color_selected">Selected</string>
 
-    <string name="settings_group_export">Itinerary export</string>
     <string name="settings_export_delivery">Export action</string>
     <string name="export_delivery_share">Share</string>
     <string name="export_delivery_save">Save to a file</string>
@@ -446,7 +474,6 @@
     <string name="map_theme_light">Light</string>
     <string name="map_theme_dark">Dark</string>
 
-    <string name="settings_group_map_detail">Map detail</string>
     <string name="settings_map_theme">Map colours</string>
     <string name="settings_map_theme_note">Applies to every map in the app. Separate from the app\'s own light or dark colours — System keeps the two together.</string>
     <string name="settings_stops_from_zoom">Stops from zoom</string>
@@ -458,7 +485,7 @@
     <string name="settings_itinerary_stop_names">Itinerary stop names</string>
     <string name="settings_itinerary_stop_names_note">Labels the stops where you board and alight on the itinerary map.</string>
 
-    <string name="settings_group_auto_refresh">Auto-refresh</string>
+    <string name="settings_group_map">Map &amp; vehicles</string>
     <string name="settings_group_offline">Offline data</string>
     <string name="settings_stop_cache_ttl">Refresh stops after</string>
     <string name="settings_stop_cache_ttl_note">How long before an area\'s stops are fetched again. Stops past this keep showing — only the refresh waits.</string>
@@ -481,7 +508,6 @@
     <string name="settings_refresh_interval">Results &amp; departures</string>
     <string name="settings_refresh_interval_note">How often those screens reload while open. Applies to searches started from now on.</string>
 
-    <string name="settings_group_vehicle_movement">Vehicle movement</string>
     <string name="settings_not_gps_title">Vehicles are estimated, not tracked</string>
     <string name="settings_not_gps_body">Transitous serves stop-to-stop timetables, never GPS positions. A vehicle\'s place between two stops is interpolated from its schedule, corrected by real-time delays where a feed provides them — so \"Live\" on the map means accurate times, not an observed position.</string>
     <string name="settings_not_gps_show">Show explanation</string>

@@ -1,6 +1,5 @@
 package pl.dakil.transport.ui.components
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,6 +9,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -23,7 +23,10 @@ import java.time.OffsetDateTime
 @Composable
 fun timeDeviationColor(time: OffsetDateTime, scheduledTime: OffsetDateTime): Color? = when {
     time.isAfter(scheduledTime) -> MaterialTheme.colorScheme.error
-    time.isBefore(scheduledTime) -> if (isSystemInDarkTheme()) Color(0xFF86D993) else Color(0xFF1E7B34)
+    // Keyed off the theme's own surface, not `isSystemInDarkTheme()`: the app can be forced light
+    // or dark against the system setting, and the pale green is unreadable on white.
+    time.isBefore(scheduledTime) ->
+        if (MaterialTheme.colorScheme.surface.luminance() < 0.5f) Color(0xFF86D993) else Color(0xFF1E7B34)
     else -> null
 }
 

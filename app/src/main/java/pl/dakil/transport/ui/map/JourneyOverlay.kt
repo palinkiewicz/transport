@@ -47,6 +47,18 @@ data class RoutePoint(
 )
 
 /**
+ * An end of the whole journey, drawn as a plain dot. Where a traveller starts and finishes is
+ * usually not a stop — it is an address, a long-pressed point, their own position — so nothing
+ * else on the map marks it and the route just faded out into the basemap at both ends. Dropped
+ * when it *is* a stop, since the pin already drawn there says it better.
+ */
+data class RouteEndpoint(
+    val point: GeoPoint,
+    /** The colour of the leg it hangs off, so the dot reads as that line's end. */
+    val color: Color,
+)
+
+/**
  * Everything the map needs to draw one itinerary, plus the resolution its pane reads its badges
  * from. One derivation for both: the route on the map, the chips in the sheet, the dots beside the
  * places to change at and the exported file all take their colours from [colors], which is what
@@ -55,6 +67,7 @@ data class RoutePoint(
 internal data class JourneyOverlay(
     val lines: List<RouteLine>,
     val points: List<RoutePoint>,
+    val endpoints: List<RouteEndpoint>,
     val stops: List<ItineraryStop>,
     val colors: JourneyColors,
 )
@@ -98,5 +111,34 @@ internal fun rememberJourneyOverlay(pinned: PendingMapJourney): JourneyOverlay {
             )
         }
     }
-    return remember(lines, points, stops, colors) { JourneyOverlay(lines, points, stops, colors) }
+    val endpoints = remember(lines, points) { journeyEndpoints(lines, points) }
+    return remember(lines, points, endpoints, stops, colors) {
+        JourneyOverlay(lines, points, endpoints, stops, colors)
+    }
 }
+
+/**
+ * The two ends of the drawn route, minus any that a stop pin is already standing on. [lines] is
+ * what the map actually draws, so its ends are the ends the user sees — reading them off the
+ * journey's legs instead would place a dot on geometry that was never rendered.
+ */
+private fun journeyEndpoints(
+    lines: List<RouteLine>,
+    points: List<RoutePoint>,
+): List<RouteEndpoint> {
+    val first = lines.firstOrNull() ?: return emptyList()
+    val last = lines.last()
+    return listOf(
+        RouteEndpoint(first.points.first(), first.color),
+        RouteEndpoint(last.points.last(), last.color),
+    ).filter { endpoint ->
+        points.none { it.point.distanceMetersTo(endpoint.point) < ENDPOINT_STOP_RADIUS_METERS }
+    }
+}
+
+/**
+ * How close to a stop pin an end has to be before it counts as that stop. Generous: a walk leg
+ * routed to the pavement outside a station ends metres off the platform the pin sits on, and two
+ * markers on top of each other read as a smudge rather than as extra information.
+ */
+private const val ENDPOINT_STOP_RADIUS_METERS = 25.0

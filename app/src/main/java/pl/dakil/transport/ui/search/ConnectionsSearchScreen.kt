@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import pl.dakil.transport.R
-import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
+import pl.dakil.transport.ui.components.SingleChoiceSegmentedRow
 import pl.dakil.transport.ui.navigation.ResultsRoute
 
 /**
@@ -114,7 +114,7 @@ fun ConnectionsSearchScreen(
                 }
             }
 
-            SingleChoiceConnectedRow(
+            SingleChoiceSegmentedRow(
                 options = listOf(false, true),
                 selected = uiState.options.arriveBy,
                 onSelect = { arriveBy -> viewModel.updateOptions { it.copy(arriveBy = arriveBy) } },

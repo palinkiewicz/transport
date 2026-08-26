@@ -96,8 +96,19 @@ class SettingsViewModel @Inject constructor(
 
     fun resetItineraryExport() = update { it.copy(export = ExportSettings.DEFAULT) }
 
-    fun resetLineColors() = update {
+    /**
+     * Everything the Appearance screen edits, in one go — the app palette, the basemap colourway
+     * and the line-colour pair. Scoped by hand rather than by a nested settings object: these are
+     * flat fields on [AppSettings] shared with other screens' concerns, and grouping them into a
+     * struct purely to give this button something to copy would rename them inside every stored
+     * blob.
+     */
+    fun resetAppearance() = update {
         it.copy(
+            colorTheme = AppSettings.DEFAULT.colorTheme,
+            darkTheme = AppSettings.DEFAULT.darkTheme,
+            pureBlack = AppSettings.DEFAULT.pureBlack,
+            mapTheme = AppSettings.DEFAULT.mapTheme,
             lineColorMode = AppSettings.DEFAULT.lineColorMode,
             customLineColors = AppSettings.DEFAULT.customLineColors,
         )

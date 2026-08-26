@@ -50,7 +50,7 @@ import pl.dakil.transport.domain.model.TransitFilterCategory
 import pl.dakil.transport.ui.components.IntSliderRow
 import pl.dakil.transport.ui.components.LabeledSliderRow
 import pl.dakil.transport.ui.components.MultiChoiceToggleFlow
-import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
+import pl.dakil.transport.ui.components.SingleChoiceSegmentedRow
 import pl.dakil.transport.ui.components.SwitchRow
 
 /** Which options sheet a search form currently has open; null when none is. */
@@ -426,7 +426,7 @@ private fun TransfersSheet(options: SearchOptions, onUpdate: ((SearchOptions) ->
     // mode is picked, before any transfer count has been chosen.
     val limit = options.maxTransfers?.takeIf { it > 0 } ?: 1
 
-    SingleChoiceConnectedRow(
+    SingleChoiceSegmentedRow(
         options = TransfersMode.entries,
         selected = options.transfersMode,
         onSelect = { mode ->
@@ -538,7 +538,7 @@ private fun PaceSheet(options: SearchOptions, onUpdate: ((SearchOptions) -> Sear
 private fun StreetLegsSheet(options: SearchOptions, onUpdate: ((SearchOptions) -> SearchOptions) -> Unit) {
     var context by rememberSaveable { mutableStateOf(LegContext.DIRECT) }
 
-    SingleChoiceConnectedRow(
+    SingleChoiceSegmentedRow(
         options = LegContext.entries,
         selected = context,
         onSelect = { context = it },
@@ -647,7 +647,7 @@ private fun AdvancedSheet(options: SearchOptions, onUpdate: ((SearchOptions) -> 
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        SingleChoiceConnectedRow(
+        SingleChoiceSegmentedRow(
             options = PedestrianProfile.entries,
             selected = options.pedestrianProfile,
             onSelect = { profile -> onUpdate { it.copy(pedestrianProfile = profile) } },
@@ -660,7 +660,7 @@ private fun AdvancedSheet(options: SearchOptions, onUpdate: ((SearchOptions) -> 
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        SingleChoiceConnectedRow(
+        SingleChoiceSegmentedRow(
             options = ElevationCosts.entries,
             selected = options.elevationCosts,
             onSelect = { costs -> onUpdate { it.copy(elevationCosts = costs) } },

@@ -35,7 +35,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import pl.dakil.transport.R
 import pl.dakil.transport.domain.model.ViaPoint
-import pl.dakil.transport.ui.components.SingleChoiceConnectedRow
+import pl.dakil.transport.ui.components.SingleChoiceSegmentedRow
 
 /** Label for one of [ViaPoint.STAY_PRESETS_MINUTES]. */
 @Composable
@@ -100,7 +100,7 @@ internal fun ViaStopRow(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            SingleChoiceConnectedRow(
+            SingleChoiceSegmentedRow(
                 options = ViaPoint.STAY_PRESETS_MINUTES,
                 selected = via.minimumStayMinutes,
                 onSelect = onMinimumStayChange,

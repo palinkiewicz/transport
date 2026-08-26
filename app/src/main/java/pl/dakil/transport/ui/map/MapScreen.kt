@@ -1503,6 +1503,30 @@ fun MapScreen(
                         remember(journeyLines) { journeyLineFeatures(dashed = false) },
                     ),
                 )
+                val journeyEndpoints = currentJourneyOverlay?.endpoints.orEmpty()
+                val journeyEndpointSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(
+                        remember(journeyEndpoints) {
+                            FeatureCollection(
+                                journeyEndpoints.map { endpoint ->
+                                    Feature<Point, JsonObject?>(
+                                        geometry = Point(
+                                            Position(
+                                                latitude = endpoint.point.lat,
+                                                longitude = endpoint.point.lon,
+                                            ),
+                                        ),
+                                        properties = JsonObject(
+                                            mapOf(
+                                                "color" to JsonPrimitive(endpoint.color.toHexString()),
+                                            ),
+                                        ),
+                                    )
+                                },
+                            )
+                        },
+                    ),
+                )
                 val journeyPoints = currentJourneyOverlay?.points.orEmpty()
                 val journeyPointFeatures = remember(journeyPoints, currentJourneyStopId, currentShowStopNames) {
                     FeatureCollection(
@@ -1557,6 +1581,17 @@ fun MapScreen(
                     opacity = const(0.8f),
                     cap = const(LineCap.Round),
                     join = const(LineJoin.Round),
+                )
+                // Where the journey actually begins and ends, when that is not a stop. Smaller
+                // than the boarding pins and under them, so it marks the spot without competing
+                // with the places the traveller has to do something at.
+                CircleLayer(
+                    id = "journey-endpoints",
+                    source = journeyEndpointSource,
+                    radius = const(6.dp),
+                    color = feature["color"].convertToColor(),
+                    strokeColor = const(MARKER_STROKE_COLOR),
+                    strokeWidth = const(1.dp),
                 )
                 CircleLayer(
                     id = "journey-points",

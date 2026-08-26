@@ -12,10 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.ButtonGroupDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -169,47 +172,33 @@ fun SwitchRow(
 }
 
 /**
- * A single-select row of connected [ToggleButton]s (expressive segmented-button idiom),
- * each option weighted equally across the full width.
+ * A single-select row of [SegmentedButton]s, each option weighted equally across the full width.
  *
- * Equal weights mean a segment gets whatever width the row has to give, not the width its label
- * wants — with four options on a narrow row the default button padding leaves the label almost no
- * space, and a clipped single line renders as nothing at all. So the padding is trimmed and the
- * label auto-sizes down to [LABEL_MIN_FONT_SIZE] to fit what is left. Options whose names are too
- * long to survive that shrinking belong in [SingleChoiceToggleFlow] instead.
+ * The label is auto-sizing rather than the component's plain default: a segment gets whatever width
+ * the row has to give, not the width its label wants, and with four options on a narrow screen a
+ * clipped single line renders as almost nothing. Shrinking to [LABEL_MIN_FONT_SIZE] keeps
+ * "No transfers" and "30 min" readable where truncation would not. Options whose names cannot
+ * survive that belong in a menu — the settings screens use `SettingSelectRow`.
+ *
+ * The selected segment's check mark is [SegmentedButton]'s own, which is why there is no icon
+ * parameter here: the slot it would occupy is already the selection indicator.
  */
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun <T> SingleChoiceConnectedRow(
+fun <T> SingleChoiceSegmentedRow(
     options: List<T>,
     selected: T,
     onSelect: (T) -> Unit,
     label: @Composable (T) -> String,
     modifier: Modifier = Modifier,
-    icon: ((T) -> ImageVector)? = null,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween),
-    ) {
+    SingleChoiceSegmentedButtonRow(modifier.fillMaxWidth()) {
         options.forEachIndexed { index, option ->
-            ToggleButton(
-                checked = option == selected,
-                onCheckedChange = { if (it) onSelect(option) },
-                shapes = when (index) {
-                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
-                },
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { role = Role.RadioButton },
+            SegmentedButton(
+                selected = option == selected,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
             ) {
-                icon?.let {
-                    Icon(it(option), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                }
                 Text(
                     text = label(option),
                     autoSize = TextAutoSize.StepBased(
@@ -225,44 +214,8 @@ fun <T> SingleChoiceConnectedRow(
     }
 }
 
-/** Floor for [SingleChoiceConnectedRow]'s shrinking labels — below this they stop being readable. */
+/** Floor for [SingleChoiceSegmentedRow]'s shrinking labels — below this they stop being readable. */
 private val LABEL_MIN_FONT_SIZE = 10.sp
-
-/**
- * A wrapping single-select flow of [ToggleButton]s. Unlike [SingleChoiceConnectedRow] the
- * buttons size to their labels and wrap, so it suits options whose names are too long to share
- * one row without being cut off.
- */
-@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-fun <T> SingleChoiceToggleFlow(
-    options: List<T>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    label: @Composable (T) -> String,
-    modifier: Modifier = Modifier,
-    icon: ((T) -> ImageVector)? = null,
-) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        modifier = modifier,
-    ) {
-        options.forEach { option ->
-            ToggleButton(
-                checked = option == selected,
-                onCheckedChange = { if (it) onSelect(option) },
-                modifier = Modifier.semantics { role = Role.RadioButton },
-            ) {
-                icon?.let {
-                    Icon(it(option), contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                }
-                Text(label(option))
-            }
-        }
-    }
-}
 
 /** A wrapping multi-select flow of checkable [ToggleButton]s with optional leading icons. */
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3ExpressiveApi::class)

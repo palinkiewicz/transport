@@ -374,14 +374,43 @@
 
     <!-- Settings -->
     <string name="settings_title">Ustawienia</string>
-    <string name="settings_group_general_summary">Ekran startowy, zapamiętane wyszukiwania i pozycja mapy</string>
-    <string name="settings_group_search_summary">Czasy połączeń, ostatnie miejsca i kolejność podpowiedzi</string>
-    <string name="settings_group_line_colors_summary">Skąd odznaki linii biorą swój kolor</string>
-    <string name="settings_group_export_summary">Co zawiera wyeksportowana trasa i jak opuszcza aplikację</string>
-    <string name="settings_group_map_detail_summary">Kolory mapy, progi powiększenia i etykiety trasy</string>
+
+    <!-- Wygląd: własna paleta aplikacji -->
+    <string name="settings_theme_colors">Kolory motywu</string>
+    <string name="theme_transport">Transport</string>
+    <string name="theme_dynamic">Dynamiczny</string>
+    <string name="theme_ocean">Ocean</string>
+    <string name="theme_lavender">Lawenda</string>
+    <string name="theme_sunset">Zachód słońca</string>
+    <string name="theme_rose">Róż</string>
+    <string name="theme_teal">Turkus</string>
+    <string name="settings_dark_mode">Tryb ciemny</string>
+    <string name="dark_theme_system">Systemowy</string>
+    <string name="dark_theme_light">Jasny</string>
+    <string name="dark_theme_dark">Ciemny</string>
+    <string name="settings_pure_black">Czysta czerń</string>
+    <string name="settings_pure_black_note">Całkowicie czarne tła w trybie ciemnym, aby oszczędzać energię na ekranie OLED.</string>
+
+    <!-- Nagłówki grup w obrębie sekcji ustawień -->
+    <string name="settings_header_line_colors">Kolory linii</string>
+    <string name="settings_header_startup">Uruchamianie</string>
+    <string name="settings_header_remembering">Zapamiętywanie</string>
+    <string name="settings_header_auto_refresh">Automatyczne odświeżanie</string>
+    <string name="settings_header_suggestions">Podpowiedzi</string>
+    <string name="settings_header_recent_places">Ostatnie miejsca</string>
+    <string name="settings_header_connections">Połączenia</string>
+    <string name="settings_header_export">Eksport trasy</string>
+    <string name="settings_header_map_detail">Szczegółowość</string>
+    <string name="settings_header_vehicles">Pojazdy</string>
+    <string name="settings_header_movement">Ruch</string>
+    <string name="settings_header_cache_refresh">Odświeżanie</string>
+    <string name="settings_header_offline_search">Wyszukiwanie offline</string>
+    <string name="settings_header_storage">Pamięć</string>
+    <string name="settings_group_appearance_summary">Motyw, tryb ciemny, kolory mapy i linii</string>
+    <string name="settings_group_general_summary">Ekran startowy, co jest zapamiętywane, odświeżanie</string>
+    <string name="settings_group_search_summary">Podpowiedzi, ostatnie miejsca, czasy połączeń i eksport</string>
+    <string name="settings_group_map_summary">Progi powiększenia, etykiety i ruch pojazdów</string>
     <string name="settings_group_offline_summary">Jak długo i ile danych jest przechowywanych</string>
-    <string name="settings_group_auto_refresh_summary">Jak często otwarte ekrany odświeżają się same</string>
-    <string name="settings_group_vehicle_movement_summary">Jak szacowane i rysowane są poruszające się znaczniki</string>
 
     <string name="settings_app_info">O aplikacji</string>
     <string name="settings_app_info_summary">Wersja, autor, repozytorium</string>
@@ -394,6 +423,7 @@
     <string name="about_data">Dane</string>
     <string name="about_close">Zamknij</string>
 
+    <string name="settings_group_appearance">Wygląd</string>
     <string name="settings_group_general">Ogólne</string>
     <string name="settings_opening_screen">Ekran startowy</string>
     <string name="settings_opening_screen_note">Karta otwarta po uruchomieniu aplikacji.</string>
@@ -423,7 +453,6 @@
     <string name="connection_times_door_to_door">Od drzwi do drzwi</string>
     <string name="connection_times_both">Oba</string>
 
-    <string name="settings_group_line_colors">Kolory linii</string>
     <string name="settings_line_colors">Źródło kolorów linii</string>
     <string name="line_colors_transitous">Transitous</string>
     <string name="line_colors_custom">Własne</string>
@@ -437,7 +466,6 @@
     <string name="settings_line_color_pick">Wybierz kolor</string>
     <string name="settings_line_color_selected">Wybrany</string>
 
-    <string name="settings_group_export">Eksport trasy</string>
     <string name="settings_export_delivery">Sposób eksportu</string>
     <string name="export_delivery_share">Udostępnianie</string>
     <string name="export_delivery_save">Zapis do pliku</string>
@@ -463,7 +491,6 @@
     <string name="map_theme_light">Jasny</string>
     <string name="map_theme_dark">Ciemny</string>
 
-    <string name="settings_group_map_detail">Szczegółowość mapy</string>
     <string name="settings_map_theme">Kolory mapy</string>
     <string name="settings_map_theme_note">Dotyczy każdej mapy w aplikacji. Niezależne od jasnego lub ciemnego motywu samej aplikacji — opcja Systemowy utrzymuje oba zgodnie.</string>
     <string name="settings_stops_from_zoom">Przystanki od poziomu przybliżenia</string>
@@ -475,7 +502,7 @@
     <string name="settings_itinerary_stop_names">Nazwy przystanków w planie podróży</string>
     <string name="settings_itinerary_stop_names_note">Wyświetla etykiety przystanków początkowych i docelowych na mapie trasy.</string>
 
-    <string name="settings_group_auto_refresh">Automatyczne odświeżanie</string>
+    <string name="settings_group_map">Mapa i pojazdy</string>
     <string name="settings_group_offline">Dane offline</string>
     <string name="settings_stop_cache_ttl">Odświeżaj przystanki po</string>
     <string name="settings_stop_cache_ttl_note">Po jakim czasie przystanki obszaru są pobierane ponownie. Starsze nadal się wyświetlają — czeka tylko odświeżenie.</string>
@@ -498,7 +525,6 @@
     <string name="settings_refresh_interval">Wyniki i odjazdy</string>
     <string name="settings_refresh_interval_note">Częstotliwość odświeżania otwartych ekranów. Dotyczy nowo rozpoczętych wyszukiwań.</string>
 
-    <string name="settings_group_vehicle_movement">Ruch pojazdów</string>
     <string name="settings_not_gps_title">Pozycje pojazdów są szacowane, a nie śledzone</string>
     <string name="settings_not_gps_body">Transitous udostępnia rozkłady jazdy między przystankami, a nie pozycje GPS. Położenie pojazdu między przystankami jest wyliczane z rozkładu i korygowane o opóźnienia w czasie rzeczywistym — dlatego status „Na żywo” oznacza dokładne godziny odjazdów, a nie fizyczną pozycję na mapie.</string>
     <string name="settings_not_gps_show">Pokaż wyjaśnienie</string>

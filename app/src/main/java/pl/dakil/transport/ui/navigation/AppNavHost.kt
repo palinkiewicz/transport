@@ -229,7 +229,11 @@ fun AppNavHost(
                         val parentEntry = remember(entry) { navController.getBackStackEntry<SettingsGraph>() }
                         val route: SettingsSectionRoute = entry.toRoute()
                         SettingsSectionScreen(
-                            section = SettingsSection.valueOf(route.section),
+                            // Guarded rather than `valueOf` outright: the section list has
+                            // changed shape before, and an entry restored after process death
+                            // across an in-place upgrade can name one that no longer exists.
+                            section = runCatching { SettingsSection.valueOf(route.section) }
+                                .getOrDefault(SettingsSection.GENERAL),
                             onBack = { navController.popBackStack() },
                             viewModel = hiltViewModel(parentEntry),
                         )
