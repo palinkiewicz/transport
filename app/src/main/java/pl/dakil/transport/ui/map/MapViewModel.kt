@@ -532,13 +532,14 @@ class MapViewModel @Inject constructor(
 
     // Fetching is gated only on "any vehicle category on" (not the specific categories/data
     // source), so tweaking filters refines the already-fetched segments instantly instead of
-    // hitting the shared Transitous API again. An itinerary on the map switches it off outright:
-    // no marker is drawn there, so polling a shared API for them would be pure waste.
+    // hitting the shared Transitous API again. A map pushed to show an itinerary or a single run
+    // switches it off outright: neither draws anything the viewport returns (see [drawnSegments]),
+    // and both follow their own runs by id, so polling a shared API for the rest is pure waste.
     private val vehicleFetches: Flow<Unit> =
         combine(
             viewport,
-            combine(filters, pinnedJourney) { filters, journey ->
-                filters.vehicleCategories.isNotEmpty() && journey == null
+            combine(filters, pinnedJourney, pinnedTrip) { filters, journey, trip ->
+                filters.vehicleCategories.isNotEmpty() && journey == null && trip == null
             }.distinctUntilChanged(),
             motionSettings,
         ) { vp, enabled, motion ->
@@ -610,11 +611,16 @@ class MapViewModel @Inject constructor(
      * to show.
      */
     private val drawnSegments: Flow<DrawnSegments> =
-        combine(vehicleSegments, journeySegments, pinnedJourney) { viewport, journeyRuns, pinned ->
-            if (pinned != null) {
-                DrawnSegments(journeyRuns, fromJourney = true)
-            } else {
-                DrawnSegments(viewport, fromJourney = false)
+        combine(
+            vehicleSegments,
+            journeySegments,
+            pinnedJourney,
+            pinnedTrip,
+        ) { viewport, journeyRuns, journey, trip ->
+            when {
+                journey != null -> DrawnSegments(journeyRuns, journeyRuns = true)
+                trip != null -> DrawnSegments(viewport, pinnedRun = true)
+                else -> DrawnSegments(viewport)
             }
         }
 
@@ -654,7 +660,13 @@ class MapViewModel @Inject constructor(
                 // An itinerary's own runs are not the viewport's vehicles and are not filtered like
                 // them: the filter menu is not even on screen there, and a traveller who has hidden
                 // buses from the map is not asking to be shown less of their own journey.
-                drawn.fromJourney -> segments
+                drawn.journeyRuns -> segments
+                // A map *pushed* to show one run is that run, so it narrows to it whatever the
+                // focus setting says — that setting is about tapping a vehicle on the ordinary map,
+                // and one pan used to turn it off and bury the run under every bus in the city.
+                // Empty rather than everything while the run is off the road or its first fetch is
+                // still out: the same argument [focusedTripStops] already makes for its stops.
+                drawn.pinnedRun -> selectedSegments.orEmpty()
                 // Only the followed run, so the marker being followed never blinks out.
                 focus && tripKey != null -> selectedSegments.orEmpty()
                 else -> segments.filter(filters::matchesVehicle)
@@ -1142,8 +1154,14 @@ fun formatCoordinates(lat: Double, lon: Double): String =
 /** One trip's known segments, and when the API last confirmed them. */
 private data class TrackedTrip(val segments: List<VehicleSegment>, val lastSeenMillis: Long)
 
-/** The segments a frame is drawn from, and whether they are a pinned itinerary's own runs. */
-private data class DrawnSegments(val segments: List<VehicleSegment>, val fromJourney: Boolean)
+/** The segments a frame is drawn from, and what this map is drawing vehicles *for*. */
+private data class DrawnSegments(
+    val segments: List<VehicleSegment>,
+    /** [segments] holds a drawn itinerary's own runs and nothing else: draw them all, unfiltered. */
+    val journeyRuns: Boolean = false,
+    /** This map was pushed to follow one run: draw that run's marker and no other. */
+    val pinnedRun: Boolean = false,
+)
 
 /**
  * One raw frame target per vehicle at [time]: the segment whose time window contains [time]
