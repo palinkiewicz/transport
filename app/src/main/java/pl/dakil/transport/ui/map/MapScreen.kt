@@ -74,6 +74,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -325,6 +327,36 @@ private fun Modifier.sheetBodyHeight(total: Dp, topInset: () -> Dp) = layout { m
     layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
+/**
+ * Remembers which subject a once-per-subject camera move has already been made for, and remembers
+ * it across this screen being torn down and rebuilt.
+ *
+ * A `LaunchedEffect` key cannot do that on its own. Every map left underneath a pushed one loses
+ * its composition, so on the way back the effect is *new* and runs again — framing the run it was
+ * opened on, or lifting the selected stop, over wherever the user had panned to since. Coming back
+ * is not opening, so the move belongs to the subject rather than to the effect.
+ */
+@Composable
+private fun rememberCameraMoves(name: String): CameraMoves {
+    // Keyed by name rather than by call site: four of these sit side by side in one composable, and
+    // what they hold has to come back under the right one.
+    val moved = rememberSaveable(key = "cameraMoves:$name") { mutableStateOf<String?>(null) }
+    return remember { CameraMoves(moved) }
+}
+
+@Stable
+private class CameraMoves(private val moved: MutableState<String?>) {
+    /**
+     * True the first time it is asked about [subject] and false ever after, rebuilds included.
+     * A null subject records nothing being shown, so the same one selected again is a fresh move.
+     */
+    fun claim(subject: String?): Boolean {
+        if (moved.value == subject) return false
+        moved.value = subject
+        return subject != null
+    }
+}
+
 @OptIn(
     kotlinx.coroutines.FlowPreview::class,
     ExperimentalMaterial3Api::class,
@@ -411,6 +443,11 @@ fun MapScreen(
     val routeDraftVisible by viewModel.routeDraftVisible.collectAsStateWithLifecycle()
     val stayOnMapWhenPickingRoute by viewModel.stayOnMapWhenPickingRoute.collectAsStateWithLifecycle()
 
+    // The vehicle panel of a run handed over by "show on map", with nothing opened over it: that
+    // panel is the run's own timetable and the run is the whole point of this map, so it is not a
+    // panel to be dismissed at all — taking it off would leave a map showing nothing.
+    val pinnedRunOnly = pinnedTrip != null && selectedStop == null
+
     var filtersExpanded by rememberSaveable { mutableStateOf(false) }
 
     val density = LocalDensity.current
@@ -452,8 +489,14 @@ fun MapScreen(
     // The sheet gives way to the stop panel rather than stacking with it: tapping a stop of the
     // followed run keeps the vehicle selected, so the two can be open at once.
     val journeyOverlay = pinnedJourney?.let { rememberJourneyOverlay(it) }
-    /** The journey stop the map is pointing at, tapped here or picked in the pane. */
-    var journeyStopId by remember(pinnedJourney) { mutableStateOf(pinnedJourney?.selectedStopId) }
+    /**
+     * The journey stop the map is pointing at, tapped here or picked in the pane. Saved rather than
+     * remembered: opening one of the journey's lines on a map of its own tears this screen down,
+     * and the waypoint the user was reading has to still be the one pointed at when they come back.
+     */
+    var journeyStopId by rememberSaveable(pinnedJourney) {
+        mutableStateOf(pinnedJourney?.selectedStopId)
+    }
     val sheetContentKind = when {
         // First: a map showing an itinerary shows nothing else, so nothing can take the sheet.
         pinnedJourney != null -> SheetContentKind.JOURNEY
@@ -575,6 +618,7 @@ fun MapScreen(
     val collapsedNow by rememberUpdatedState(sheetCollapsed)
     val collapsibleNow by rememberUpdatedState(sheetCollapsible)
     val hasPanelNow by rememberUpdatedState(sheetContentKind != null)
+    val pinnedRunOnlyNow by rememberUpdatedState(pinnedRunOnly)
     val sheetState = rememberStandardBottomSheetState(
         initialValue = SheetValue.Hidden,
         skipHiddenState = false,
@@ -586,7 +630,8 @@ fun MapScreen(
             when (target) {
                 // A swipe down off the open panel has the header rest to stop at first, so it is
                 // not a dismissal yet; a swipe down off the header is.
-                SheetValue.Hidden -> collapsedNow || !collapsibleNow || !hasPanelNow
+                SheetValue.Hidden ->
+                    !pinnedRunOnlyNow && (collapsedNow || !collapsibleNow || !hasPanelNow)
                 // Full screen is for a run whose timetable outgrows the open panel, and only from
                 // that panel: from the header the drag has the panel to stop at first.
                 SheetValue.Expanded -> !collapsedNow && expandableNow
@@ -631,7 +676,14 @@ fun MapScreen(
     // it. Only the settled state counts, or a drag past the threshold would deselect mid-gesture.
     // An itinerary's pane is the screen rather than a layer on it, so dismissing that leaves.
     val closeSheet by rememberUpdatedState {
-        if (pinnedJourney != null) onCloseJourney() else viewModel.clearSelection()
+        when {
+            pinnedJourney != null -> onCloseJourney()
+            // A run handed over by "show on map" is what this map *is*, so a dismissal over it only
+            // takes the layer off and hands the run back — the same stance the back gesture takes.
+            // Clearing it here left a map of nothing, with no way left to ask for the run again.
+            pinnedTrip != null -> viewModel.clearStopSelection()
+            else -> viewModel.clearSelection()
+        }
     }
     LaunchedEffect(sheetState) {
         snapshotFlow { sheetState.currentValue }
@@ -744,11 +796,15 @@ fun MapScreen(
 
     // The camera state is built once and never rebuilt, so its start position has to be known
     // before it exists — hence waiting on the stored one rather than moving the camera after.
+    // "Once" is per *composition*, though, and a map left underneath a pushed one is torn down and
+    // rebuilt when the user walks back out to it: where it was left is the view model's to
+    // remember, and it wins over where this map first opened.
     val initialCamera = viewModel.initialCamera.collectAsStateWithLifecycle().value ?: return
+    val startCamera = viewModel.lastCamera ?: initialCamera
     val cameraState = rememberCameraState(
         firstPosition = CameraPosition(
-            target = Position(latitude = initialCamera.lat, longitude = initialCamera.lon),
-            zoom = initialCamera.zoom,
+            target = Position(latitude = startCamera.lat, longitude = startCamera.lon),
+            zoom = startCamera.zoom,
         ),
     )
     val styleState = rememberStyleState()
@@ -778,8 +834,10 @@ fun MapScreen(
     val pinnedTripShape = pinnedTrip
         ?.takeIf { pinnedTripLive == false }
         ?.let { (vehicleDetails as? VehicleDetailsUiState.Shown)?.details?.shape }
+    val tripFraming = rememberCameraMoves("trip")
     LaunchedEffect(pinnedTrip?.tripId, pinnedTripShape != null) {
         val bounds = pinnedTripShape?.segments?.flatten()?.boundingBox() ?: return@LaunchedEffect
+        if (!tripFraming.claim(pinnedTrip?.tripId)) return@LaunchedEffect
         pendingLocateMe = false
         cameraState.animateTo(
             boundingBox = bounds,
@@ -793,10 +851,14 @@ fun MapScreen(
     // what this map was pushed for, and its shape is the first thing to read. Keyed on the journey
     // and on the pane having been measured, so it happens once per opening and never fights the
     // user's own panning afterwards.
+    val journeyFraming = rememberCameraMoves("journey")
     LaunchedEffect(pinnedJourney, journeyPanelHeight > 0.dp) {
         val bounds = journeyOverlay?.lines?.flatMap { it.points }?.boundingBox()
             ?: return@LaunchedEffect
         if (journeyPanelHeight <= 0.dp) return@LaunchedEffect
+        // A map is pushed per journey and never handed a second one, so the journey itself needs
+        // no finer name than the one thing this map is for.
+        if (!journeyFraming.claim("journey")) return@LaunchedEffect
         pendingLocateMe = false
         cameraState.animateTo(
             boundingBox = bounds,
@@ -814,11 +876,16 @@ fun MapScreen(
     // A waypoint picked in the pane (or tapped on the route) is lifted into view exactly like a
     // selected stop — same centring, same duration — rather than being left wherever it happened
     // to sit. Skipped for the stop the map was opened on: framing the whole route comes first.
+    val waypointLift = rememberCameraMoves("waypoint")
     LaunchedEffect(journeyStopId) {
+        // Claimed either way, so moving off a waypoint and back to it lifts it again.
+        val lift = waypointLift.claim(journeyStopId)
         val point = journeyStopId
             ?.takeIf { it != pinnedJourney?.selectedStopId }
             ?.let { id -> journeyOverlay?.points?.firstOrNull { it.id == id } }
             ?: return@LaunchedEffect
+        // Coming back to a map left pointing at a waypoint is not picking it, so the camera stays.
+        if (!lift) return@LaunchedEffect
         val panelHeight = snapshotFlow { journeyPanelHeight }.first { it > 0.dp }
         val projection = cameraState.awaitProjection()
         pendingLocateMe = false
@@ -841,6 +908,7 @@ fun MapScreen(
     val vehiclesById by rememberUpdatedState(remember(vehicles) { vehicles.associateBy { it.id } })
     val currentSelectedStop by rememberUpdatedState(selectedStop)
     val currentSelectedVehicle by rememberUpdatedState(selectedVehicle)
+    val currentPinnedTrip by rememberUpdatedState(pinnedTrip)
 
     LaunchedEffect(cameraState) {
         merge(
@@ -948,11 +1016,16 @@ fun MapScreen(
     // A selected stop is lifted into the map its panel leaves visible the same way, minus the
     // following: a stop does not move, so this is the one animation and the camera is the user's
     // again afterwards. Keyed on the stop, so it happens once per selection.
+    val stopLift = rememberCameraMoves("stop")
     LaunchedEffect(selectedStop?.favoriteKey) {
+        // Claimed either way, so deselecting and picking the same stop again lifts it again.
+        val lift = stopLift.claim(selectedStop?.favoriteKey)
         val stop = selectedStop ?: return@LaunchedEffect
         // A vehicle being followed is already driving the camera, and it wins: the stop was tapped
         // on the run it is showing, not instead of it.
         if (followingVehicle) return@LaunchedEffect
+        // Coming back to a map left with a stop open is not selecting it, so the camera stays put.
+        if (!lift) return@LaunchedEffect
         // A stop picked in the search field arrives with a fly-to of its own (cameraTarget above),
         // which zooms as well as pans; the lift is the last word on where the camera lands, so it
         // waits for that to be done rather than animating against it — and reads the projection
@@ -1025,6 +1098,8 @@ fun MapScreen(
                 val handleTap: (() -> Unit)? = when {
                     liftFromHeader -> { { setSheetCollapsed(collapsed = false, snap = false) } }
                     sheetExpandable -> null
+                    // Nothing to close: see [pinnedRunOnly].
+                    pinnedRunOnly -> null
                     else -> {
                         {
                             // The panel the handle belongs to, so closing a stop opened over a
@@ -1070,8 +1145,13 @@ fun MapScreen(
                         onToggleFavorite = { viewModel.toggleFavoriteStop(stop) },
                         onHeightChange = { stopPanelHeight = it },
                         onHeaderHeightChange = { stopHeaderHeight = it },
+                        // Nothing is cleared on the way out. The board is *pushed* on top of this
+                        // map, so back has to land on the map the user left — still following its
+                        // run, still showing the stop they tapped and its lines. Going round the
+                        // loop again (a stop on the shown route → its board → its run → another map)
+                        // is what made that matter: emptying the map here emptied every one left
+                        // underneath, so walking back out of a stack of them ended on blank maps.
                         onOpenTimetable = {
-                            viewModel.clearSelection()
                             onOpenTimetable(
                                 DepartureBoardRoute(
                                     stopName = stop.name,
@@ -1199,7 +1279,14 @@ fun MapScreen(
                             viewModel.selectStop(stop)
                             ClickResult.Consume
                         }
-                        // Tapping empty map dismisses whichever info panel is open.
+                        // Tapping empty map dismisses whichever info panel is open — but not the
+                        // run this map was pushed to follow, which a stray tap would otherwise
+                        // leave the user with a blank map and no way back to.
+                        currentSelectedStop != null && currentPinnedTrip != null -> {
+                            viewModel.clearStopSelection()
+                            ClickResult.Consume
+                        }
+                        currentPinnedTrip != null -> ClickResult.Pass
                         currentSelectedStop != null || currentSelectedVehicle != null -> {
                             viewModel.clearSelection()
                             ClickResult.Consume
@@ -1317,7 +1404,10 @@ fun MapScreen(
                 )
             }
             val pointSource = rememberGeoJsonSource(data = GeoJsonData.Features(pointFeatures))
-            val vehicleFeatures = remember(vehicles) {
+            // A pinned itinerary hands its own palette down to the markers standing on its route;
+            // everywhere else a vehicle wears the operator's colour and this is empty.
+            val legColors = currentJourneyOverlay?.vehicleColors.orEmpty()
+            val vehicleFeatures = remember(vehicles, legColors) {
                 FeatureCollection(
                     vehicles.map { vehicle ->
                         Feature<Point, JsonObject?>(
@@ -1328,7 +1418,10 @@ fun MapScreen(
                             properties = JsonObject(
                                 mapOf(
                                     "label" to JsonPrimitive(vehicle.label),
-                                    "color" to JsonPrimitive(vehicle.markerColorHex()),
+                                    "color" to JsonPrimitive(
+                                        vehicle.tripId?.let { legColors[it] }?.toHexString()
+                                            ?: vehicle.markerColorHex(),
+                                    ),
                                     // Stroke computed here rather than via a style expression:
                                     // keeps the layer definitions free of boolean-case DSL.
                                     "stroke" to JsonPrimitive(
@@ -1435,45 +1528,6 @@ fun MapScreen(
                     textAnchor = const(SymbolAnchor.Top),
                     // Keyed to the basemap, not the app theme: the two are separate settings,
                     // and a label only has to stay legible against what is drawn under it.
-                    textColor = const(mapLabelColor(darkMap == true)),
-                )
-                // Vehicles stack above stops: they move, so they should never hide under pins.
-                CircleLayer(
-                    id = "transport-vehicles",
-                    source = vehiclesSource,
-                    radius = interpolate(
-                        linear(),
-                        zoom(),
-                        9 to const(5.dp),
-                        13 to const(8.dp),
-                        16 to const(12.dp),
-                    ),
-                    color = feature["color"].convertToColor(),
-                    strokeColor = feature["stroke"].convertToColor(),
-                    strokeWidth = const(1.5.dp),
-                )
-                SymbolLayer(
-                    id = "transport-vehicle-icons",
-                    source = vehiclesSource,
-                    minZoom = 11f,
-                    iconImage = markerIconImage,
-                    iconSize = interpolate(
-                        linear(),
-                        zoom(),
-                        11 to const(0.6f),
-                        16 to const(1f),
-                    ),
-                    iconAllowOverlap = const(true),
-                )
-                SymbolLayer(
-                    id = "transport-vehicle-labels",
-                    source = vehiclesSource,
-                    minZoom = 12f,
-                    textField = format(span(feature["label"].asString())),
-                    textFont = const(listOf("Roboto Regular")),
-                    textSize = const(0.75f.em),
-                    textOffset = offset(0f.em, 1.4f.em),
-                    textAnchor = const(SymbolAnchor.Top),
                     textColor = const(mapLabelColor(darkMap == true)),
                 )
                 // The itinerary, when this map was pushed to draw one. Its layers stay declared
@@ -1623,6 +1677,47 @@ fun MapScreen(
                     id = "journey-point-labels",
                     source = journeyPointsSource,
                     textField = format(span(feature["name"].asString())),
+                    textFont = const(listOf("Roboto Regular")),
+                    textSize = const(0.75f.em),
+                    textOffset = offset(0f.em, 1.4f.em),
+                    textAnchor = const(SymbolAnchor.Top),
+                    textColor = const(mapLabelColor(darkMap == true)),
+                )
+                // Vehicles last of all, so they stack above stops — they move, and should never
+                // hide under a pin — and above a drawn itinerary, whose own boarding pins would
+                // otherwise swallow the very vehicle the traveller opened the map to look for.
+                CircleLayer(
+                    id = "transport-vehicles",
+                    source = vehiclesSource,
+                    radius = interpolate(
+                        linear(),
+                        zoom(),
+                        9 to const(5.dp),
+                        13 to const(8.dp),
+                        16 to const(12.dp),
+                    ),
+                    color = feature["color"].convertToColor(),
+                    strokeColor = feature["stroke"].convertToColor(),
+                    strokeWidth = const(1.5.dp),
+                )
+                SymbolLayer(
+                    id = "transport-vehicle-icons",
+                    source = vehiclesSource,
+                    minZoom = 11f,
+                    iconImage = markerIconImage,
+                    iconSize = interpolate(
+                        linear(),
+                        zoom(),
+                        11 to const(0.6f),
+                        16 to const(1f),
+                    ),
+                    iconAllowOverlap = const(true),
+                )
+                SymbolLayer(
+                    id = "transport-vehicle-labels",
+                    source = vehiclesSource,
+                    minZoom = 12f,
+                    textField = format(span(feature["label"].asString())),
                     textFont = const(listOf("Roboto Regular")),
                     textSize = const(0.75f.em),
                     textOffset = offset(0f.em, 1.4f.em),

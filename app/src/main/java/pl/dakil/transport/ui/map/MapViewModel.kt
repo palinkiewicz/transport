@@ -47,6 +47,7 @@ import pl.dakil.transport.domain.model.AppSettings
 import pl.dakil.transport.domain.model.FavoriteLine
 import pl.dakil.transport.domain.model.Favorites
 import pl.dakil.transport.domain.model.GeoPoint
+import pl.dakil.transport.domain.model.Journey
 import pl.dakil.transport.domain.model.MapCamera
 import pl.dakil.transport.domain.model.MapFilters
 import pl.dakil.transport.domain.model.PendingMapJourney
@@ -59,6 +60,7 @@ import pl.dakil.transport.domain.model.VehicleMotionSettings
 import pl.dakil.transport.domain.model.VehicleSegment
 import pl.dakil.transport.domain.model.currentLegAt
 import pl.dakil.transport.domain.model.isRunningAt
+import pl.dakil.transport.domain.model.toTripStops
 import pl.dakil.transport.ui.search.SearchStateHolder
 
 data class Viewport(
@@ -69,6 +71,13 @@ data class Viewport(
     val zoom: Double,
 ) {
     fun toBbox(): Bbox = Bbox(south = south, west = west, north = north, east = east)
+
+    /** The camera that would frame this viewport — where it is centred, at the zoom it is at. */
+    fun toCamera(): MapCamera = MapCamera(
+        lat = (south + north) / 2,
+        lon = (west + east) / 2,
+        zoom = zoom,
+    )
 }
 
 /** What a cached-stop read was asked for, so an unchanged one can be skipped. */
@@ -251,13 +260,7 @@ class MapViewModel @Inject constructor(
                 .distinctUntilChanged()
                 .collect { viewport ->
                     if (!settingsRepository.settings.first().rememberMapCamera) return@collect
-                    sessionStateRepository.saveMapCamera(
-                        MapCamera(
-                            lat = (viewport.south + viewport.north) / 2,
-                            lon = (viewport.west + viewport.east) / 2,
-                            zoom = viewport.zoom,
-                        ),
-                    )
+                    sessionStateRepository.saveMapCamera(viewport.toCamera())
                 }
         }
         viewModelScope.launch {
@@ -579,6 +582,16 @@ class MapViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Live segments of the runs a drawn itinerary is made of — see [followJourneyVehicles]. Empty
+     * whenever none of them is on the road, which is most of the time: a journey planned for
+     * tomorrow, or one already travelled, has no vehicle to point at.
+     */
+    private val journeySegments = MutableStateFlow<List<VehicleSegment>>(emptyList())
+
+    /** Fetch loop of a drawn itinerary's own vehicles — see [followJourneyVehicles]. */
+    private var journeyVehiclesJob: Job? = null
+
     private val vehicleSegments: StateFlow<List<VehicleSegment>> =
         // The fetch loop only signals; the segments themselves are read from the tracked map,
         // so an emission is produced both when a fetch lands and when retention prunes it.
@@ -586,6 +599,24 @@ class MapViewModel @Inject constructor(
             tracked.values.flatMap { it.segments }
         }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /**
+     * What this map draws vehicles from: the viewport's own fetches normally, and *only* the
+     * itinerary's own runs while one is pinned.
+     *
+     * A swap rather than a union, and deliberately so. The viewport fetch is switched off under a
+     * pinned itinerary ([vehicleFetches]), so there is nothing to union with — and if there were,
+     * every other bus in the city drawn over the route would bury the one vehicle that map exists
+     * to show.
+     */
+    private val drawnSegments: Flow<DrawnSegments> =
+        combine(vehicleSegments, journeySegments, pinnedJourney) { viewport, journeyRuns, pinned ->
+            if (pinned != null) {
+                DrawnSegments(journeyRuns, fromJourney = true)
+            } else {
+                DrawnSegments(viewport, fromJourney = false)
+            }
+        }
 
     /**
      * Positions are recomputed every frame from the timetable, then handed to
@@ -603,12 +634,13 @@ class MapViewModel @Inject constructor(
      */
     private val vehicleFrames: StateFlow<VehicleFrame> =
         combine(
-            vehicleSegments,
+            drawnSegments,
             filters,
             motionSettings,
             selectedVehicleSegments,
             focusSelectedVehicle,
-        ) { segments, filters, motion, selected, focus ->
+        ) { drawn, filters, motion, selected, focus ->
+            val segments = drawn.segments
             val tripKey = selected?.firstOrNull()?.tripKey
             // The selected trip tracks live positions independently of the viewport fetches:
             // freshly fetched segments when they still cover it, the selection snapshot
@@ -618,11 +650,14 @@ class MapViewModel @Inject constructor(
             val selectedSegments = tripKey?.let { key ->
                 segments.filter { it.tripKey == key }.ifEmpty { selected }
             }
-            val visible = if (focus && tripKey != null) {
+            val visible = when {
+                // An itinerary's own runs are not the viewport's vehicles and are not filtered like
+                // them: the filter menu is not even on screen there, and a traveller who has hidden
+                // buses from the map is not asking to be shown less of their own journey.
+                drawn.fromJourney -> segments
                 // Only the followed run, so the marker being followed never blinks out.
-                selectedSegments.orEmpty()
-            } else {
-                segments.filter(filters::matchesVehicle)
+                focus && tripKey != null -> selectedSegments.orEmpty()
+                else -> segments.filter(filters::matchesVehicle)
             }
             FrameInput(visible, selectedSegments, tripKey, motion)
         }
@@ -696,6 +731,22 @@ class MapViewModel @Inject constructor(
 
     private var pointNameJob: Job? = null
 
+    /**
+     * Where this map's camera last settled, or null while it has yet to move at all.
+     *
+     * A map outlives its own composition: "show on map" stacks maps, and every one left underneath
+     * is torn down and rebuilt when the user walks back out to it. The camera state is built at
+     * first composition from a single position, so without this the rebuilt map would start over at
+     * [initialCamera] — where it *opened*, several pans and a followed run ago — instead of where it
+     * was left.
+     *
+     * Deliberately a plain field rather than a flow: it is read once, when the camera state is
+     * built, and written on every settled viewport, so making it snapshot state would recompose the
+     * whole screen on each pan for a value nothing redraws.
+     */
+    var lastCamera: MapCamera? = null
+        private set
+
     /** Called once the map camera has settled (already debounced by the caller). */
     fun onViewportSettled(south: Double, west: Double, north: Double, east: Double, zoom: Double) {
         val settled = Viewport(south, west, north, east, zoom)
@@ -704,6 +755,7 @@ class MapViewModel @Inject constructor(
         // programmatically (following a vehicle, flying to a pick) would leave the cache read
         // looking at wherever the last gesture ended.
         liveViewport.value = settled
+        lastCamera = settled.toCamera()
     }
 
     /**
@@ -873,6 +925,62 @@ class MapViewModel @Inject constructor(
         clearVehicleSelection()
         clearStopSelection()
         _pinnedJourney.value = journey
+        followJourneyVehicles(journey.journey)
+    }
+
+    /**
+     * Follows the vehicles of a drawn itinerary: one per transit leg, and nothing else on the map.
+     *
+     * The viewport's own vehicle fetch is off under an itinerary ([vehicleFetches]), so these runs
+     * have to be looked up by id, the way [selectPinnedTrip] looks up the one run it follows —
+     * `/v6/map/trips` only answers bounding boxes, so each run gets its own box around wherever it
+     * currently is, renewed from its own segments as it moves. One shared box would be the whole
+     * journey's, i.e. a city.
+     *
+     * A leg only gets a lookup while it is being ridden — its own timetable says so
+     * ([isRunningAt], which allows the same few minutes' lead a followed run does) — so a journey
+     * planned for tomorrow and one travelled yesterday both draw no marker at all, and a journey
+     * under way draws the vehicle the traveller is actually on.
+     */
+    private fun followJourneyVehicles(journey: Journey) {
+        journeyVehiclesJob?.cancel()
+        journeySegments.value = emptyList()
+        val runs = journey.legs
+            .filter { it.isTransit }
+            .mapNotNull { leg -> leg.tripId?.let { id -> id to leg.toTripStops() } }
+        if (runs.isEmpty()) return
+        journeyVehiclesJob = viewModelScope.launch {
+            val boxes = mutableMapOf<String, Pair<GeoPoint, GeoPoint>>()
+            while (true) {
+                // Held while another screen is on top, exactly as a followed run is: several maps
+                // are alive at once and only the one being looked at should be asking.
+                screenVisible.first { it }
+                val motion = motionSettings.value
+                val now = OffsetDateTime.now()
+                val found = mutableListOf<VehicleSegment>()
+                for ((tripId, stops) in runs) {
+                    // Where the run has got to: what the last fetch found, or — before the first
+                    // one, and whenever a fetch comes back empty — the stop pair its own timetable
+                    // puts it between, whose times are already delay-corrected.
+                    val between: Pair<GeoPoint, GeoPoint>? = if (stops.isRunningAt(now)) {
+                        boxes[tripId] ?: stops.currentLegAt(now)
+                    } else {
+                        null
+                    }
+                    if (between == null) {
+                        boxes.remove(tripId)
+                        continue
+                    }
+                    val segments = vehiclesRepository
+                        .segmentsForTrip(tripId, between, motion.fetchWindowSeconds.toLong())
+                        .getOrDefault(emptyList())
+                    segments.currentBox()?.let { boxes[tripId] = it } ?: boxes.remove(tripId)
+                    found += segments
+                }
+                journeySegments.value = found
+                delay(motion.refreshIntervalSeconds * 1_000L)
+            }
+        }
     }
 
     /** Tapping the focused line again shows the whole network back; tapping another moves the focus. */
@@ -1033,6 +1141,9 @@ fun formatCoordinates(lat: Double, lon: Double): String =
 
 /** One trip's known segments, and when the API last confirmed them. */
 private data class TrackedTrip(val segments: List<VehicleSegment>, val lastSeenMillis: Long)
+
+/** The segments a frame is drawn from, and whether they are a pinned itinerary's own runs. */
+private data class DrawnSegments(val segments: List<VehicleSegment>, val fromJourney: Boolean)
 
 /**
  * One raw frame target per vehicle at [time]: the segment whose time window contains [time]

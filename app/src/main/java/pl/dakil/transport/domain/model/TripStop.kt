@@ -13,20 +13,29 @@ data class TripStop(
     val name: String get() = place.name
 }
 
-/** Flattens the trip itinerary (joined interlined legs) into a single ordered stop list. */
-fun Journey.toTripStops(): List<TripStop> = buildList {
-    val transitLegs = legs.filter { it.isTransit }
-    transitLegs.forEachIndexed { index, leg ->
-        if (index == 0) {
-            add(TripStop(leg.fromPlace, leg.startTime, leg.scheduledStartTime, leg.fromTrack))
-        }
-        leg.intermediateStops.forEach { stop ->
-            val arrival = stop.arrivalTime ?: return@forEach
-            add(TripStop(stop.place, arrival, stop.scheduledArrivalTime ?: arrival, stop.track))
-        }
-        add(TripStop(leg.toPlace, leg.endTime, leg.scheduledEndTime, leg.toTrack))
+/**
+ * The one leg's own timetable: the stop boarded, everything called at on the way, the stop
+ * alighted at. Only the ridden portion of the run — the plan endpoint says nothing about where the
+ * vehicle was before or goes after — which is exactly the window in which the traveller has a
+ * vehicle of their own to look for.
+ */
+fun JourneyLeg.toTripStops(): List<TripStop> = buildList {
+    add(TripStop(fromPlace, startTime, scheduledStartTime, fromTrack))
+    intermediateStops.forEach { stop ->
+        val arrival = stop.arrivalTime ?: return@forEach
+        add(TripStop(stop.place, arrival, stop.scheduledArrivalTime ?: arrival, stop.track))
     }
+    add(TripStop(toPlace, endTime, scheduledEndTime, toTrack))
 }
+
+/**
+ * Flattens the trip itinerary (joined interlined legs) into a single ordered stop list. The legs
+ * are one run's, so each one's first stop is the previous one's last and is dropped at the join.
+ */
+fun Journey.toTripStops(): List<TripStop> =
+    legs.filter { it.isTransit }.flatMapIndexed { index, leg ->
+        leg.toTripStops().let { if (index == 0) it else it.drop(1) }
+    }
 
 /**
  * Index of the last stop the vehicle has already called at, or -1 before the run has started.

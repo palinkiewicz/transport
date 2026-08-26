@@ -70,6 +70,13 @@ internal data class JourneyOverlay(
     val endpoints: List<RouteEndpoint>,
     val stops: List<ItineraryStop>,
     val colors: JourneyColors,
+    /**
+     * Trip id → the colour its leg is drawn in, for the one vehicle marker each running leg puts on
+     * the map. A marker takes the operator's colour everywhere else, but here it stands *on* a line
+     * this palette already coloured, and a bus in a different colour from the route under it reads
+     * as a different bus.
+     */
+    val vehicleColors: Map<String, Color>,
 )
 
 /** Whether [journey] carries geometry worth drawing at all. */
@@ -112,8 +119,18 @@ internal fun rememberJourneyOverlay(pinned: PendingMapJourney): JourneyOverlay {
         }
     }
     val endpoints = remember(lines, points) { journeyEndpoints(lines, points) }
-    return remember(lines, points, endpoints, stops, colors) {
-        JourneyOverlay(lines, points, endpoints, stops, colors)
+    val vehicleColors = remember(journey, colors) {
+        journey.legs.withIndex().mapNotNull { (index, leg) ->
+            val tripId = leg.tripId?.takeIf { leg.isTransit } ?: return@mapNotNull null
+            // Resolved exactly as the leg's own line is above — `lines` cannot be read back for it,
+            // since a leg with no geometry draws none and the two lists stop lining up.
+            val color = colors.legColors.getOrNull(index)
+                ?: parseRouteColor(leg.routeColor, leg.mode.color)
+            tripId to color
+        }.toMap()
+    }
+    return remember(lines, points, endpoints, stops, colors, vehicleColors) {
+        JourneyOverlay(lines, points, endpoints, stops, colors, vehicleColors)
     }
 }
 
