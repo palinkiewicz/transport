@@ -371,7 +371,7 @@ data class AppSettings(
     val mapTheme: MapTheme = MapTheme.SYSTEM,
 
     /** Which tab the app opens on. */
-    val defaultTab: DefaultTab = DefaultTab.MAP,
+    val defaultTab: DefaultTab = DefaultTab.CONNECTIONS,
 
     /** Which times the connection result cards lead with. */
     val connectionTimesMode: ConnectionTimesMode = ConnectionTimesMode.BOTH,
