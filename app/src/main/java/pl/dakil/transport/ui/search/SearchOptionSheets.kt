@@ -302,7 +302,7 @@ private fun OptionsSheet(
     val modified = remember(options, reset) { options.reset() != options }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(modifier = Modifier.padding(start = 24.dp, end = 12.dp, bottom = 24.dp)) {
+        Column(modifier = Modifier.padding(start = 24.dp, end = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text = title,
@@ -319,7 +319,7 @@ private fun OptionsSheet(
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState())
-                    .padding(end = 12.dp, top = 4.dp, bottom = 8.dp),
+                    .padding(end = 12.dp, top = 4.dp),
                 content = content,
             )
         }
