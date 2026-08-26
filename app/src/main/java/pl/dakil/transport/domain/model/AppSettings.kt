@@ -37,7 +37,7 @@ data class VehicleMotionSettings(
      * The UI offers [FRAME_INTERVAL_STEPS] rather than a linear range: the useful settings are
      * bunched under a second, while the power-saving end is only worth coarse steps.
      */
-    val frameIntervalMillis: Int = 50,
+    val frameIntervalMillis: Int = 3_000,
 
     /**
      * Never let a vehicle slide backwards along its route. Real-time feeds revise delays
