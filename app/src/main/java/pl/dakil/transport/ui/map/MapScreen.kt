@@ -1487,6 +1487,62 @@ fun MapScreen(
                     cap = const(LineCap.Round),
                     join = const(LineJoin.Round),
                 )
+                // The itinerary, when this map was pushed to draw one. Its layers stay declared
+                // either way and simply carry no features otherwise — a layer set that came and
+                // went would have to be added to the style at exactly the right moment. Its lines
+                // sit down here with the routes overlay, under every marker, so the stops a leg
+                // passes through draw over it just as a followed run's do over its route; its
+                // pins and endpoints are declared with the markers further up the stack.
+                val journeyLines = currentJourneyOverlay?.lines.orEmpty()
+                fun journeyLineFeatures(dashed: Boolean) = FeatureCollection(
+                    journeyLines.filter { it.dashed == dashed }.map { line ->
+                        Feature<LineString, JsonObject?>(
+                            geometry = LineString(
+                                line.points.map { Position(latitude = it.lat, longitude = it.lon) },
+                            ),
+                            properties = JsonObject(
+                                mapOf("color" to JsonPrimitive(line.color.toHexString())),
+                            ),
+                        )
+                    },
+                )
+                // dasharray isn't data-driven in MapLibre, so walking legs need their own layer.
+                val journeyDashedSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(
+                        remember(journeyLines) { journeyLineFeatures(dashed = true) },
+                    ),
+                )
+                val journeySolidSource = rememberGeoJsonSource(
+                    data = GeoJsonData.Features(
+                        remember(journeyLines) { journeyLineFeatures(dashed = false) },
+                    ),
+                )
+                val journeyLineWidth = interpolate(
+                    linear(),
+                    zoom(),
+                    11 to const(3.dp),
+                    16 to const(6.dp),
+                )
+                LineLayer(
+                    id = "journey-lines-dashed",
+                    source = journeyDashedSource,
+                    color = feature["color"].convertToColor(),
+                    width = journeyLineWidth,
+                    opacity = const(0.8f),
+                    // Near-zero dash + round cap renders Google-Maps-like walking dots.
+                    dasharray = const(listOf(0.1, 1.8)),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
+                LineLayer(
+                    id = "journey-lines",
+                    source = journeySolidSource,
+                    color = feature["color"].convertToColor(),
+                    width = journeyLineWidth,
+                    opacity = const(0.8f),
+                    cap = const(LineCap.Round),
+                    join = const(LineJoin.Round),
+                )
                 // Selection halo: kept visible at every zoom so the picked stop stays findable
                 // even when the stop pins themselves are hidden (below their minZoom).
                 CircleLayer(
@@ -1561,33 +1617,6 @@ fun MapScreen(
                     // and a label only has to stay legible against what is drawn under it.
                     textColor = const(mapLabelColor(darkMap == true)),
                 )
-                // The itinerary, when this map was pushed to draw one. Its layers stay declared
-                // either way and simply carry no features otherwise — a layer set that came and
-                // went would have to be added to the style at exactly the right moment.
-                val journeyLines = currentJourneyOverlay?.lines.orEmpty()
-                fun journeyLineFeatures(dashed: Boolean) = FeatureCollection(
-                    journeyLines.filter { it.dashed == dashed }.map { line ->
-                        Feature<LineString, JsonObject?>(
-                            geometry = LineString(
-                                line.points.map { Position(latitude = it.lat, longitude = it.lon) },
-                            ),
-                            properties = JsonObject(
-                                mapOf("color" to JsonPrimitive(line.color.toHexString())),
-                            ),
-                        )
-                    },
-                )
-                // dasharray isn't data-driven in MapLibre, so walking legs need their own layer.
-                val journeyDashedSource = rememberGeoJsonSource(
-                    data = GeoJsonData.Features(
-                        remember(journeyLines) { journeyLineFeatures(dashed = true) },
-                    ),
-                )
-                val journeySolidSource = rememberGeoJsonSource(
-                    data = GeoJsonData.Features(
-                        remember(journeyLines) { journeyLineFeatures(dashed = false) },
-                    ),
-                )
                 val journeyEndpoints = currentJourneyOverlay?.endpoints.orEmpty()
                 val journeyEndpointSource = rememberGeoJsonSource(
                     data = GeoJsonData.Features(
@@ -1640,32 +1669,6 @@ fun MapScreen(
                 }
                 val journeyPointsSource = rememberGeoJsonSource(
                     data = GeoJsonData.Features(journeyPointFeatures),
-                )
-                val journeyLineWidth = interpolate(
-                    linear(),
-                    zoom(),
-                    11 to const(3.dp),
-                    16 to const(6.dp),
-                )
-                LineLayer(
-                    id = "journey-lines-dashed",
-                    source = journeyDashedSource,
-                    color = feature["color"].convertToColor(),
-                    width = journeyLineWidth,
-                    opacity = const(0.8f),
-                    // Near-zero dash + round cap renders Google-Maps-like walking dots.
-                    dasharray = const(listOf(0.1, 1.8)),
-                    cap = const(LineCap.Round),
-                    join = const(LineJoin.Round),
-                )
-                LineLayer(
-                    id = "journey-lines",
-                    source = journeySolidSource,
-                    color = feature["color"].convertToColor(),
-                    width = journeyLineWidth,
-                    opacity = const(0.8f),
-                    cap = const(LineCap.Round),
-                    join = const(LineJoin.Round),
                 )
                 // Where the journey actually begins and ends, when that is not a stop. Smaller
                 // than the boarding pins and under them, so it marks the spot without competing
