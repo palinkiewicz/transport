@@ -4,7 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
@@ -59,9 +61,18 @@ fun RowScope.SearchOptionsButton(
     IconButton(onClick = onClick, modifier = modifier) {
         BadgedBox(
             badge = {
+                // Both kinds sit further out than BadgedBox's default, which crowds the icon.
                 when {
-                    badge != null -> Badge { Text(badge) }
-                    modified -> Badge()
+                    badge != null -> Badge(
+                        modifier = Modifier.offset(x = BADGE_OFFSET, y = -BADGE_OFFSET),
+                    ) { Text(badge) }
+                    // Larger than the default 6dp dot, which is easy to miss on a busy form, and
+                    // nudged out further so the extra size grows away from the icon.
+                    modified -> Badge(
+                        modifier = Modifier
+                            .offset(x = BADGE_OFFSET + 2.dp, y = -BADGE_OFFSET - 2.dp)
+                            .size(MODIFIED_DOT_SIZE),
+                    )
                 }
             },
         ) {
@@ -69,3 +80,6 @@ fun RowScope.SearchOptionsButton(
         }
     }
 }
+
+private val MODIFIED_DOT_SIZE = 8.dp
+private val BADGE_OFFSET = 4.dp
