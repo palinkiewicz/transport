@@ -142,9 +142,9 @@ private val DEPARTURES_BOARD_INFO = listOf(
     OptionInfo(R.string.advanced_departures_radius, R.string.info_departures_radius),
 )
 
-// One "put this sheet back to defaults" transform per sheet. Each doubles as the sheet's
-// modified test (`options.resetX() != options`), so the Reset button and the enabled state it
-// carries can never disagree about which fields the sheet owns.
+// One "put this sheet back to defaults" transform per sheet, dispatched by [resetGroup]. Each
+// doubles as the sheet's modified test ([isModified]), so the Reset button, the enabled state it
+// carries and the form's badge can never disagree about which fields the sheet owns.
 
 private fun SearchOptions.resetTransfers(): SearchOptions =
     copy(maxTransfers = SearchOptions.DEFAULT.maxTransfers)
@@ -193,6 +193,23 @@ private fun SearchOptions.resetDeparturesBoard(): SearchOptions = SearchOptions.
     )
 }
 
+/** These options with [sheet]'s group put back to its defaults and every other field kept. */
+internal fun SearchOptions.resetGroup(sheet: SearchOptionsSheet): SearchOptions = when (sheet) {
+    SearchOptionsSheet.TRANSFERS -> resetTransfers()
+    SearchOptionsSheet.TRANSIT_MODES -> resetTransitModes()
+    SearchOptionsSheet.STREET_LEGS -> resetStreetLegs()
+    SearchOptionsSheet.PACE -> resetPace()
+    SearchOptionsSheet.ADVANCED -> resetAdvanced()
+    SearchOptionsSheet.DEPARTURES_MODES -> resetDeparturesModes()
+    SearchOptionsSheet.DEPARTURES_BOARD -> resetDeparturesBoard()
+}
+
+/**
+ * Whether [sheet]'s group differs from its defaults — what lights its sheet's Reset button and
+ * badges its button on the form, so the two can never disagree.
+ */
+internal fun SearchOptions.isModified(sheet: SearchOptionsSheet): Boolean = resetGroup(sheet) != this
+
 /**
  * Renders whichever options [sheet] the search form has open, or nothing when it has none.
  * Changes flow as transforms through [onUpdate] and are persisted by the caller; the sheets are
@@ -209,20 +226,20 @@ fun SearchOptionsSheetHost(
         null -> Unit
 
         SearchOptionsSheet.TRANSFERS -> OptionsSheet(
+            sheet = SearchOptionsSheet.TRANSFERS,
             title = stringResource(R.string.advanced_group_transfers),
             info = TRANSFERS_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetTransfers,
             onDismiss = onDismiss,
         ) { TransfersSheet(options, onUpdate) }
 
         SearchOptionsSheet.TRANSIT_MODES -> OptionsSheet(
+            sheet = SearchOptionsSheet.TRANSIT_MODES,
             title = stringResource(R.string.advanced_transit_modes),
             info = TRANSIT_MODES_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetTransitModes,
             onDismiss = onDismiss,
         ) {
             CategoryFlow(
@@ -232,38 +249,38 @@ fun SearchOptionsSheetHost(
         }
 
         SearchOptionsSheet.STREET_LEGS -> OptionsSheet(
+            sheet = SearchOptionsSheet.STREET_LEGS,
             title = stringResource(R.string.advanced_group_street_legs),
             info = STREET_LEGS_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetStreetLegs,
             onDismiss = onDismiss,
         ) { StreetLegsSheet(options, onUpdate) }
 
         SearchOptionsSheet.PACE -> OptionsSheet(
+            sheet = SearchOptionsSheet.PACE,
             title = stringResource(R.string.advanced_group_pace),
             info = PACE_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetPace,
             onDismiss = onDismiss,
         ) { PaceSheet(options, onUpdate) }
 
         SearchOptionsSheet.ADVANCED -> OptionsSheet(
+            sheet = SearchOptionsSheet.ADVANCED,
             title = stringResource(R.string.advanced_options_title),
             info = ADVANCED_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetAdvanced,
             onDismiss = onDismiss,
         ) { AdvancedSheet(options, onUpdate) }
 
         SearchOptionsSheet.DEPARTURES_MODES -> OptionsSheet(
+            sheet = SearchOptionsSheet.DEPARTURES_MODES,
             title = stringResource(R.string.advanced_transit_modes),
             info = DEPARTURES_MODES_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetDeparturesModes,
             onDismiss = onDismiss,
         ) {
             CategoryFlow(
@@ -273,11 +290,11 @@ fun SearchOptionsSheetHost(
         }
 
         SearchOptionsSheet.DEPARTURES_BOARD -> OptionsSheet(
+            sheet = SearchOptionsSheet.DEPARTURES_BOARD,
             title = stringResource(R.string.advanced_group_departures),
             info = DEPARTURES_BOARD_INFO,
             options = options,
             onUpdate = onUpdate,
-            reset = SearchOptions::resetDeparturesBoard,
             onDismiss = onDismiss,
         ) { DeparturesBoardSheet(options, onUpdate) }
     }
@@ -290,16 +307,16 @@ fun SearchOptionsSheetHost(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun OptionsSheet(
+    sheet: SearchOptionsSheet,
     title: String,
     info: List<OptionInfo>,
     options: SearchOptions,
     onUpdate: ((SearchOptions) -> SearchOptions) -> Unit,
-    reset: SearchOptions.() -> SearchOptions,
     onDismiss: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val modified = remember(options, reset) { options.reset() != options }
+    val modified = remember(options, sheet) { options.isModified(sheet) }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(modifier = Modifier.padding(start = 24.dp, end = 12.dp)) {
@@ -309,7 +326,7 @@ private fun OptionsSheet(
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.weight(1f),
                 )
-                TextButton(enabled = modified, onClick = { onUpdate { it.reset() } }) {
+                TextButton(enabled = modified, onClick = { onUpdate { it.resetGroup(sheet) } }) {
                     Text(stringResource(R.string.action_reset))
                 }
                 InfoButton(title, info)

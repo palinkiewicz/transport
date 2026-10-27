@@ -42,8 +42,10 @@ fun SearchOptionsBar(
 
 /**
  * One button of a [SearchOptionsBar]. [badge] shows the group's chosen value (only the transfer
- * limit has one worth a glance); null draws no badge at all. [title] doubles as the button's
- * content description, since the icon alone doesn't say which sheet it opens.
+ * limit has one worth a glance); without one, [modified] draws a plain dot, so a group changed
+ * from its defaults — trains switched off, a slower pace — is visible without opening its sheet.
+ * [title] doubles as the button's content description, since the icon alone doesn't say which
+ * sheet it opens.
  */
 @Composable
 fun RowScope.SearchOptionsButton(
@@ -52,9 +54,17 @@ fun RowScope.SearchOptionsButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     badge: String? = null,
+    modified: Boolean = false,
 ) {
     IconButton(onClick = onClick, modifier = modifier) {
-        BadgedBox(badge = { if (badge != null) Badge { Text(badge) } }) {
+        BadgedBox(
+            badge = {
+                when {
+                    badge != null -> Badge { Text(badge) }
+                    modified -> Badge()
+                }
+            },
+        ) {
             Icon(icon, contentDescription = title)
         }
     }

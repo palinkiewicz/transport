@@ -146,21 +146,25 @@ fun ConnectionsSearchScreen(
                     icon = Icons.Default.DirectionsTransit,
                     title = stringResource(R.string.advanced_transit_modes),
                     onClick = { openSheet = SearchOptionsSheet.TRANSIT_MODES },
+                    modified = uiState.options.isModified(SearchOptionsSheet.TRANSIT_MODES),
                 )
                 SearchOptionsButton(
                     icon = Icons.AutoMirrored.Filled.DirectionsWalk,
                     title = stringResource(R.string.advanced_group_street_legs),
                     onClick = { openSheet = SearchOptionsSheet.STREET_LEGS },
+                    modified = uiState.options.isModified(SearchOptionsSheet.STREET_LEGS),
                 )
                 SearchOptionsButton(
                     icon = Icons.Default.Speed,
                     title = stringResource(R.string.advanced_group_pace),
                     onClick = { openSheet = SearchOptionsSheet.PACE },
+                    modified = uiState.options.isModified(SearchOptionsSheet.PACE),
                 )
                 SearchOptionsButton(
                     icon = Icons.Default.Tune,
                     title = stringResource(R.string.advanced_options_title),
                     onClick = { openSheet = SearchOptionsSheet.ADVANCED },
+                    modified = uiState.options.isModified(SearchOptionsSheet.ADVANCED),
                 )
             }
 

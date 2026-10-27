@@ -117,11 +117,13 @@ fun DeparturesSearchScreen(
                     icon = Icons.Default.DirectionsTransit,
                     title = stringResource(R.string.advanced_transit_modes),
                     onClick = { openSheet = SearchOptionsSheet.DEPARTURES_MODES },
+                    modified = uiState.options.isModified(SearchOptionsSheet.DEPARTURES_MODES),
                 )
                 SearchOptionsButton(
                     icon = Icons.Default.Tune,
                     title = stringResource(R.string.advanced_options_title),
                     onClick = { openSheet = SearchOptionsSheet.DEPARTURES_BOARD },
+                    modified = uiState.options.isModified(SearchOptionsSheet.DEPARTURES_BOARD),
                 )
             }
 
