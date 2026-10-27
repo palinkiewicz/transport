@@ -116,7 +116,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
-import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
@@ -224,15 +223,6 @@ private const val STOP_LABELS_MIN_ZOOM = 14f
 private const val STOPS_DEFAULT_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
 
-/**
- * Wider than [STOP_TAP_TARGET_RADIUS]: an itinerary's map has only its own few markers to hit,
- * and its pass-through beads are drawn far smaller than the finger landing on them.
- */
-private val JOURNEY_TAP_TARGET_RADIUS = 32.dp
-
-/** How much nearer a bead the finger has to be before it takes a tap from a boarding pin. */
-private val PIN_TAP_ADVANTAGE = 6.dp
-
 /** How far the stop panel's other line chips fade back while one line is focused. */
 private const val DIMMED_CHIP_ALPHA = 0.4f
 
@@ -249,10 +239,6 @@ private fun detailZoom(stopsMinZoom: Float, defaultZoom: Float): Float =
  * place) — matches [markerColorHex] for [TransportMode.OTHER], which colors its halo.
  */
 private val PICKED_POINT_COLOR = Color(0xFF78909C)
-
-/** Centre of a pass-through stop's bead: the basemap's own ground, so the bead reads as hollow. */
-private val PASSED_STOP_FILL_LIGHT = Color(0xFFFFFFFF)
-private val PASSED_STOP_FILL_DARK = Color(0xFF1C1C1C)
 
 /** Share of the map the selected vehicle's panel may take before its timetable scrolls. */
 private const val VEHICLE_PANEL_MAX_MAP_FRACTION = 0.4f
@@ -511,16 +497,11 @@ fun MapScreen(
     var journeyStopId by rememberSaveable(pinnedJourney) {
         mutableStateOf(pinnedJourney?.selectedStopId)
     }
-    /**
-     * The stop a leg passes through whose name is being shown, if any. Separate from
-     * [journeyStopId]: these are not waypoints, so the pane has no row to point at for one, and
-     * naming one must not move the camera or the pane's selection.
-     */
-    var passedStopId by rememberSaveable(pinnedJourney) { mutableStateOf<String?>(null) }
     val sheetContentKind = when {
-        // First: a map showing an itinerary shows nothing else, so nothing can take the sheet.
-        pinnedJourney != null -> SheetContentKind.JOURNEY
+        // A stop the itinerary passes through opens over its pane, as one of a followed run's
+        // opens over the vehicle panel; nothing else on a map showing an itinerary can.
         selectedStop != null -> SheetContentKind.STOP
+        pinnedJourney != null -> SheetContentKind.JOURNEY
         panelLine != null -> SheetContentKind.VEHICLE
         else -> null
     }
@@ -697,6 +678,8 @@ fun MapScreen(
     // An itinerary's pane is the screen rather than a layer on it, so dismissing that leaves.
     val closeSheet by rememberUpdatedState {
         when {
+            // A stop opened over the itinerary is a layer on it, like one over a followed run.
+            pinnedJourney != null && selectedStop != null -> viewModel.clearStopSelection()
             pinnedJourney != null -> onCloseJourney()
             // A run handed over by "show on map" is what this map *is*, so a dismissal over it only
             // takes the layer off and hands the run back — the same stance the back gesture takes.
@@ -787,9 +770,6 @@ fun MapScreen(
             else -> viewModel.hideRouteDraft()
         }
     }
-    // A named pass-through stop is the one layer an itinerary's map lays over the journey, so back
-    // takes it off before it leaves the screen.
-    BackHandler(enabled = passedStopId != null) { passedStopId = null }
 
     var hasLocationPermission by remember {
         mutableStateOf(
@@ -926,7 +906,6 @@ fun MapScreen(
     // itinerary's geometry has to be read through State to reach the layers at all.
     val currentJourneyOverlay by rememberUpdatedState(journeyOverlay)
     val currentJourneyStopId by rememberUpdatedState(journeyStopId)
-    val currentPassedStopId by rememberUpdatedState(passedStopId)
     val currentShowStopNames by rememberUpdatedState(showItineraryStopNames)
     val stopsById by rememberUpdatedState(remember(stops) { stops.associateBy { it.favoriteKey } })
     val vehiclesById by rememberUpdatedState(remember(vehicles) { vehicles.associateBy { it.id } })
@@ -1260,62 +1239,63 @@ fun MapScreen(
                 if (projection == null) {
                     ClickResult.Pass
                 } else {
-                    fun hitRect(radius: Dp) = DpRect(
-                        left = clickOffset.x - radius,
-                        top = clickOffset.y - radius,
-                        right = clickOffset.x + radius,
-                        bottom = clickOffset.y + radius,
+                    val hitRect = DpRect(
+                        left = clickOffset.x - STOP_TAP_TARGET_RADIUS,
+                        top = clickOffset.y - STOP_TAP_TARGET_RADIUS,
+                        right = clickOffset.x + STOP_TAP_TARGET_RADIUS,
+                        bottom = clickOffset.y + STOP_TAP_TARGET_RADIUS,
                     )
-                    /** The [layerId] feature closest to the finger, and how far from it it is. */
-                    fun nearestFeature(layerId: String, radius: Dp = STOP_TAP_TARGET_RADIUS): Pair<String, Dp>? =
-                        projection
-                            .queryRenderedFeatures(rect = hitRect(radius), layerIds = setOf(layerId))
-                            .mapNotNull { candidate ->
-                                val id = candidate.id?.content ?: return@mapNotNull null
-                                val position = (candidate.geometry as? Point)?.coordinates
-                                val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
-                                val distance = if (candidateOffset != null) {
-                                    val dx = (candidateOffset.x - clickOffset.x).value
-                                    val dy = (candidateOffset.y - clickOffset.y).value
-                                    sqrt(dx * dx + dy * dy).dp
-                                } else {
-                                    Dp.Infinity
-                                }
-                                id to distance
+                    /** The [layerId] feature closest to the finger, and its squared distance from it. */
+                    fun nearestFeature(layerId: String): Pair<String, Float>? = projection
+                        .queryRenderedFeatures(rect = hitRect, layerIds = setOf(layerId))
+                        .mapNotNull { candidate ->
+                            val id = candidate.id?.content ?: return@mapNotNull null
+                            val position = (candidate.geometry as? Point)?.coordinates
+                            val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
+                            val distance = if (candidateOffset != null) {
+                                val dx = (candidateOffset.x - clickOffset.x).value
+                                val dy = (candidateOffset.y - clickOffset.y).value
+                                dx * dx + dy * dy
+                            } else {
+                                Float.MAX_VALUE
                             }
-                            .minByOrNull { it.second }
+                            id to distance
+                        }
+                        .minByOrNull { it.second }
                     fun nearestFeatureId(layerId: String): String? = nearestFeature(layerId)?.first
                     // A map drawing an itinerary has only its own stops to hit: everything else
-                    // is stood down, and a tap that opened a stop panel over the pane would be
-                    // showing something this map was not opened for.
+                    // is stood down, and a tap that opened a stop panel for some other stop would
+                    // be showing something this map was not opened for.
                     if (currentJourneyOverlay != null) {
-                        val pin = nearestFeature("journey-points", JOURNEY_TAP_TARGET_RADIUS)
-                        val bead = nearestFeature("journey-passed-stops", JOURNEY_TAP_TARGET_RADIUS)
-                        // Whichever the finger is nearer to, not pins first: zoomed out to the whole
-                        // journey, the first few beads past a boarding pin sit inside its tap target,
-                        // and pins-first made them untappable. A pin is several times a bead's size,
-                        // so it keeps the tap until the finger is clearly nearer the bead.
-                        val beadWins = bead != null &&
-                            (pin == null || bead.second + PIN_TAP_ADVANTAGE < pin.second)
-                        val hit = pin?.first.takeIf { !beadWins }
-                        val passed = bead?.first.takeIf { beadWins }
+                        // Whichever the finger is nearer to, not pins first: zoomed out to the
+                        // whole journey, the first stops past a boarding pin sit inside its tap
+                        // target, and a pins-first rule left them untappable.
+                        val pin = nearestFeature("journey-points")
+                        val passed = nearestFeature("transport-stops")
+                        val stop = passed
+                            ?.takeIf { pin == null || it.second < pin.second }
+                            ?.let { stopsById[it.first] }
                         return@MaplibreMap when {
-                            hit != null -> {
-                                journeyStopId = hit
-                                passedStopId = null
+                            // The same as tapping a stop of a followed run: its panel opens over
+                            // the pane, and closing it hands the pane back.
+                            stop != null -> {
+                                viewModel.selectStop(stop)
                                 ClickResult.Consume
                             }
-                            // Naming a stop on the way leaves the pane's waypoint where it was.
-                            passed != null -> {
-                                passedStopId = passed
+                            pin != null -> {
+                                viewModel.clearStopSelection()
+                                journeyStopId = pin.first
                                 ClickResult.Consume
                             }
-                            currentJourneyStopId == null && currentPassedStopId == null -> ClickResult.Pass
-                            else -> {
+                            currentSelectedStop != null -> {
+                                viewModel.clearStopSelection()
+                                ClickResult.Consume
+                            }
+                            currentJourneyStopId != null -> {
                                 journeyStopId = null
-                                passedStopId = null
                                 ClickResult.Consume
                             }
+                            else -> ClickResult.Pass
                         }
                     }
                     // Vehicles render above stops, so they win the tap too.
@@ -1632,26 +1612,6 @@ fun MapScreen(
                         },
                     ),
                 )
-                val journeyPassedStops = currentJourneyOverlay?.passedStops.orEmpty()
-                val journeyPassedStopsSource = rememberGeoJsonSource(
-                    data = GeoJsonData.Features(
-                        remember(journeyPassedStops) {
-                            FeatureCollection(
-                                journeyPassedStops.map { stop ->
-                                    Feature<Point, JsonObject?>(
-                                        id = JsonPrimitive(stop.id),
-                                        geometry = Point(
-                                            Position(latitude = stop.point.lat, longitude = stop.point.lon),
-                                        ),
-                                        properties = JsonObject(
-                                            mapOf("color" to JsonPrimitive(stop.color.toHexString())),
-                                        ),
-                                    )
-                                },
-                            )
-                        },
-                    ),
-                )
                 val journeyPoints = currentJourneyOverlay?.points.orEmpty()
                 val journeyPointFeatures = remember(journeyPoints, currentJourneyStopId, currentShowStopNames) {
                     FeatureCollection(
@@ -1706,22 +1666,6 @@ fun MapScreen(
                     opacity = const(0.8f),
                     cap = const(LineCap.Round),
                     join = const(LineJoin.Round),
-                )
-                // The stops each leg passes through: hollow beads on the line in its own colour, no
-                // glyph and no label, so the route reads as a sequence of stops without the places
-                // to act at drowning among them. A tap names one (see PassedStopCallout).
-                CircleLayer(
-                    id = "journey-passed-stops",
-                    source = journeyPassedStopsSource,
-                    radius = interpolate(
-                        linear(),
-                        zoom(),
-                        11 to const(2.5.dp),
-                        16 to const(4.5.dp),
-                    ),
-                    color = const(if (darkMap == true) PASSED_STOP_FILL_DARK else PASSED_STOP_FILL_LIGHT),
-                    strokeColor = feature["color"].convertToColor(),
-                    strokeWidth = const(2.dp),
                 )
                 // Where the journey actually begins and ends, when that is not a stop. Smaller
                 // than the boarding pins and under them, so it marks the spot without competing
@@ -1819,11 +1763,6 @@ fun MapScreen(
                     cameraState = cameraState,
                 )
             }
-        }
-
-        val passedStop = passedStopId?.let { id -> journeyOverlay?.passedStops?.firstOrNull { it.id == id } }
-        if (passedStop != null) {
-            PassedStopCallout(stop = passedStop, cameraState = cameraState)
         }
 
         Column(

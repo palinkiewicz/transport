@@ -331,6 +331,10 @@ class MapViewModel @Inject constructor(
      * stop list only arrives with its details, so this stays empty (and the viewport's stops
      * stay drawn) while they load or if they fail — blanking the map in between would read as
      * a glitch rather than as focus.
+     *
+     * A pinned itinerary is followed the same way: its legs pass through these stops, so they are
+     * drawn, named and tapped exactly as a followed run's are. Only the ones it passes *through*
+     * — where it boards and alights already carries a waypoint pin of its own.
      */
     private val focusedTripStops: StateFlow<List<TransitLocation>> =
         combine(
@@ -338,12 +342,15 @@ class MapViewModel @Inject constructor(
             vehicleDetails,
             focusSelectedVehicle,
             pinnedTrip,
-        ) { selected, details, focus, pinned ->
+            pinnedJourney,
+        ) { selected, details, focus, pinned, journey ->
             // A trip opened from a timetable with no vehicle to follow ignores the setting: its
             // stops are the only thing there is to look at, so hiding them among the viewport's
             // would defeat the whole point of opening it.
             val followingVehicle = selected != null
-            if (if (followingVehicle) !focus else pinned == null) {
+            if (journey != null) {
+                journey.journey.passedStops()
+            } else if (if (followingVehicle) !focus else pinned == null) {
                 emptyList()
             } else {
                 // Interlined runs call at the joint stop twice; the map only wants one marker.
@@ -505,13 +512,14 @@ class MapViewModel @Inject constructor(
      * [MapFilters.matchesStop] — they belong to the run the user is following, so a filter that
      * hides their mode would empty the very route being watched.
      *
-     * An itinerary on the map draws none of these: it brings its own stops, the handful worth
-     * marking, and the rest of the network would only clutter the route it is there to show.
+     * An itinerary on the map draws none of the viewport's: only the stops its legs pass through,
+     * as a followed run's, since the rest of the network would only clutter the route it is there
+     * to show.
      */
     val stops: StateFlow<List<TransitLocation>> =
         combine(allStops, filters, focusedTripStops, pinnedJourney) { stops, filters, tripStops, journey ->
             when {
-                journey != null -> emptyList()
+                journey != null -> tripStops
                 else -> tripStops.ifEmpty { stops.filter(filters::matchesStop) }
             }
         }
@@ -1181,6 +1189,19 @@ private data class FrameInput(
     val tripKey: String?,
     val motion: VehicleMotionSettings,
 )
+
+/**
+ * The stops this journey's transit legs pass through without the traveller boarding or alighting
+ * there, once each. A stop that is also a leg end is left to that end's waypoint pin.
+ */
+private fun Journey.passedStops(): List<TransitLocation> {
+    val transit = legs.filter { it.isTransit }
+    val ends = transit.flatMap { listOf(it.fromPlace.favoriteKey, it.toPlace.favoriteKey) }.toSet()
+    return transit
+        .flatMap { leg -> leg.intermediateStops.map { it.place } }
+        .filter { it.favoriteKey !in ends }
+        .distinctBy { it.favoriteKey }
+}
 
 private fun frameTargets(segments: List<VehicleSegment>, time: OffsetDateTime): List<VehicleFrameTarget> =
     segments.groupBy { it.tripKey }.mapNotNull { (_, tripSegments) ->

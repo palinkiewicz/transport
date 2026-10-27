@@ -59,20 +59,6 @@ data class RouteEndpoint(
 )
 
 /**
- * A stop a transit leg passes through without the traveller doing anything there. Drawn small and
- * unlabelled so it does not compete with the places to board and alight at; its name is shown only
- * once tapped, for checking where the vehicle is on the way.
- */
-data class RoutePassedStop(
-    /** Unique within one journey; what the map's tap resolves to. */
-    val id: String,
-    val point: GeoPoint,
-    val name: String,
-    /** The colour of the leg passing through it, so the dot reads as part of that line. */
-    val color: Color,
-)
-
-/**
  * Everything the map needs to draw one itinerary, plus the resolution its pane reads its badges
  * from. One derivation for both: the route on the map, the chips in the sheet, the dots beside the
  * places to change at and the exported file all take their colours from [colors], which is what
@@ -81,7 +67,6 @@ data class RoutePassedStop(
 internal data class JourneyOverlay(
     val lines: List<RouteLine>,
     val points: List<RoutePoint>,
-    val passedStops: List<RoutePassedStop>,
     val endpoints: List<RouteEndpoint>,
     val stops: List<ItineraryStop>,
     val colors: JourneyColors,
@@ -134,36 +119,18 @@ internal fun rememberJourneyOverlay(pinned: PendingMapJourney): JourneyOverlay {
         }
     }
     val endpoints = remember(lines, points) { journeyEndpoints(lines, points) }
-    // Resolved exactly as each leg's own line is above — `lines` cannot be read back for it, since
-    // a leg with no geometry draws none and the two lists stop lining up.
-    fun transitLegColor(index: Int): Color {
-        val leg = journey.legs[index]
-        return colors.legColors.getOrNull(index) ?: parseRouteColor(leg.routeColor, leg.mode.color)
-    }
-    val passedStops = remember(journey, colors) {
-        journey.legs.withIndex()
-            // Only on a leg the map draws, or the dots would hang beside no line at all.
-            .filter { (_, leg) -> leg.isTransit && leg.path.size >= 2 }
-            .flatMap { (index, leg) ->
-                val color = transitLegColor(index)
-                leg.intermediateStops.mapIndexed { order, stop ->
-                    RoutePassedStop(
-                        id = "leg-$index-pass-$order",
-                        point = GeoPoint(stop.place.lat, stop.place.lon),
-                        name = stop.name,
-                        color = color,
-                    )
-                }
-            }
-    }
     val vehicleColors = remember(journey, colors) {
         journey.legs.withIndex().mapNotNull { (index, leg) ->
             val tripId = leg.tripId?.takeIf { leg.isTransit } ?: return@mapNotNull null
-            tripId to transitLegColor(index)
+            // Resolved exactly as the leg's own line is above — `lines` cannot be read back for it,
+            // since a leg with no geometry draws none and the two lists stop lining up.
+            val color = colors.legColors.getOrNull(index)
+                ?: parseRouteColor(leg.routeColor, leg.mode.color)
+            tripId to color
         }.toMap()
     }
-    return remember(lines, points, passedStops, endpoints, stops, colors, vehicleColors) {
-        JourneyOverlay(lines, points, passedStops, endpoints, stops, colors, vehicleColors)
+    return remember(lines, points, endpoints, stops, colors, vehicleColors) {
+        JourneyOverlay(lines, points, endpoints, stops, colors, vehicleColors)
     }
 }
 
