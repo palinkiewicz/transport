@@ -128,6 +128,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.sample
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import org.maplibre.compose.camera.CameraMoveReason
 import org.maplibre.compose.camera.CameraPosition
 import org.maplibre.compose.camera.CameraProjection
@@ -145,6 +146,7 @@ import org.maplibre.compose.expressions.dsl.offset
 import org.maplibre.compose.expressions.dsl.span
 import org.maplibre.compose.expressions.dsl.switch
 import org.maplibre.compose.expressions.dsl.zoom
+import org.maplibre.compose.expressions.value.IconTextFit
 import org.maplibre.compose.expressions.value.LineCap
 import org.maplibre.compose.expressions.value.LineJoin
 import org.maplibre.compose.expressions.value.SymbolAnchor
@@ -222,6 +224,18 @@ private const val STOP_ICONS_MIN_ZOOM = 15f
 private const val STOP_LABELS_MIN_ZOOM = 14f
 private const val STOPS_DEFAULT_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
+
+private val STOP_LABEL_SIZE = 0.8125f.em
+private val PASSED_STOP_LABEL_SIZE = 0.6875f.em
+private val VEHICLE_LABEL_SIZE = 0.75f.em
+// Offsets are in ems of each label's own size, so the two stop sizes need one each to leave the
+// same few dp between a pin and the top of the background under it.
+private val STOP_LABEL_OFFSET = 1.58f.em
+private val PASSED_STOP_LABEL_OFFSET = 1.68f.em
+private val VEHICLE_LABEL_OFFSET = 1.6f.em
+
+/** Room between a label's text and the edge of its background. */
+private val LABEL_PADDING = PaddingValues.Absolute(left = 2.dp, top = 0.dp, right = 2.dp, bottom = 0.dp)
 
 /** How far the stop panel's other line chips fade back while one line is focused. */
 private const val DIMMED_CHIP_ALPHA = 0.4f
@@ -1441,25 +1455,27 @@ fun MapScreen(
             val vehicleFeatures = remember(vehicles, legColors) {
                 FeatureCollection(
                     vehicles.map { vehicle ->
+                        val color = vehicle.tripId?.let { legColors[it] }?.toHexString()
+                            ?: vehicle.markerColorHex()
                         Feature<Point, JsonObject?>(
                             id = JsonPrimitive(vehicle.id),
                             geometry = Point(
                                 Position(latitude = vehicle.position.lat, longitude = vehicle.position.lon),
                             ),
                             properties = JsonObject(
-                                mapOf(
-                                    "label" to JsonPrimitive(vehicle.label),
-                                    "color" to JsonPrimitive(
-                                        vehicle.tripId?.let { legColors[it] }?.toHexString()
-                                            ?: vehicle.markerColorHex(),
-                                    ),
+                                listOfNotNull(
+                                    // Left out when blank: a fitted badge around no text would
+                                    // still draw, as an empty blob beside the marker.
+                                    vehicle.label.takeIf { it.isNotBlank() }?.let { "label" to JsonPrimitive(it) },
+                                    "labelText" to JsonPrimitive(vehicleLabelTextHex(color)),
+                                    "color" to JsonPrimitive(color),
                                     // Stroke computed here rather than via a style expression:
                                     // keeps the layer definitions free of boolean-case DSL.
                                     "stroke" to JsonPrimitive(
                                         if (vehicle.realTime) VEHICLE_STROKE_LIVE else VEHICLE_STROKE_TIMETABLE,
                                     ),
                                     "icon" to JsonPrimitive(markerIconKey(vehicle.mode)),
-                                ),
+                                ).toMap(),
                             ),
                         )
                     },
@@ -1468,6 +1484,14 @@ fun MapScreen(
             val vehiclesSource = rememberGeoJsonSource(data = GeoJsonData.Features(vehicleFeatures))
             // Non-SDF glyphs tinted white up front: crisper than SDF rendering at this size.
             val markerIconImage = rememberMarkerIconImage()
+            val stopLabel = stopLabelColors(darkMap == true)
+            val stopLabelImage = rememberStopLabelImage(darkMap == true)
+            val vehicleLabelImage = rememberVehicleLabelImages(
+                darkMap = darkMap == true,
+                colorHexes = remember(vehicleFeatures) {
+                    vehicleFeatures.features.mapNotNull { it.properties?.get("color")?.jsonPrimitive?.content }.toSet()
+                },
+            )
             // Above street names and road shields so stops never hide behind them, but still
             // below place labels (village/town/city names), matching Google Maps. NB: the
             // anchor layer must exist in the style or MapLibre throws when adding these layers.
@@ -1608,14 +1632,22 @@ fun MapScreen(
                     minZoom = detailZoom(effectiveStopsMinZoom, STOP_LABELS_MIN_ZOOM),
                     textField = format(span(feature["name"].asString())),
                     // Must be a fontstack the style's glyph server actually serves (the library
-                    // default 404s there); Roboto also matches the basemap's typography.
-                    textFont = const(listOf("Roboto Regular")),
-                    textSize = const(0.75f.em),
-                    textOffset = offset(0f.em, 1.4f.em),
+                    // default 404s there) — see MAP_LABEL_FONT.
+                    textFont = const(MAP_LABEL_FONT),
+                    // A followed run's or an itinerary's stops are the stops it passes, not places
+                    // in their own right, so they are named a size down from the network's.
+                    textSize = const(if (stopsFocusedOnTrip) PASSED_STOP_LABEL_SIZE else STOP_LABEL_SIZE),
+                    textOffset = offset(
+                        0f.em,
+                        if (stopsFocusedOnTrip) PASSED_STOP_LABEL_OFFSET else STOP_LABEL_OFFSET,
+                    ),
                     textAnchor = const(SymbolAnchor.Top),
                     // Keyed to the basemap, not the app theme: the two are separate settings,
                     // and a label only has to stay legible against what is drawn under it.
-                    textColor = const(mapLabelColor(darkMap == true)),
+                    textColor = const(stopLabel.text),
+                    iconImage = stopLabelImage,
+                    iconTextFit = const(IconTextFit.Both),
+                    iconTextFitPadding = const(LABEL_PADDING),
                 )
                 val journeyEndpoints = currentJourneyOverlay?.endpoints.orEmpty()
                 val journeyEndpointSource = rememberGeoJsonSource(
@@ -1651,17 +1683,19 @@ fun MapScreen(
                                     Position(latitude = point.point.lat, longitude = point.point.lon),
                                 ),
                                 properties = JsonObject(
-                                    mapOf(
+                                    listOfNotNull(
                                         "kind" to JsonPrimitive(if (point.terminus) "terminus" else "via"),
-                                        "name" to JsonPrimitive(
-                                            point.name.takeIf { currentShowStopNames }.orEmpty(),
-                                        ),
+                                        // Left out rather than blank when names are off: the
+                                        // label layer filters on it, as a fitted background
+                                        // around no text would still draw.
+                                        point.name.takeIf { currentShowStopNames }
+                                            ?.let { "name" to JsonPrimitive(it) },
                                         "color" to JsonPrimitive(
                                             point.color?.toHexString() ?: markerColorHex(point.mode),
                                         ),
                                         "icon" to JsonPrimitive(markerIconKey(point.mode)),
                                         "selected" to JsonPrimitive(point.id == currentJourneyStopId),
-                                    ),
+                                    ).toMap(),
                                 ),
                             )
                         },
@@ -1710,12 +1744,17 @@ fun MapScreen(
                 SymbolLayer(
                     id = "journey-point-labels",
                     source = journeyPointsSource,
+                    filter = feature.has("name"),
                     textField = format(span(feature["name"].asString())),
-                    textFont = const(listOf("Roboto Regular")),
-                    textSize = const(0.75f.em),
-                    textOffset = offset(0f.em, 1.4f.em),
+                    textFont = const(MAP_LABEL_FONT),
+                    // Where the traveller boards and alights: a stop like any on the map.
+                    textSize = const(STOP_LABEL_SIZE),
+                    textOffset = offset(0f.em, STOP_LABEL_OFFSET),
                     textAnchor = const(SymbolAnchor.Top),
-                    textColor = const(mapLabelColor(darkMap == true)),
+                    textColor = const(stopLabel.text),
+                    iconImage = stopLabelImage,
+                    iconTextFit = const(IconTextFit.Both),
+                    iconTextFitPadding = const(LABEL_PADDING),
                 )
                 // Vehicles last of all, so they stack above stops — they move, and should never
                 // hide under a pin — and above a drawn itinerary, whose own boarding pins would
@@ -1751,12 +1790,18 @@ fun MapScreen(
                     id = "transport-vehicle-labels",
                     source = vehiclesSource,
                     minZoom = 12f,
+                    filter = feature.has("label"),
                     textField = format(span(feature["label"].asString())),
-                    textFont = const(listOf("Roboto Regular")),
-                    textSize = const(0.75f.em),
-                    textOffset = offset(0f.em, 1.4f.em),
-                    textAnchor = const(SymbolAnchor.Top),
-                    textColor = const(mapLabelColor(darkMap == true)),
+                    textFont = const(MAP_LABEL_FONT),
+                    textSize = const(VEHICLE_LABEL_SIZE),
+                    // Beside the marker, not under it the way a stop's name is, and in the line's
+                    // own colour: a badge, so a moving vehicle never reads as one more stop.
+                    textOffset = offset(VEHICLE_LABEL_OFFSET, 0f.em),
+                    textAnchor = const(SymbolAnchor.Left),
+                    textColor = feature["labelText"].convertToColor(),
+                    iconImage = vehicleLabelImage,
+                    iconTextFit = const(IconTextFit.Both),
+                    iconTextFitPadding = const(LABEL_PADDING),
                 )
             }
             if (locationState != null) {
