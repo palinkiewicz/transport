@@ -1,6 +1,19 @@
 package pl.dakil.transport.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import android.content.ClipData
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material3.IconButton
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.text.font.FontFamily
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -126,14 +139,46 @@ fun StatusBox(
                 )
             }
             AnimatedVisibility(visible = expanded) {
-                Text(
-                    text = details,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                ErrorDetails(details)
             }
+        }
+    }
+}
+
+/**
+ * The raw failure behind an error — request, status and response body — for whoever is working
+ * out why a load fails. Selectable and copyable, since it is mostly read somewhere else: pasted
+ * into an issue, or next to the request it names.
+ */
+@Composable
+private fun ErrorDetails(details: String, modifier: Modifier = Modifier) {
+    val clipboard = LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    Column(modifier = modifier.fillMaxWidth()) {
+        SelectionContainer {
+            Text(
+                text = details,
+                style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 240.dp)
+                    .verticalScroll(rememberScrollState()),
+            )
+        }
+        TextButton(
+            onClick = {
+                scope.launch {
+                    clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, details)))
+                }
+            },
+            modifier = Modifier.align(Alignment.End),
+        ) {
+            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(
+                text = stringResource(R.string.action_copy_details),
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
@@ -185,29 +230,45 @@ fun InlineErrorRow(
     modifier: Modifier = Modifier,
     onRetry: (() -> Unit)? = null,
 ) {
+    var expanded by remember(error) { mutableStateOf(false) }
     Surface(
         shape = MaterialTheme.shapes.large,
         color = MaterialTheme.colorScheme.errorContainer,
         contentColor = MaterialTheme.colorScheme.onErrorContainer,
         modifier = modifier.fillMaxWidth(),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        ) {
-            Icon(
-                error.icon,
-                contentDescription = null,
-                modifier = Modifier.size(20.dp),
-            )
-            Text(
-                text = error.shortMessage,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.weight(1f),
-            )
-            if (onRetry != null && error.isRetryable) {
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+        Column(modifier = Modifier.padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    error.icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
+                Text(
+                    text = error.shortMessage,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.weight(1f),
+                )
+                if (error.detail != null) {
+                    IconButton(onClick = { expanded = !expanded }) {
+                        Icon(
+                            Icons.Outlined.Info,
+                            contentDescription = stringResource(
+                                if (expanded) R.string.error_details_hide else R.string.error_details_show,
+                            ),
+                        )
+                    }
+                }
+                if (onRetry != null && error.isRetryable) {
+                    TextButton(onClick = onRetry) { Text(stringResource(R.string.action_retry)) }
+                }
+            }
+            val details = error.detail
+            AnimatedVisibility(visible = expanded && details != null) {
+                if (details != null) ErrorDetails(details, modifier = Modifier.padding(top = 4.dp, end = 8.dp))
             }
         }
     }

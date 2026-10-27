@@ -166,6 +166,7 @@
     <string name="error_body_unknown">Nie udało się wczytać danych. Spróbuj ponownie.</string>
     <string name="error_details_show">Szczegóły techniczne</string>
     <string name="error_details_hide">Ukryj szczegóły techniczne</string>
+    <string name="action_copy_details">Kopiuj szczegóły</string>
 
     <!-- Favourites -->
     <string name="saved_title">Zapisane</string>

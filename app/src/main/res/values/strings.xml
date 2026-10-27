@@ -156,6 +156,7 @@
     <string name="error_body_unknown">The data couldn\'t be loaded. Please try again.</string>
     <string name="error_details_show">Technical details</string>
     <string name="error_details_hide">Hide technical details</string>
+    <string name="action_copy_details">Copy details</string>
 
     <!-- Favourites -->
     <string name="saved_title">Saved</string>

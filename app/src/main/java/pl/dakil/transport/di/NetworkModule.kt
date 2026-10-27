@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import pl.dakil.transport.BuildConfig
 import pl.dakil.transport.data.remote.MotisApi
+import pl.dakil.transport.data.remote.RequestContextInterceptor
 import pl.dakil.transport.data.remote.UserAgentInterceptor
 import retrofit2.Retrofit
 
@@ -35,6 +36,8 @@ object NetworkModule {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(45, TimeUnit.SECONDS)
+        // Outermost, so every transport failure below it leaves with the request it broke.
+        .addInterceptor(RequestContextInterceptor())
         .addInterceptor(UserAgentInterceptor())
         .apply {
             if (BuildConfig.DEBUG) {
