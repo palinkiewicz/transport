@@ -116,6 +116,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import kotlin.math.sqrt
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.debounce
@@ -222,6 +223,15 @@ private const val STOP_ICONS_MIN_ZOOM = 15f
 private const val STOP_LABELS_MIN_ZOOM = 14f
 private const val STOPS_DEFAULT_MIN_ZOOM = 13f
 private val STOP_TAP_TARGET_RADIUS = 24.dp
+
+/**
+ * Wider than [STOP_TAP_TARGET_RADIUS]: an itinerary's map has only its own few markers to hit,
+ * and its pass-through beads are drawn far smaller than the finger landing on them.
+ */
+private val JOURNEY_TAP_TARGET_RADIUS = 32.dp
+
+/** How much nearer a bead the finger has to be before it takes a tap from a boarding pin. */
+private val PIN_TAP_ADVANTAGE = 6.dp
 
 /** How far the stop panel's other line chips fade back while one line is focused. */
 private const val DIMMED_CHIP_ALPHA = 0.4f
@@ -1250,32 +1260,45 @@ fun MapScreen(
                 if (projection == null) {
                     ClickResult.Pass
                 } else {
-                    val hitRect = DpRect(
-                        left = clickOffset.x - STOP_TAP_TARGET_RADIUS,
-                        top = clickOffset.y - STOP_TAP_TARGET_RADIUS,
-                        right = clickOffset.x + STOP_TAP_TARGET_RADIUS,
-                        bottom = clickOffset.y + STOP_TAP_TARGET_RADIUS,
+                    fun hitRect(radius: Dp) = DpRect(
+                        left = clickOffset.x - radius,
+                        top = clickOffset.y - radius,
+                        right = clickOffset.x + radius,
+                        bottom = clickOffset.y + radius,
                     )
-                    fun nearestFeatureId(layerId: String): String? = projection
-                        .queryRenderedFeatures(rect = hitRect, layerIds = setOf(layerId))
-                        .minByOrNull { candidate ->
-                            val position = (candidate.geometry as? Point)?.coordinates
-                            val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
-                            if (candidateOffset != null) {
-                                val dx = (candidateOffset.x - clickOffset.x).value
-                                val dy = (candidateOffset.y - clickOffset.y).value
-                                dx * dx + dy * dy
-                            } else {
-                                Float.MAX_VALUE
+                    /** The [layerId] feature closest to the finger, and how far from it it is. */
+                    fun nearestFeature(layerId: String, radius: Dp = STOP_TAP_TARGET_RADIUS): Pair<String, Dp>? =
+                        projection
+                            .queryRenderedFeatures(rect = hitRect(radius), layerIds = setOf(layerId))
+                            .mapNotNull { candidate ->
+                                val id = candidate.id?.content ?: return@mapNotNull null
+                                val position = (candidate.geometry as? Point)?.coordinates
+                                val candidateOffset = position?.let { projection.screenLocationFromPosition(it) }
+                                val distance = if (candidateOffset != null) {
+                                    val dx = (candidateOffset.x - clickOffset.x).value
+                                    val dy = (candidateOffset.y - clickOffset.y).value
+                                    sqrt(dx * dx + dy * dy).dp
+                                } else {
+                                    Dp.Infinity
+                                }
+                                id to distance
                             }
-                        }?.id?.content
+                            .minByOrNull { it.second }
+                    fun nearestFeatureId(layerId: String): String? = nearestFeature(layerId)?.first
                     // A map drawing an itinerary has only its own stops to hit: everything else
                     // is stood down, and a tap that opened a stop panel over the pane would be
                     // showing something this map was not opened for.
                     if (currentJourneyOverlay != null) {
-                        // Boarding pins draw over the pass-through dots, so they win the tap too.
-                        val hit = nearestFeatureId("journey-points")
-                        val passed = if (hit == null) nearestFeatureId("journey-passed-stops") else null
+                        val pin = nearestFeature("journey-points", JOURNEY_TAP_TARGET_RADIUS)
+                        val bead = nearestFeature("journey-passed-stops", JOURNEY_TAP_TARGET_RADIUS)
+                        // Whichever the finger is nearer to, not pins first: zoomed out to the whole
+                        // journey, the first few beads past a boarding pin sit inside its tap target,
+                        // and pins-first made them untappable. A pin is several times a bead's size,
+                        // so it keeps the tap until the finger is clearly nearer the bead.
+                        val beadWins = bead != null &&
+                            (pin == null || bead.second + PIN_TAP_ADVANTAGE < pin.second)
+                        val hit = pin?.first.takeIf { !beadWins }
+                        val passed = bead?.first.takeIf { beadWins }
                         return@MaplibreMap when {
                             hit != null -> {
                                 journeyStopId = hit
