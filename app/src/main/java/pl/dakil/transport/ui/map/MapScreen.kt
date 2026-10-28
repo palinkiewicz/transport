@@ -1358,9 +1358,13 @@ fun MapScreen(
             // updated instance, so values captured from the outer composition stay frozen at
             // their first-composition state. Anything dynamic must be derived in here, from
             // snapshot state reads (like `stops`, `selectedStop`, `stopRoutes`).
-            val stopFeatures = remember(stops) {
+            // A followed run's stops arrive in timetable order, so its first and last are where
+            // it starts and ends. An itinerary's list skips its ends — those are waypoint pins.
+            val followedRunStops = stopsFocusedOnTrip && currentJourneyOverlay == null
+            val stopFeatures = remember(stops, followedRunStops) {
                 FeatureCollection(
-                    stops.map { stop ->
+                    stops.mapIndexed { index, stop ->
+                        val terminus = followedRunStops && (index == 0 || index == stops.lastIndex)
                         Feature<Point, JsonObject?>(
                             id = JsonPrimitive(stop.favoriteKey),
                             geometry = Point(Position(latitude = stop.lat, longitude = stop.lon)),
@@ -1369,6 +1373,7 @@ fun MapScreen(
                                     "name" to JsonPrimitive(stop.name),
                                     "color" to JsonPrimitive(stop.markerColorHex()),
                                     "icon" to JsonPrimitive(stop.markerIconKey()),
+                                    "kind" to JsonPrimitive(if (terminus) "terminus" else "stop"),
                                 ),
                             ),
                         )
@@ -1634,12 +1639,17 @@ fun MapScreen(
                     // Must be a fontstack the style's glyph server actually serves (the library
                     // default 404s there) — see MAP_LABEL_FONT.
                     textFont = const(MAP_LABEL_FONT),
-                    // A followed run's or an itinerary's stops are the stops it passes, not places
-                    // in their own right, so they are named a size down from the network's.
-                    textSize = const(if (stopsFocusedOnTrip) PASSED_STOP_LABEL_SIZE else STOP_LABEL_SIZE),
-                    textOffset = offset(
-                        0f.em,
-                        if (stopsFocusedOnTrip) PASSED_STOP_LABEL_OFFSET else STOP_LABEL_OFFSET,
+                    // Stops are named small; only where a followed run starts and ends is
+                    // named a size up, as an itinerary's own ends are.
+                    textSize = switch(
+                        input = feature["kind"].asString(),
+                        case("terminus", const(STOP_LABEL_SIZE)),
+                        fallback = const(PASSED_STOP_LABEL_SIZE),
+                    ),
+                    textOffset = switch(
+                        input = feature["kind"].asString(),
+                        case("terminus", offset(0f.em, STOP_LABEL_OFFSET)),
+                        fallback = offset(0f.em, PASSED_STOP_LABEL_OFFSET),
                     ),
                     textAnchor = const(SymbolAnchor.Top),
                     // Keyed to the basemap, not the app theme: the two are separate settings,
@@ -1747,9 +1757,18 @@ fun MapScreen(
                     filter = feature.has("name"),
                     textField = format(span(feature["name"].asString())),
                     textFont = const(MAP_LABEL_FONT),
-                    // Where the traveller boards and alights: a stop like any on the map.
-                    textSize = const(STOP_LABEL_SIZE),
-                    textOffset = offset(0f.em, STOP_LABEL_OFFSET),
+                    // Only where the journey starts and ends is named full size; the transfers
+                    // between are named like the stops passed on the way.
+                    textSize = switch(
+                        input = feature["kind"].asString(),
+                        case("terminus", const(STOP_LABEL_SIZE)),
+                        fallback = const(PASSED_STOP_LABEL_SIZE),
+                    ),
+                    textOffset = switch(
+                        input = feature["kind"].asString(),
+                        case("terminus", offset(0f.em, STOP_LABEL_OFFSET)),
+                        fallback = offset(0f.em, PASSED_STOP_LABEL_OFFSET),
+                    ),
                     textAnchor = const(SymbolAnchor.Top),
                     textColor = const(stopLabel.text),
                     iconImage = stopLabelImage,
